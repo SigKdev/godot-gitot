@@ -1,0 +1,82 @@
+[gd_scene format=3 uid="uid://bqsbck70725p5"]
+
+[ext_resource type="Script" uid="uid://5m4e67omds4m" path="res://addons/gitot/ui/gitot_dock.gd" id="1_ap6ej"]
+
+[node name="Control" type="Control" unique_id=1349837442]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ap6ej")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1255260125]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="RefreshButton" type="Button" parent="VBoxContainer" unique_id=1284737562]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Refresh Change"
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer" unique_id=935116010]
+layout_mode = 2
+
+[node name="RefreshDiffButton" type="Button" parent="VBoxContainer" unique_id=674196267]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Refresh Diff"
+
+[node name="HSeparator2" type="HSeparator" parent="VBoxContainer" unique_id=695882696]
+layout_mode = 2
+
+[node name="Label2" type="Label" parent="VBoxContainer" unique_id=607895553]
+layout_mode = 2
+text = "Unstaged"
+
+[node name="UnstagedTree" type="Tree" parent="VBoxContainer" unique_id=1680823320]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Label" type="Label" parent="VBoxContainer" unique_id=2128688384]
+layout_mode = 2
+text = "Staged"
+
+[node name="StagedTree" type="Tree" parent="VBoxContainer" unique_id=43213874]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CommitMessageInput" type="TextEdit" parent="VBoxContainer" unique_id=846062894]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+placeholder_text = "Commit Message"
+wrap_mode = 1
+
+[node name="CommitButton" type="Button" parent="VBoxContainer" unique_id=19649693]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Commit"
+
+[node name="HSeparator3" type="HSeparator" parent="VBoxContainer" unique_id=206646037]
+layout_mode = 2
+
+[node name="PushButton" type="Button" parent="VBoxContainer" unique_id=1817765002]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Push"
+
+[node name="PullButton" type="Button" parent="VBoxContainer" unique_id=48988369]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Note: changed scripts already open in the script editor, Godot may not refresh it — a restart may be needed (known Godot engine limitation)."
+text = "Pull"
