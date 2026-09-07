@@ -18,6 +18,7 @@ func _init(engine: GitEngine) -> void:
 	git_engine = engine
 	git_engine.command_completed.connect(_on_diff_result)
 
+
 ## Runs diff for the currently active script and refreshes its gutter.
 func refresh_current_script() -> void:
 	var script_editor: ScriptEditor = EditorInterface.get_script_editor()
@@ -26,6 +27,13 @@ func refresh_current_script() -> void:
 		return
 	var path: String = ProjectSettings.globalize_path(script.resource_path)
 	git_engine.run_fast("diff", ["diff", "-U0", "--no-ext-diff", "HEAD", "--", path])
+
+
+## Disconnects this gutter handler from the shared GitEngine. Called by gitot.gd on exit.
+func teardown() -> void:
+	if git_engine and git_engine.command_completed.is_connected(_on_diff_result):
+		git_engine.command_completed.disconnect(_on_diff_result)
+
 
 ## Ensures the given CodeEdit has our gutter registered exactly once,
 ## checked by name rather than object identity (more reliable across tab switches).
@@ -40,6 +48,7 @@ func _ensure_gutter(code_edit: CodeEdit) -> int:
 	code_edit.set_gutter_type(gutter_idx, CodeEdit.GUTTER_TYPE_STRING)
 	code_edit.set_gutter_width(gutter_idx, 4)
 	return gutter_idx
+
 
 ## Applies parsed diff line states to the active CodeEdit's gutter.
 func _on_diff_result(command_name: String, exit_code: int, output: Array) -> void:
@@ -60,6 +69,7 @@ func _on_diff_result(command_name: String, exit_code: int, output: Array) -> voi
 		code_edit.set_line_gutter_text(line, gutter_idx, "")
 		code_edit.set_line_gutter_item_color(line, gutter_idx, Color(0, 0, 0, 0))
 
+	# Apply the parsed line states to the gutter.
 	var line_states: Dictionary = GitDiffParser.parse(output[0])
 	for line_num: int in line_states:
 		var color: Color = COLOR_ADDED if line_states[line_num] == GitDiffParser.LineState.ADDED else COLOR_MODIFIED
@@ -67,3 +77,5 @@ func _on_diff_result(command_name: String, exit_code: int, output: Array) -> voi
 		# Diff line numbers are 1-based; CodeEdit lines are 0-based.
 		code_edit.set_line_gutter_text(target_line, gutter_idx, "┃")
 		code_edit.set_line_gutter_item_color(target_line, gutter_idx, color)
+
+# TODO: _on_diff_result applies the parsed diff to whatever get_current_editor() returns at signal-arrival time, not necessarily the tab that requested the diff, and target_line isn't clamped to get_line_count(). That's the "gutter result not bound to request" issue from the original review — it's a correctness bug, not a memory one, and isn't in the current roadmap table. Worth a Phase A-style fix later.
