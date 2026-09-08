@@ -17,12 +17,16 @@ extends EditorPlugin
 ## Commands that change working tree / index state and require a status refresh.
 const STATUS_TRIGGERING_COMMANDS: PackedStringArray = ["stage", "unstage", "commit", "push", "pull"]
 
+const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
+
 ## Reference to the GitEngine instance.
 var git_engine: GitEngine
 
 ## Reference to the dock UI instance, kept for clean removal on exit.
 var dock: GitotDock
 var diff_gutter: GitotDiffGutter
+
+var github_panel: Control
 
 
 ## Initializes the plugin when it is added to the editor.
@@ -52,6 +56,11 @@ func _enter_tree() -> void:
 	dock.set_diff_gutter(diff_gutter)
 	add_control_to_dock(DOCK_SLOT_LEFT_UL, dock)
 
+	github_panel = GithubPanelScene.instantiate()
+	github_panel.set_git_engine(git_engine)
+	EditorInterface.get_editor_main_screen().add_child(github_panel)
+	github_panel.hide() # Godot calls _make_visible(true) when the tab is selected
+
 	print_rich("[color=green]Gitot: 'git' binary verified. Plugin ready.[/color]")
 
 
@@ -68,6 +77,30 @@ func _on_git_command_completed(command_name: String, _exit_code: int, _output: A
 func _on_resource_saved(resource: Resource) -> void:
 	if resource is Script:
 		diff_gutter.refresh_current_script()
+
+
+## Required for the panel to appear as a selectable main-screen tab (2D/3D/Script/AssetLib row).
+func _has_main_screen() -> bool:
+	return true
+
+
+## Called by the editor when the user switches to/away from this tab.
+func _make_visible(visible: bool) -> void:
+	if github_panel:
+		github_panel.visible = visible
+		if visible and not github_panel.has_fetched:
+			github_panel.has_fetched = true
+			github_panel.fetch_current_repo_issues()
+
+
+## Tab label text.
+func _get_plugin_name() -> String:
+	return "Gitot"
+
+
+## Tab icon — using a built-in editor icon avoids shipping an asset for v1.
+func _get_plugin_icon() -> Texture2D:
+	return EditorInterface.get_base_control().get_theme_icon("ExternalLink", "EditorIcons")
 
 
 ## Cleans up the plugin on exit.
@@ -91,3 +124,6 @@ func _exit_tree() -> void:
 	if git_engine:
 		git_engine.teardown()
 	git_engine = null
+
+	if github_panel:
+		github_panel.queue_free()

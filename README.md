@@ -6,7 +6,24 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 Gitot wraps the system `git` binary directly via `OS.execute()`, in pure GDScript, with no GDExtension and no bundled `libgit2`. It inherits your existing SSH/credential setup and the full Git feature set without re-implementing any of it. This trades a small amount of raw performance for stability, transparency, and zero maintenance burden across engine/OS updates.
 
-If `git` works from your terminal, it works from Gitot because it *is* your terminal's git.
+**If Git works from your terminal, it works from Gitot because it use your terminal's git.**
+
+## Features MVP (v0.2.0)
+
+- **Commit & Sync:** Staging/Unstaging, commit message input, and Commit / Push / Pull buttons.
+- **Color-only diff gutter:** modified and added lines are marked directly in the script editor's gutter.
+- **GitHub Issues Tracker Board:** display remote GitHub issues of the project (read: [PAT](###github-personal-access-token) section).
+- **Large-file guard:** blocks staging any file ≥50MB to prevent accidental repository bloat.
+
+<details>
+<summary>Details</summary>
+
+- **Failsafe startup:** verifies `git` is available before initializing; disables cleanly with a clear error if not.
+- **Async execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored background process with a 30-second timeout guard, so a slow or stalled connection never freezes the editor.
+- **Git dock:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with double-click stage/unstage.
+- **Color-only diff gutter:** modified and added lines are marked directly in the script editor's gutter, computed from `git diff -U0` against `HEAD`. Updates automatically on save (where Godot's save signal fires reliably) with a manual **Refresh Diff** fallback button.
+- **GitHub Issues Tracker Board:** display remote GitHub issues of the project. PAT auth, issue fetch, PR filter, main-screen panel.
+</details>
 
 ## Requirements
 
@@ -18,15 +35,6 @@ If `git` works from your terminal, it works from Gitot because it *is* your term
 1. Copy `addons/gitot/` into your project's `addons/` folder.
 2. Enable **Gitot** under Project Settings → Plugins.
 
-## Features (v0.1.0 MVP)
-
-- **Failsafe startup:** verifies `git` is available before initializing; disables cleanly with a clear error if not.
-- **Async execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored background process with a 30-second timeout guard, so a slow or stalled connection never freezes the editor.
-- **Git dock:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with double-click stage/unstage.
-- **Commit & sync:** commit message input, and Commit / Push / Pull buttons.
-- **Color-only diff gutter:** modified and added lines are marked directly in the script editor's gutter, computed from `git diff -U0` against `HEAD`. Updates automatically on save (where Godot's save signal fires reliably) with a manual **Refresh Diff** fallback button.
-- **Large-file guard:** blocks staging any file ≥50MB to prevent accidental repository bloat.
-
 ## Known Limitations
 
 These are documented, verified engine behaviors:
@@ -37,33 +45,72 @@ These are documented, verified engine behaviors:
 
 ## Credential Handling
 
+### SSH
+
 Pushing/pulling relies on your system Git's own credential handling (SSH agent, Git Credential Manager, etc.).
 **Gitot does not manage credentials!**
 Gitot does not suppress OS-level credential prompts (e.g. Windows Git Credential Manager popups). If push/pull hangs waiting on such a prompt, it will be automatically killed after 30 seconds.
 Configure a working credential helper or SSH agent so `git push`/`git pull` succeed from a terminal before relying on Gitot for sync.
 
+### GitHub Personal Access Token
+
+**Gitot** stores your GitHub PAT locally in plaintext at `user://gitot_auth.cfg`
+(outside `res://`, so it is never committed to your repository).
+
+**This is not encrypted.** Godot/GDScript cannot access your OS-level
+credential store (Windows Credential Manager, macOS Keychain, etc.) without
+a native extension, which is outside this plugin's scope. **Anyone with access
+to your local user account can read this file.**
+
+**Recommendations:**
+- Generate a token scoped to `repo` access only — never an admin or org-wide token.
+- Use the **Clear Token** button in the GitHub panel toolbar before uninstalling
+  or disabling the plugin, or when working on a shared machine.
+- If a token expires or is revoked, Gitot detects this automatically (HTTP 401)
+  and re-prompts for a new one.
+
 ## Planned Features
 
-- GitHub Issues tracker panel
-- Git LFS support and asset locking
-- Branch management UI
-- Hunk-level (partial file) staging
-- Diff hover popup / bottom-dock full diff view
-- `.gitignore` generator (as an opt-in setting, not automatic)
+[x] Commit & Sync (commit/push/pull)
+[x] Color-only diff gutter
+[x] GitHub Issues Tracker Board
+[ ] Git LFS support and asset locking
+[ ] Branch management UI
+[ ] Hunk-level (partial file) staging
+[ ] Diff hover popup / bottom-dock full diff view
+[ ] `.gitignore` generator (as an opt-in setting, not automatic)
 
 ## Architecture
 
-- `gitot.gd` — `EditorPlugin` entry point; lifecycle and wiring only.
+- `gitot.gd` — `EditorPlugin` entry point; lifecycle, wiring, and main-screen tab registration.
 - `core/git_engine.gd` — all `git` CLI execution (sync-fast and async-network paths).
 - `core/git_status_parser.gd` — parses `git status --porcelain=v2`.
 - `core/git_diff_parser.gd` — parses `git diff -U0` hunk headers.
-- `ui/gitot_dock.tscn` — dock UI scene.
-- `ui/gitot_dock.gd` — dock UI logic.
+- `core/github_auth.gd` — PAT storage (`user://gitot_auth.cfg`, plaintext — see Security).
+- `core/github_api.gd` — authenticated `HTTPRequest` wrapper for the GitHub REST API.
+- `ui/gitot_dock.tscn` / `gitot_dock.gd` — local Git dock UI (stage, commit, push/pull).
 - `ui/gitot_diff_gutter.gd` — script editor gutter coloring.
+- `ui/github_panel.tscn` / `github_panel.gd` — GitHub Issues main-screen tab; owns `GithubApi`, fetches on first tab-open.
+- `ui/github_auth_dialog.tscn` / `github_auth_dialog.gd` — PAT entry modal, opened on first use or 401.
+- `ui/issue_card.tscn` / `issue_card.gd` — single issue card (title, labels, body, browser link).
 
 Each module is decoupled via signals; the Git engine has no knowledge of UI, and the UI never calls `OS.execute()` directly.
 
-## Updates
+## Detailed Updates
+
+<details>
+<summary>v0.2.0</summary>
+
+feature: GitHub Issues Tracker Board
+
+- PAT storage (user://, plaintext, scoped-token documented as security boundary)
+- Auth modal with retry-on-401 flow
+- HTTPRequest wrapper (github_api.gd), PR-excluded issue fetch
+- Auto-detected owner/repo via git remote parsing
+- Main-screen tab with issue cards, first-tab-open fetch
+- Clear Token button (panel toolbar) for explicit PAT lifecycle control
+<hr>
+</details>
 
 <details>
 <summary>v0.1.1</summary>
@@ -100,8 +147,20 @@ Phase E — Architecture (SoC):
 <hr>
 </details>
 
-v0.1.0 (Initial MVP commit)
+<details>
+<summary>v0.1.0</summary>
+
+Initial MVP commit
+
+- **Failsafe startup:** verifies `git` is available before initializing; disables cleanly with a clear error if not.
+- **Async execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored background process with a 30-second timeout guard, so a slow or stalled connection never freezes the editor.
+- **Git dock:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with double-click stage/unstage.
+- **Commit & Sync:** stage/unstage, commit message input, and Commit / Push / Pull buttons.
+- **Color-only diff gutter:** modified and added lines are marked directly in the script editor's gutter, computed from `git diff -U0` against `HEAD`. Updates automatically on save (where Godot's save signal fires reliably) with a manual **Refresh Diff** fallback button.
+- **Large-file guard:** blocks staging any file ≥50MB to prevent accidental repository bloat.
+</details>
 
 ## License
 
 Copyright (c) 2026-present SigK - under the MIT License.
+

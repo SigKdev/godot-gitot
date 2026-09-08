@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://dw8xgytycf20c"]
+
+[ext_resource type="Script" uid="uid://bl37wj642cefs" path="res://addons/gitot/ui/issue_card.gd" id="1_eo024"]
+
+[node name="IssueCard" type="PanelContainer" unique_id=1562593745]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_eo024")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=2030260603]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="VBoxContainer" unique_id=1445405049]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="LabelsRow" type="HBoxContainer" parent="VBoxContainer" unique_id=1833353300]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="BodyLabel" type="Label" parent="VBoxContainer" unique_id=757690740]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="OpenButton" type="Button" parent="VBoxContainer" unique_id=605498773]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+text = "Open Issue in Browser"

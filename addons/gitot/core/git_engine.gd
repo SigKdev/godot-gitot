@@ -70,6 +70,15 @@ func run_network(command_name: String, args: PackedStringArray) -> void:
 	_poll_process.call_deferred(pid, command_name, abs_log_path, Time.get_ticks_msec())
 
 
+## Returns the "origin" remote URL, or an empty string on failure.
+func get_remote_url() -> String:
+	var output: Array = []
+	var exit_code: int = OS.execute("git", ["-C", _project_root(), "remote", "get-url", "origin"], output)
+	if exit_code != 0 or output.is_empty():
+		return ""
+	return String(output[0]).strip_edges()
+
+
 ## Kills any push/pull processes still running. Called by gitot.gd on exit.
 func teardown() -> void:
 	for pid in _active_pids:

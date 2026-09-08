@@ -78,4 +78,5 @@ text = "Push"
 [node name="PullButton" type="Button" parent="VBoxContainer" unique_id=48988369]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Note: changed scripts already open in the script editor, Godot may not refresh it; a restart may be needed (known Godot engine limitation)."
 text = "Pull"
