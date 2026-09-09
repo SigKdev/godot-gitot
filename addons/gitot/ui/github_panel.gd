@@ -20,6 +20,7 @@ var has_fetched: bool = false
 
 func _ready() -> void:
 	%ClearTokenButton.pressed.connect(_on_clear_token_pressed)
+	%RefreshButton.pressed.connect(fetch_current_repo_issues)
 	_api.request_succeeded.connect(_on_request_succeeded)
 	_api.auth_failed.connect(_on_auth_failed)
 	_api.request_failed.connect(_on_request_failed)
@@ -27,6 +28,9 @@ func _ready() -> void:
 ## Populates the issue list, skipping pull requests.
 ## Reminder: skip pull requests (item has "pull_request" key) when parsing issues.
 func _on_request_succeeded(data: Variant) -> void:
+	%RefreshButton.disabled = false
+	%RefreshButton.text = "Refresh Issues"
+	%StatusLabel.visible = false
 	if data == null or not data is Array:
 		return
 
@@ -40,6 +44,11 @@ func _on_request_succeeded(data: Variant) -> void:
 		var card: PanelContainer = IssueCardScene.instantiate()
 		%IssueList.add_child(card)
 		card.setup(item)
+		%IssueList.add_child(HSeparator.new())
+
+	if %IssueList.get_child_count() == 0:
+		%RefreshButton.text = "No issues (Refresh)"
+		%StatusLabel.visible = false
 
 
 func set_git_engine(engine: GitEngine) -> void:
@@ -54,10 +63,13 @@ func fetch_current_repo_issues() -> void:
 	var match_result: RegExMatch = regex.search(remote_url)
 
 	if not match_result:
-		push_warning("GithubPanel: could not parse owner/repo from remote '%s'" % remote_url)
+		print_rich("[color=orange]Gitot WARNING: could not parse owner/repo from remote '%s'.[/color]" % remote_url)
 		return
 
 	_api.fetch_issues(match_result.get_string(1), match_result.get_string(2))
+	%RefreshButton.disabled = true
+	%RefreshButton.text = "Loading..."
+	%StatusLabel.visible = false
 
 
 ## Clears the stored PAT and resets the panel to its pre-fetch state.
@@ -69,6 +81,8 @@ func _on_clear_token_pressed() -> void:
 
 
 func _on_auth_failed() -> void:
+	%RefreshButton.disabled = false
+	%StatusLabel.visible = false
 	print_rich("[color=orange]Gitot WARNING: Github token invalid/expired — re-auth needed.[/color]")
 	var dialog: ConfirmationDialog = AuthDialogScene.instantiate()
 	add_child(dialog)
@@ -79,4 +93,12 @@ func _on_auth_failed() -> void:
 
 
 func _on_request_failed(status_code: int) -> void:
-	push_warning("GithubPanel: request failed (status %d)" % status_code)
+	%RefreshButton.disabled = false
+	%RefreshButton.text = "Failed! (Try Again)"
+	%StatusLabel.visible = true
+	if status_code == 0:
+		%StatusLabel.text = "[b][color=orange]Network error - check your connection[/color][/b]"
+		print_rich("[color=orange]Gitot WARNING: load issues request failed; Network error - check your connection.[/color]")
+	else:
+		%StatusLabel.text = "[b][color=orange]Failed to load issues (status %d)[/color][/b]" % status_code
+		print_rich("[color=orange]Gitot WARNING: load issues request failed (status %d).[/color]" % status_code)

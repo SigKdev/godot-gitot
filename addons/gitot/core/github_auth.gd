@@ -16,7 +16,7 @@ static func save_token(token: String) -> bool:
 	config.set_value(SECTION, KEY_TOKEN, token)
 	var err: Error = config.save(CONFIG_PATH)
 	if err != OK:
-		push_error("GithubAuth: failed to save token (error %d)" % err)
+		print_rich("[color=red]Gitot ERROR: failed to save token (error %d)[/color]" % err)
 		return false
 	return true
 

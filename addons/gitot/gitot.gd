@@ -37,7 +37,7 @@ func _enter_tree() -> void:
 
 	# Binary failsafe: hard stop if git isn't on PATH.
 	if not GitEngine.is_git_available():
-		print_rich("[color=red]Gitot ERROR: 'git' binary not found in system PATH. Plugin disabled.[/color]")
+		print_rich("[color=red]Gitot ERROR: 'git' binary not found in system PATH. Plugin DISABLED.[/color]")
 		return
 
 	# Create the GitEngine instance.
@@ -69,7 +69,7 @@ func _enter_tree() -> void:
 ## or GitotDock (UI painter) — neither should own this workflow decision.
 func _on_git_command_completed(command_name: String, _exit_code: int, _output: Array) -> void:
 	if command_name in STATUS_TRIGGERING_COMMANDS:
-		git_engine.run_fast("status", ["status", "--porcelain=v2"])
+		git_engine.run_fast("status", GitEngine.STATUS_ARGS)
 
 
 ## Triggers gutter refresh on script save
@@ -95,12 +95,12 @@ func _make_visible(visible: bool) -> void:
 
 ## Tab label text.
 func _get_plugin_name() -> String:
-	return "Gitot"
+	return "Gitot Issues"
 
 
 ## Tab icon — using a built-in editor icon avoids shipping an asset for v1.
 func _get_plugin_icon() -> Texture2D:
-	return EditorInterface.get_base_control().get_theme_icon("ExternalLink", "EditorIcons")
+	return EditorInterface.get_base_control().get_theme_icon("Debug", "EditorIcons")
 
 
 ## Cleans up the plugin on exit.

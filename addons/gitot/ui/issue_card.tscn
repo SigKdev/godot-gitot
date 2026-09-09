@@ -13,7 +13,23 @@ script = ExtResource("1_eo024")
 [node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=2030260603]
 layout_mode = 2
 
-[node name="TitleLabel" type="Label" parent="VBoxContainer" unique_id=1445405049]
+[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=2088244595]
+layout_mode = 2
+
+[node name="Chevron" type="Label" parent="VBoxContainer/HBoxContainer" unique_id=1160034524]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 0
+mouse_default_cursor_shape = 2
+text = "▸"
+
+[node name="TitleLabel" type="Label" parent="VBoxContainer/HBoxContainer" unique_id=1445405049]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 0
+mouse_default_cursor_shape = 2
+
+[node name="MetaLabel" type="Label" parent="VBoxContainer" unique_id=911606420]
 unique_name_in_owner = true
 layout_mode = 2
 
@@ -23,10 +39,19 @@ layout_mode = 2
 
 [node name="BodyLabel" type="Label" parent="VBoxContainer" unique_id=757690740]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 0)
 layout_mode = 2
+autowrap_mode = 3
 
-[node name="OpenButton" type="Button" parent="VBoxContainer" unique_id=605498773]
+[node name="MarginContainer" type="MarginContainer" parent="VBoxContainer" unique_id=715900547]
+layout_mode = 2
+theme_override_constants/margin_top = 4
+
+[node name="OpenButton" type="Button" parent="VBoxContainer/MarginContainer" unique_id=605498773]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
-text = "Open Issue in Browser"
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 11
+text = "Open in Browser"
+flat = true

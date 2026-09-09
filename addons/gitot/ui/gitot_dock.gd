@@ -5,9 +5,13 @@
 class_name GitotDock
 extends Control
 
-## Files at or above this size (bytes) are blocked from staging.
-## TODO: 50MB per MVP spec. Needs to be configurable.
-const MAX_FILE_SIZE_BYTES: int = 50 * 1024 * 1024
+
+## Color per status category. MODIFIED stays default (no override).
+const STATUS_COLORS: Dictionary = {
+	GitStatusParser.FileStatus.NEW_FILE: Color.LIME_GREEN,
+	GitStatusParser.FileStatus.DELETED: Color.INDIAN_RED,
+	GitStatusParser.FileStatus.CONFLICT: Color.ORANGE,
+}
 
 ## Injected by gitot.gd on dock creation.
 var git_engine: GitEngine
@@ -28,16 +32,23 @@ func set_diff_gutter(gutter: GitotDiffGutter) -> void:
 
 
 func _ready() -> void:
-	%RefreshButton.pressed.connect(_on_refresh_pressed)
+	%RefreshStatButton.pressed.connect(_refresh_status)
+	%RefreshStatButton.icon = EditorInterface.get_base_control().get_theme_icon("Loop", "EditorIcons")
 	%UnstagedTree.item_activated.connect(_on_unstaged_item_activated)
 	%StagedTree.item_activated.connect(_on_staged_item_activated)
 	%CommitButton.pressed.connect(_on_commit_pressed)
 	%PushButton.pressed.connect(_on_push_pressed)
 	%PullButton.pressed.connect(_on_pull_pressed)
-	%PullButton.tooltip_text = "Note: changed scripts already open in the script editor, Godot may not refresh it; a restart may be needed (known Godot engine limitation)."
 	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
-	_on_refresh_pressed() # Populate trees immediately instead of waiting for manual refresh
-# FIXME: openening editor trigger this ERROR: res://addons/gitot/ui/gitot_dock.gd:51 - Invalid call. Nonexistent function 'run_fast' in base 'Nil'.
+	%RefreshDiffButton.icon = EditorInterface.get_base_control().get_theme_icon("Paint", "EditorIcons")
+	_setup_bulk_buttons()
+	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
+	%SettingsToggleButton.icon = EditorInterface.get_base_control().get_theme_icon("GDScript", "EditorIcons")
+	%SettingsToggleButton.pressed.connect(
+		func() -> void: %SettingsPanel.visible = not %SettingsPanel.visible
+	)
+	%PushConfirmDialog.confirmed.connect(_do_push)
+
 
 ## Disconnects this dock from the shared GitEngine. Called by gitot.gd on exit.
 func teardown() -> void:
@@ -45,10 +56,20 @@ func teardown() -> void:
 		git_engine.command_completed.disconnect(_on_status_result)
 
 
-## Triggers a fresh git status query.
-## Manual fallback for unreliable save signal.
-func _on_refresh_pressed() -> void:
-	git_engine.run_fast("status", ["status", "--porcelain=v2"])
+## Manual fallback Triggers a fresh git status query for unreliable save signal.
+## (e.g. during editor startup, before the setter runs)
+## Shared refresh call. Guards against git_engine not yet injected.
+func _refresh_status() -> void:
+	if not git_engine:
+		return
+	git_engine.run_fast("status", GitEngine.STATUS_ARGS)
+
+## Auto-refreshes status when the editor window regains focus,
+## gated by the "auto_refresh_on_focus" setting.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		if GitotSettings.get_value("auto_refresh_on_focus"):
+			_refresh_status()
 
 
 ## Triggers a diff gutter refresh.
@@ -57,7 +78,6 @@ func _on_refresh_diff_pressed() -> void:
 	diff_gutter.refresh_current_script()
 
 
-## 
 ## Uses porcelain=v2 for reliable status parsing.
 func _on_status_result(command_name: String, exit_code: int, output: Array) -> void:
 	if command_name == "commit":
@@ -68,7 +88,14 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 		return
 
 	if command_name in ["push", "pull"]:
-		# Strip our internal exit-code marker before showing git's raw output to the user.
+		if command_name == "push":
+			%PushButton.disabled = false
+			%PushButton.text = "Push"
+		if command_name == "pull":
+			%PullButton.disabled = false
+			%PullButton.text = "Pull"
+
+		# Strip internal exit-code marker before showing git's raw output to the user.
 		var clean_output: String = output[0].replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
 		if exit_code == 0:
 			print_rich("[color=green]Gitot: %s finished.[/color]" % command_name.capitalize())
@@ -84,41 +111,64 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 	if command_name != "status" or output.is_empty():
 		return
 	var parsed: Dictionary = GitStatusParser.parse(output[0])
-	_populate_tree(%StagedTree, parsed["staged"])
-	_populate_tree(%UnstagedTree, parsed["unstaged"] + parsed["untracked"])
+	_populate_tree(%StagedTree, parsed["staged"], %StagedFold, "Staged")
+	_populate_tree(%UnstagedTree, parsed["unstaged"], %UnstagedFold, "Unstaged", true)
 
 
-## Clears and refills a Tree with one flat list of file paths.
-func _populate_tree(tree: Tree, paths: Array) -> void:
+## Clears and refills a Tree from parsed status entries {"path", "status"}.
+## fold_container's title carries the label + count; the tree itself is headerless.
+func _populate_tree(tree: Tree, entries: Array, fold_container: FoldableContainer, title: String, check_size: bool = false) -> void:
 	tree.clear()
-	var root: TreeItem = tree.create_item()
-	for path: String in paths:
+	var root: TreeItem = tree.create_item() # required even with hide_root; acts as invisible parent
+	fold_container.title = "%s (%d)" % [title, entries.size()]
+	for entry: Dictionary in entries:
 		var item: TreeItem = tree.create_item(root)
-		item.set_text(0, path)
+		item.set_text(0, entry["path"])
+		var status: GitStatusParser.FileStatus = entry["status"]
+		if STATUS_COLORS.has(status):
+			item.set_custom_color(0, STATUS_COLORS[status])
+		if status == GitStatusParser.FileStatus.CONFLICT:
+			item.set_icon(0, get_theme_icon("NodeWarning", "EditorIcons"))
+			item.set_tooltip_text(0, "⚠ Merge conflict — resolve before staging ⚠")
+		elif check_size and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"])):
+			item.set_icon(0, get_theme_icon("StatusWarning", "EditorIcons"))
+			item.set_tooltip_text(0, "⚠ Exceeds 50MB — excluded from Staging ⚠")
+
+
+## Creates and wires the Stage All / Unstage All buttons into each fold header.
+func _setup_bulk_buttons() -> void:
+	var stage_all: Button = Button.new()
+	stage_all.icon = get_theme_icon("MoveDown", "EditorIcons")
+	stage_all.text = ""
+	stage_all.flat = true
+	stage_all.tooltip_text = "Stage All"
+	stage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	stage_all.pressed.connect(_on_stage_all_pressed)
+	%UnstagedFold.add_title_bar_control(stage_all)
+
+	var unstage_all: Button = Button.new()
+	unstage_all.icon = get_theme_icon("MoveUp", "EditorIcons")
+	unstage_all.text = ""
+	unstage_all.flat = true
+	unstage_all.tooltip_text = "Unstage All"
+	unstage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	unstage_all.pressed.connect(_on_unstage_all_pressed)
+	%StagedFold.add_title_bar_control(unstage_all)
 
 
 ## Double-click on an unstaged/untracked item stages it, unless it exceeds the size guard.
 func _on_unstaged_item_activated() -> void:
-	var path: String = %UnstagedTree.get_selected().get_text(0)
+	var selected: TreeItem = %UnstagedTree.get_selected()
+	if not selected or selected == %UnstagedTree.get_root():
+		return
+	var path: String = selected.get_text(0)
 	var abs_path: String = ProjectSettings.globalize_path("res://" + path)
-# FIXME: When clicking to fast to stage file, get an ERROR: res://addons/gitot/ui/gitot_dock.gd:107 - Attempt to call function 'get_text' in base 'null instance' on a null instance.
 
-	# Check if the file exceeds the size guard.
-	if DirAccess.dir_exists_absolute(abs_path):
-		var oversized: String = _find_oversized_file(abs_path)
-		if oversized != "":
-			print_rich("[color=red]Gitot ERROR: '%s' exceeds 50MB and was not staged.[/color]" % oversized)
-			return
-	elif FileAccess.file_exists(abs_path):
-		var file: FileAccess = FileAccess.open(abs_path, FileAccess.READ)
-		if not file:
-			print_rich("[color=red]Gitot ERROR: could not open '%s' to check size (%s).[/color]" % [path, error_string(FileAccess.get_open_error())])
-			return
-		if file.get_length() >= MAX_FILE_SIZE_BYTES:
-			print_rich("[color=red]Gitot ERROR: '%s' exceeds 50MB and was not staged.[/color]" % path)
-			return
+	if _is_oversized(abs_path): # Check if a file exceeds the size guard.
+		print_rich("[color=red]Gitot ERROR: '%s' exceeds 50MB and was not staged.[/color]" % path)
+		return
 
-	git_engine.run_fast("stage", ["add", path])
+	git_engine.run_fast("stage", ["add", "--", path])
 
 
 ## Double-click on a staged item unstages it.
@@ -128,27 +178,54 @@ func _on_staged_item_activated() -> void:
 # FIXME: When clicking to fast to unstage file, get an ERROR: res://addons/gitot/ui/gitot_dock.gd:127 - Attempt to call function 'get_text' in base 'null instance' on a null instance.
 
 
-## Recursively scans a directory for the first file at/above the size guard threshold.
-## @return: absolute path of the offending file, or "" if the directory is clean.
-func _find_oversized_file(dir_abs_path: String) -> String:
-	var dir: DirAccess = DirAccess.open(dir_abs_path)
-	if not dir:
-		return ""
-	dir.list_dir_begin()
-	var entry: String = dir.get_next()
-	while entry != "":
-		if entry != "." and entry != "..":
-			var entry_path: String = dir_abs_path.path_join(entry)
-			if dir.current_is_dir():
-				var found: String = _find_oversized_file(entry_path)
-				if found != "":
-					return found
-			else:
-				var file: FileAccess = FileAccess.open(entry_path, FileAccess.READ)
-				if file and file.get_length() >= MAX_FILE_SIZE_BYTES:
-					return entry_path
-		entry = dir.get_next()
-	return ""
+## Stages every unstaged/untracked file, skipping (and reporting) any that exceed the size guard.
+func _on_stage_all_pressed() -> void:
+	var paths: Array[String] = _get_tree_paths(%UnstagedTree)
+	if paths.is_empty():
+		return
+
+	var to_stage: Array[String] = []
+	for path: String in paths:
+		var abs_path: String = ProjectSettings.globalize_path("res://" + path)
+		if _is_oversized(abs_path):
+			print_rich("[color=orange]Gitot: staging skipped '%s' — exceeds 50MB.[/color]" % path)
+		else:
+			to_stage.append(path)
+
+	if to_stage.is_empty():
+		return
+	git_engine.run_fast("stage", ["add", "--"] + to_stage)
+
+
+## Unstages every currently staged file. No size guard — unstaging never writes objects.
+func _on_unstage_all_pressed() -> void:
+	if %StagedTree.get_root() == null or %StagedTree.get_root().get_child(0) == null:
+		return
+	git_engine.run_fast("unstage", ["restore", "--staged", "."])
+
+
+## Collects every file path currently listed under a tree's root (excludes the root itself).
+func _get_tree_paths(tree: Tree) -> Array[String]:
+	var paths: Array[String] = []
+	var item: TreeItem = tree.get_root().get_child(0) if tree.get_root() else null
+	while item:
+		paths.append(item.get_text(0))
+		item = item.get_next()
+	return paths
+
+
+## Reads the configurable large-file threshold, converted to bytes.
+func _max_file_size_bytes() -> int:
+	return int(GitotSettings.get_value("large_file_mb")) * 1024 * 1024
+
+
+## Checks a single file against the size guard.
+## @return: true if the file exists and is at/above the threshold.
+func _is_oversized(abs_path: String) -> bool:
+	var file: FileAccess = FileAccess.open(abs_path, FileAccess.READ)
+	if not file:
+		return false # Unreadable/missing — let git report the real error, not gitot.
+	return file.get_length() >= _max_file_size_bytes()
 
 
 ## Commits currently staged files with the message from the input field.
@@ -161,10 +238,23 @@ func _on_commit_pressed() -> void:
 
 
 ## Pushes current branch to its remote tracking branch.
+## Gated by the "confirm_push" setting to avoid accidental remote pushes.
 func _on_push_pressed() -> void:
+	if GitotSettings.get_value("confirm_push"):
+		%PushConfirmDialog.popup_centered()
+	else:
+		_do_push()
+
+
+## Executes the actual push — called directly or after dialog confirmation.
+func _do_push() -> void:
+	%PushButton.disabled = true
+	%PushButton.text = "Pushing..."
 	git_engine.run_network("push", ["push"])
 
 
 ## Pulls latest changes from the remote tracking branch.
 func _on_pull_pressed() -> void:
+	%PullButton.disabled = true
+	%PullButton.text = "Pulling..."
 	git_engine.run_network("pull", ["pull"])

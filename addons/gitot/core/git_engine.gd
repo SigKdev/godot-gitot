@@ -14,6 +14,10 @@ signal command_completed(command_name: String, exit_code: int, output: Array)
 ## Timeout for network operations (push/pull), in seconds.
 const NETWORK_TIMEOUT_SEC: float = 30.0
 
+## Canonical status args. --untracked-files=all forces recursion into
+## untracked directories instead of collapsing them to one folder entry.
+const STATUS_ARGS: PackedStringArray = ["status", "--porcelain=v2", "--untracked-files=all", "--no-renames"]
+
 ## PIDs of currently running network operations (push/pull), so they can be
 ## killed if the plugin is disabled mid-operation.
 var _active_pids: Array[int] = []

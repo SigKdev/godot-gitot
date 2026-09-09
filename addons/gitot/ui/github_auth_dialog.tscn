@@ -3,10 +3,17 @@
 [ext_resource type="Script" uid="uid://dnd3vh7jlgn05" path="res://addons/gitot/ui/github_auth_dialog.gd" id="1_ri0rs"]
 
 [node name="GithubAuthDialog" type="ConfirmationDialog" unique_id=1371466796]
+oversampling_override = 1.0
+title = "Enter your PAT"
+position = Vector2i(0, 36)
+visible = true
 script = ExtResource("1_ri0rs")
 
 [node name="TokenInput" type="LineEdit" parent="." unique_id=371238246]
 unique_name_in_owner = true
-offset_right = 68.5
-offset_bottom = 31.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 192.0
+offset_bottom = 51.0
+text = "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"
 secret = true

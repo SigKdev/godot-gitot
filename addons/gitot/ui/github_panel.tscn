@@ -23,26 +23,45 @@ layout_mode = 1
 offset_right = 221.0
 offset_bottom = 34.0
 
-[node name="RichTextLabel" type="RichTextLabel" parent="PanelToolbar" unique_id=1610675493]
+[node name="GitotVersion" type="RichTextLabel" parent="PanelToolbar" unique_id=1610675493]
 layout_mode = 2
 bbcode_enabled = true
-text = " [b][font_size=24]Gitot[/font_size][/b] v0.2.0"
+text = " [b][font_size=24]Gitot[/font_size][/b] [font_size=11]v0.3.0[/font_size]"
 fit_content = true
 autowrap_mode = 0
 
 [node name="VSeparator" type="VSeparator" parent="PanelToolbar" unique_id=1167319272]
 layout_mode = 2
 
+[node name="RefreshButton" type="Button" parent="PanelToolbar" unique_id=1959625265]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "Refresh Issues"
+
+[node name="VSeparator2" type="VSeparator" parent="PanelToolbar" unique_id=621326735]
+layout_mode = 2
+
 [node name="ClearTokenButton" type="Button" parent="PanelToolbar" unique_id=298087169]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Clear Token"
+mouse_default_cursor_shape = 2
+text = "Clear your PAT"
 
 [node name="HSeparator" type="HSeparator" parent="." unique_id=84118332]
 layout_mode = 1
 offset_top = 40.0
 offset_right = 1152.0
 offset_bottom = 46.0
+
+[node name="StatusLabel" type="RichTextLabel" parent="." unique_id=404960359]
+unique_name_in_owner = true
+layout_mode = 0
+offset_top = 42.0
+offset_bottom = 42.0
+bbcode_enabled = true
+fit_content = true
+autowrap_mode = 0
 
 [node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=1443802623]
 layout_mode = 1

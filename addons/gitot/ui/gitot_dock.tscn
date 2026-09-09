@@ -1,8 +1,39 @@
 [gd_scene format=3 uid="uid://bqsbck70725p5"]
 
 [ext_resource type="Script" uid="uid://b2mdylfhog7rp" path="res://addons/gitot/ui/gitot_dock.gd" id="1_ap6ej"]
+[ext_resource type="Script" uid="uid://qk8vbcrvkbec" path="res://addons/gitot/ui/gitot_settings_panel.gd" id="2_p48el"]
 
-[node name="Control" type="Control" unique_id=1349837442]
+[sub_resource type="DPITexture" id="DPITexture_p48el"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"M8 1v2H6a5 5 0 0 0-4 8l1.414-1.414A3 3 0 0 1 6 5h2v2l4-3-4-3zm6 4-1.414 1.414A3 3 0 0 1 10 11H8V9l-4 3 4 3v-2h2a5 5 0 0 0 4-8z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="DPITexture" id="DPITexture_104oe"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"M2.92 10c-.263.3-.42.73-.42 1.238 0 1.628-3.138-.178-.337 2.67.884.9 2.654.67 3.538-.228a2.33 2.33 0 0 0 0-3.256c-1.1-1.119-2.2-1.084-2.78-.424zm2.3-1.64 2.4 2.4 6.8-6.8a1.7 1.7 0 0 0-2.4-2.45z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="DPITexture" id="DPITexture_cj8b4"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"m7 1-.565 2.258a5 5 0 0 0-.689.28L3.758 2.343 2.344 3.758l1.195 1.994a5 5 0 0 0-.285.685L1 7v2l2.258.564a5 5 0 0 0 .279.688l-1.193 1.99 1.414 1.414 1.994-1.195a5 5 0 0 0 .685.285L7 15h2l.564-2.258a5 5 0 0 0 .688-.28l1.99 1.194 1.414-1.414-1.195-1.994a5 5 0 0 0 .285-.685L15 9V7l-2.258-.564a5 5 0 0 0-.28-.688l1.194-1.99-1.414-1.414-1.994 1.195a5 5 0 0 0-.686-.285L9 1H7zm1 5a2 2 0 0 1 0 4 2 2 0 0 1 0-4z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[node name="Gitot" type="Control" unique_id=1349837442]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -19,64 +50,176 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="RefreshButton" type="Button" parent="VBoxContainer" unique_id=1284737562]
+[node name="TopBar" type="HBoxContainer" parent="VBoxContainer" unique_id=912695717]
+layout_mode = 2
+
+[node name="GitotVersion" type="RichTextLabel" parent="VBoxContainer/TopBar" unique_id=1117852408]
+layout_mode = 2
+bbcode_enabled = true
+text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.3.0[/font_size]"
+fit_content = true
+autowrap_mode = 0
+
+[node name="VSeparator" type="VSeparator" parent="VBoxContainer/TopBar" unique_id=452792859]
+layout_mode = 2
+
+[node name="RefreshStatButton" type="Button" parent="VBoxContainer/TopBar" unique_id=1284737562]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Refresh Change"
+tooltip_text = "Refresh Git Status"
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_p48el")
+flat = true
+
+[node name="RefreshDiffButton" type="Button" parent="VBoxContainer/TopBar" unique_id=674196267]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Refresh Diff Gutter"
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_104oe")
+flat = true
+
+[node name="VSeparator2" type="VSeparator" parent="VBoxContainer/TopBar" unique_id=484223927]
+layout_mode = 2
+
+[node name="SettingsToggleButton" type="Button" parent="VBoxContainer/TopBar" unique_id=1410656222]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Gitot Settings"
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_cj8b4")
+flat = true
+
+[node name="SettingsPanel" type="PanelContainer" parent="VBoxContainer" unique_id=1235964481]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+script = ExtResource("2_p48el")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="VBoxContainer/SettingsPanel" unique_id=806411000]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=495646535]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer/SettingsPanel/VBoxContainer/HBoxContainer" unique_id=996391763]
+layout_mode = 2
+text = "Large file warning (MB)"
+
+[node name="LargeFileSpinBox" type="SpinBox" parent="VBoxContainer/SettingsPanel/VBoxContainer/HBoxContainer" unique_id=1725731778]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+max_value = 500.0
+value = 50.0
+
+[node name="ConfirmPushCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=2016523303]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Confirm before Push"
+
+[node name="AutoRefreshCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=1869038813]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Trigger \"refresh git status\" whenever you come back to the Godot editor window"
+button_pressed = true
+text = "Auto-refresh on editor focus"
+
+[node name="HSeparator6" type="HSeparator" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=60123677]
+visible = false
+layout_mode = 2
+
+[node name="Support" type="Label" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=807291846]
+visible = false
+layout_mode = 2
+text = "Support Author:"
 
 [node name="HSeparator" type="HSeparator" parent="VBoxContainer" unique_id=935116010]
 layout_mode = 2
 
-[node name="RefreshDiffButton" type="Button" parent="VBoxContainer" unique_id=674196267]
-unique_name_in_owner = true
+[node name="MenuBar" type="MenuBar" parent="VBoxContainer" unique_id=15148194]
+visible = false
 layout_mode = 2
-text = "Refresh Diff"
+
+[node name="Branch" type="PopupMenu" parent="VBoxContainer/MenuBar" unique_id=381883305]
+hide_on_item_selection = false
+hide_on_checkable_item_selection = false
+allow_search = false
+item_count = 2
+item_0/text = "main"
+item_0/id = 0
+item_1/text = "dev"
+item_1/id = 1
 
 [node name="HSeparator2" type="HSeparator" parent="VBoxContainer" unique_id=695882696]
+visible = false
 layout_mode = 2
 
-[node name="Label2" type="Label" parent="VBoxContainer" unique_id=607895553]
-layout_mode = 2
-text = "Unstaged"
-
-[node name="UnstagedTree" type="Tree" parent="VBoxContainer" unique_id=1680823320]
+[node name="UnstagedFold" type="FoldableContainer" parent="VBoxContainer" unique_id=442548494]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+
+[node name="UnstagedTree" type="Tree" parent="VBoxContainer/UnstagedFold" unique_id=1680823320]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 155)
 layout_mode = 2
 size_flags_vertical = 3
-
-[node name="Label" type="Label" parent="VBoxContainer" unique_id=2128688384]
-layout_mode = 2
-text = "Staged"
-
-[node name="StagedTree" type="Tree" parent="VBoxContainer" unique_id=43213874]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 100)
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="CommitMessageInput" type="TextEdit" parent="VBoxContainer" unique_id=846062894]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 40)
-layout_mode = 2
-placeholder_text = "Commit Message"
-wrap_mode = 1
-
-[node name="CommitButton" type="Button" parent="VBoxContainer" unique_id=19649693]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Commit"
+hide_root = true
+select_mode = 2
 
 [node name="HSeparator3" type="HSeparator" parent="VBoxContainer" unique_id=206646037]
 layout_mode = 2
 
-[node name="PushButton" type="Button" parent="VBoxContainer" unique_id=1817765002]
+[node name="StagedFold" type="FoldableContainer" parent="VBoxContainer" unique_id=1209953859]
 unique_name_in_owner = true
 layout_mode = 2
+
+[node name="StagedTree" type="Tree" parent="VBoxContainer/StagedFold" unique_id=43213874]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 155)
+layout_mode = 2
+size_flags_vertical = 3
+hide_root = true
+select_mode = 2
+
+[node name="HSeparator4" type="HSeparator" parent="VBoxContainer" unique_id=1353693688]
+layout_mode = 2
+
+[node name="CommitMessageInput" type="TextEdit" parent="VBoxContainer" unique_id=846062894]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+placeholder_text = "Commit Message (multiline supported)"
+emoji_menu_enabled = false
+wrap_mode = 1
+indent_wrapped_lines = true
+
+[node name="HSeparator5" type="HSeparator" parent="VBoxContainer" unique_id=875352682]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=1595233777]
+layout_mode = 2
+
+[node name="CommitButton" type="Button" parent="VBoxContainer/HBoxContainer" unique_id=19649693]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "Commit"
+
+[node name="PushButton" type="Button" parent="VBoxContainer/HBoxContainer" unique_id=1817765002]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_default_cursor_shape = 2
 text = "Push"
 
-[node name="PullButton" type="Button" parent="VBoxContainer" unique_id=48988369]
+[node name="PullButton" type="Button" parent="VBoxContainer/HBoxContainer" unique_id=48988369]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Note: changed scripts already open in the script editor, Godot may not refresh it; a restart may be needed (known Godot engine limitation)."
-text = "Pull"
+tooltip_text = "⚠ Godot may not refresh pulled scripts already open in the editor, a restart may be needed (known Godot limitation) ⚠"
+mouse_default_cursor_shape = 2
+text = "Pull ⚠"
+
+[node name="PushConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1978313195]
+unique_name_in_owner = true
+dialog_text = "Push current branch to remote?"
