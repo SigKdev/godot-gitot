@@ -83,6 +83,33 @@ func get_remote_url() -> String:
 	return String(output[0]).strip_edges()
 
 
+## Returns HEAD's full commit message, or empty string on failure (e.g. no commits yet).
+func get_last_commit_message() -> String:
+	var output: Array = []
+	var exit_code: int = OS.execute("git", ["-C", _project_root(), "log", "-1", "--pretty=%B"], output)
+	if exit_code != 0 or output.is_empty():
+		return ""
+	return String(output[0]).strip_edges()
+
+## Creates an annotated tag on HEAD. Local/fast op, no network involved.
+## @param tag_name: tag identifier (e.g. "v0.3.0"). Git ref-name rules apply
+## (no spaces, no ~^:?*[\ or control chars), enforced by git itself on failure.
+## @param message: annotation message (commit message or custom, from caller).
+func create_tag(tag_name: String, message: String) -> void:
+	run_fast("tag", ["tag", "-a", tag_name, "-m", message])
+
+
+## Pushes a tag to origin. Network op — reuses run_network's kill-on-timeout guard.
+## SECURITY: tag_name is interpolated into a shell string (see run_network).
+## Git's ref-name validation (enforced during create_tag) rejects most
+## shell-breaking characters, but NOT all (e.g. $, `, ;, & are valid ref chars).
+## Only call this after create_tag() succeeded on the same tag_name,
+## never with a raw, unvalidated user string.
+## @param tag_name: tag identifier to push (already validated by create_tag).
+func push_tag(tag_name: String) -> void:
+	run_network("push_tag", ["push", "origin", tag_name])
+
+
 ## Kills any push/pull processes still running. Called by gitot.gd on exit.
 func teardown() -> void:
 	for pid in _active_pids:
@@ -126,7 +153,8 @@ func _poll_process(pid: int, command_name: String, log_path: String, start_time_
 func _execute_and_report(command_name: String, args: PackedStringArray) -> void:
 	var output: Array = []
 	var full_args: PackedStringArray = PackedStringArray(["-C", _project_root()]) + args
-	var exit_code: int = OS.execute("git", full_args, output)
+	# read_stderr=true: needed to detect specific git error text (e.g. "already exists").
+	var exit_code: int = OS.execute("git", full_args, output, true)
 	# Route result back to main thread - required by signals.
 	# Signals from a worker thread are not guaranteed safe against UI nodes.
 	# Deferring the signal emission ensures it runs in the main thread.

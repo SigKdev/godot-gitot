@@ -34,6 +34,7 @@ Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
 }
 
 [node name="Gitot" type="Control" unique_id=1349837442]
+clip_contents = true
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -56,11 +57,11 @@ layout_mode = 2
 [node name="GitotVersion" type="RichTextLabel" parent="VBoxContainer/TopBar" unique_id=1117852408]
 layout_mode = 2
 bbcode_enabled = true
-text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.3.0[/font_size]"
+text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.4.0[/font_size]"
 fit_content = true
 autowrap_mode = 0
 
-[node name="VSeparator" type="VSeparator" parent="VBoxContainer/TopBar" unique_id=452792859]
+[node name="----" type="VSeparator" parent="VBoxContainer/TopBar" unique_id=452792859]
 layout_mode = 2
 
 [node name="RefreshStatButton" type="Button" parent="VBoxContainer/TopBar" unique_id=1284737562]
@@ -79,7 +80,7 @@ mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_104oe")
 flat = true
 
-[node name="VSeparator2" type="VSeparator" parent="VBoxContainer/TopBar" unique_id=484223927]
+[node name="----2" type="VSeparator" parent="VBoxContainer/TopBar" unique_id=484223927]
 layout_mode = 2
 
 [node name="SettingsToggleButton" type="Button" parent="VBoxContainer/TopBar" unique_id=1410656222]
@@ -96,63 +97,52 @@ visible = false
 layout_mode = 2
 script = ExtResource("2_p48el")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="VBoxContainer/SettingsPanel" unique_id=806411000]
+[node name="VBox" type="VBoxContainer" parent="VBoxContainer/SettingsPanel" unique_id=806411000]
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=495646535]
+[node name="HBox" type="HBoxContainer" parent="VBoxContainer/SettingsPanel/VBox" unique_id=495646535]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="VBoxContainer/SettingsPanel/VBoxContainer/HBoxContainer" unique_id=996391763]
+[node name="Label" type="Label" parent="VBoxContainer/SettingsPanel/VBox/HBox" unique_id=996391763]
 layout_mode = 2
-text = "Large file warning (MB)"
+text = "Large file Size Guard (MB)"
 
-[node name="LargeFileSpinBox" type="SpinBox" parent="VBoxContainer/SettingsPanel/VBoxContainer/HBoxContainer" unique_id=1725731778]
+[node name="LargeFileSpinBox" type="SpinBox" parent="VBoxContainer/SettingsPanel/VBox/HBox" unique_id=1725731778]
 unique_name_in_owner = true
 layout_mode = 2
-min_value = 1.0
+tooltip_text = "0 = disabled"
 max_value = 500.0
 value = 50.0
 
-[node name="ConfirmPushCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=2016523303]
+[node name="ConfirmPushCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBox" unique_id=2016523303]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
 text = "Confirm before Push"
 
-[node name="AutoRefreshCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=1869038813]
+[node name="AutoRefreshCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBox" unique_id=1869038813]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Trigger \"refresh git status\" whenever you come back to the Godot editor window"
 button_pressed = true
 text = "Auto-refresh on editor focus"
 
-[node name="HSeparator6" type="HSeparator" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=60123677]
-visible = false
+[node name="GithubEnabledCheck" type="CheckButton" parent="VBoxContainer/SettingsPanel/VBox" unique_id=365186010]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Opt-out (or in) of Gitot Issues Tracker (will clear your PAT) ⚠ Restart Required ⚠"
+button_pressed = true
+text = "Gitot Issues Tracker"
+
+[node name="----" type="HSeparator" parent="VBoxContainer/SettingsPanel/VBox" unique_id=935116010]
 layout_mode = 2
 
-[node name="Support" type="Label" parent="VBoxContainer/SettingsPanel/VBoxContainer" unique_id=807291846]
+[node name="Support" type="Label" parent="VBoxContainer/SettingsPanel/VBox" unique_id=807291846]
 visible = false
 layout_mode = 2
 text = "Support Author:"
 
-[node name="HSeparator" type="HSeparator" parent="VBoxContainer" unique_id=935116010]
-layout_mode = 2
-
-[node name="MenuBar" type="MenuBar" parent="VBoxContainer" unique_id=15148194]
-visible = false
-layout_mode = 2
-
-[node name="Branch" type="PopupMenu" parent="VBoxContainer/MenuBar" unique_id=381883305]
-hide_on_item_selection = false
-hide_on_checkable_item_selection = false
-allow_search = false
-item_count = 2
-item_0/text = "main"
-item_0/id = 0
-item_1/text = "dev"
-item_1/id = 1
-
-[node name="HSeparator2" type="HSeparator" parent="VBoxContainer" unique_id=695882696]
+[node name="----" type="HSeparator" parent="VBoxContainer" unique_id=695882696]
 visible = false
 layout_mode = 2
 
@@ -165,10 +155,11 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 155)
 layout_mode = 2
 size_flags_vertical = 3
+enable_drag_unfolding = false
 hide_root = true
 select_mode = 2
 
-[node name="HSeparator3" type="HSeparator" parent="VBoxContainer" unique_id=206646037]
+[node name="----2" type="HSeparator" parent="VBoxContainer" unique_id=206646037]
 layout_mode = 2
 
 [node name="StagedFold" type="FoldableContainer" parent="VBoxContainer" unique_id=1209953859]
@@ -180,10 +171,11 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 155)
 layout_mode = 2
 size_flags_vertical = 3
+enable_drag_unfolding = false
 hide_root = true
 select_mode = 2
 
-[node name="HSeparator4" type="HSeparator" parent="VBoxContainer" unique_id=1353693688]
+[node name="----3" type="HSeparator" parent="VBoxContainer" unique_id=1353693688]
 layout_mode = 2
 
 [node name="CommitMessageInput" type="TextEdit" parent="VBoxContainer" unique_id=846062894]
@@ -192,33 +184,98 @@ custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 placeholder_text = "Commit Message (multiline supported)"
 emoji_menu_enabled = false
+drag_and_drop_selection_enabled = false
 wrap_mode = 1
 indent_wrapped_lines = true
 
-[node name="HSeparator5" type="HSeparator" parent="VBoxContainer" unique_id=875352682]
+[node name="----4" type="HSeparator" parent="VBoxContainer" unique_id=875352682]
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer" unique_id=1595233777]
+[node name="GitTag" type="PanelContainer" parent="VBoxContainer" unique_id=202191959]
 layout_mode = 2
 
-[node name="CommitButton" type="Button" parent="VBoxContainer/HBoxContainer" unique_id=19649693]
+[node name="VBoxContainer" type="VBoxContainer" parent="VBoxContainer/GitTag" unique_id=800648609]
+layout_mode = 2
+
+[node name="TagVersioningToggle" type="CheckButton" parent="VBoxContainer/GitTag/VBoxContainer" unique_id=824452578]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Push with a Version Tag"
+text = "Tag Versioning"
+
+[node name="TagPanel" type="PanelContainer" parent="VBoxContainer/GitTag/VBoxContainer" unique_id=1631371179]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="VBoxContainer/GitTag/VBoxContainer/TagPanel" unique_id=214318418]
+layout_mode = 2
+
+[node name="UseProjectToggle" type="CheckButton" parent="VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1029725090]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Use version from \"project settings/version\" if set."
+
+[node name="TagNameEdit" type="LineEdit" parent="VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1143936385]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "This input do not use the \"auto v prefix\"."
+placeholder_text = "(e.g: v1.0.0 or stable)"
+emoji_menu_enabled = false
+drag_and_drop_selection_enabled = false
+
+[node name="----" type="HSeparator" parent="VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=60123677]
+layout_mode = 2
+
+[node name="UseCommitToggle" type="CheckButton" parent="VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1321164039]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Auto use your commit message"
+text = "Use Commit Message"
+
+[node name="TagMessageEdit" type="TextEdit" parent="VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1828487447]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+placeholder_text = "(e.g: Release version 1.0.0)"
+emoji_menu_enabled = false
+drag_and_drop_selection_enabled = false
+wrap_mode = 1
+indent_wrapped_lines = true
+
+[node name="----5" type="HSeparator" parent="VBoxContainer" unique_id=1469927449]
+layout_mode = 2
+
+[node name="PushBar" type="HBoxContainer" parent="VBoxContainer" unique_id=1595233777]
+layout_mode = 2
+
+[node name="CommitButton" type="Button" parent="VBoxContainer/PushBar" unique_id=19649693]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_default_cursor_shape = 2
 text = "Commit"
 
-[node name="PushButton" type="Button" parent="VBoxContainer/HBoxContainer" unique_id=1817765002]
+[node name="PushButton" type="Button" parent="VBoxContainer/PushBar" unique_id=1817765002]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_default_cursor_shape = 2
 text = "Push"
 
-[node name="PullButton" type="Button" parent="VBoxContainer/HBoxContainer" unique_id=48988369]
+[node name="PullButton" type="Button" parent="VBoxContainer/PushBar" unique_id=48988369]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "⚠ Godot may not refresh pulled scripts already open in the editor, a restart may be needed (known Godot limitation) ⚠"
 mouse_default_cursor_shape = 2
 text = "Pull ⚠"
+
+[node name="RetryTagPushButton" type="Button" parent="VBoxContainer/PushBar" unique_id=2130813696]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+tooltip_text = "⚠ Retry to push tag after a fail ⚠"
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.8865428, 0.002715585, 0.12494034, 1)
+text = "⚠ Push Tag ⚠"
 
 [node name="PushConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1978313195]
 unique_name_in_owner = true

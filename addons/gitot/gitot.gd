@@ -25,6 +25,7 @@ var git_engine: GitEngine
 ## Reference to the dock UI instance, kept for clean removal on exit.
 var dock: GitotDock
 var diff_gutter: GitotDiffGutter
+var sync_orchestrator: GitSyncOrchestrator
 
 var github_panel: Control
 
@@ -47,6 +48,8 @@ func _enter_tree() -> void:
 	# Create the GitotDiffGutter instance.
 	diff_gutter = GitotDiffGutter.new(git_engine)
 
+	sync_orchestrator = GitSyncOrchestrator.new(git_engine)
+
 	# Connect the resource saved signal to the gutter refresh function.
 	resource_saved.connect(_on_resource_saved)
 
@@ -54,12 +57,14 @@ func _enter_tree() -> void:
 	dock = preload("res://addons/gitot/ui/gitot_dock.tscn").instantiate()
 	dock.set_git_engine(git_engine)
 	dock.set_diff_gutter(diff_gutter)
-	add_control_to_dock(DOCK_SLOT_LEFT_UL, dock)
+	dock.set_sync_orchestrator(sync_orchestrator)
+	add_control_to_dock(DOCK_SLOT_RIGHT_UL, dock)
 
-	github_panel = GithubPanelScene.instantiate()
-	github_panel.set_git_engine(git_engine)
-	EditorInterface.get_editor_main_screen().add_child(github_panel)
-	github_panel.hide() # Godot calls _make_visible(true) when the tab is selected
+	if GitotSettings.get_value("github_issues_enabled"):
+		github_panel = GithubPanelScene.instantiate()
+		github_panel.set_git_engine(git_engine)
+		EditorInterface.get_editor_main_screen().add_child(github_panel)
+		github_panel.hide() # Godot calls _make_visible(true) when the tab is selected
 
 	print_rich("[color=green]Gitot: 'git' binary verified. Plugin ready.[/color]")
 
@@ -81,7 +86,7 @@ func _on_resource_saved(resource: Resource) -> void:
 
 ## Required for the panel to appear as a selectable main-screen tab (2D/3D/Script/AssetLib row).
 func _has_main_screen() -> bool:
-	return true
+	return GitotSettings.get_value("github_issues_enabled")
 
 
 ## Called by the editor when the user switches to/away from this tab.
@@ -118,12 +123,16 @@ func _exit_tree() -> void:
 		diff_gutter.teardown()
 		diff_gutter = null
 
+	if sync_orchestrator:
+		sync_orchestrator = null
+
 	if git_engine and git_engine.command_completed.is_connected(_on_git_command_completed):
 		git_engine.command_completed.disconnect(_on_git_command_completed)
 
 	if git_engine:
 		git_engine.teardown()
-	git_engine = null
+		git_engine = null
 
 	if github_panel:
 		github_panel.queue_free()
+		github_panel = null

@@ -10,6 +10,7 @@ func _ready() -> void:
 	%LargeFileSpinBox.value = GitotSettings.get_value("large_file_mb")
 	%ConfirmPushCheck.button_pressed = GitotSettings.get_value("confirm_push")
 	%AutoRefreshCheck.button_pressed = GitotSettings.get_value("auto_refresh_on_focus")
+	%GithubEnabledCheck.button_pressed = GitotSettings.get_value("github_issues_enabled")
 
 	# Persist on change — no intermediate state, each control is its own SSOT write.
 	%LargeFileSpinBox.value_changed.connect(
@@ -20,4 +21,11 @@ func _ready() -> void:
 	)
 	%AutoRefreshCheck.toggled.connect(
 		func(v: bool) -> void: GitotSettings.set_value("auto_refresh_on_focus", v)
+	)
+	%GithubEnabledCheck.toggled.connect(
+		func(v: bool) -> void:
+			GitotSettings.set_value("github_issues_enabled", v)
+			if not v:
+				GithubAuth.clear_token()
+				print_rich("[color=yellow]Gitot: GitHub Issues Tracker disabled. Restart the editor to fully remove the feature.[/color]")
 	)
