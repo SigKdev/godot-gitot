@@ -8,11 +8,12 @@ extends Control
 
 ## Injected by gitot.gd on dock creation.
 var git_engine: GitEngine
-
-var diff_gutter: GitotDiffGutter
+var _log_console: GitotLogConsole
 var _status_tree: GitotStatusTree
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
+var _branch_panel: GitotBranchPanel
+var diff_gutter: GitotDiffGutter
 
 
 ## Assigns the shared GitEngine instance.
@@ -44,8 +45,16 @@ func _ready() -> void:
 	_status_tree = GitotStatusTree.new(%UnstagedTree, %StagedTree, %UnstagedFold, %StagedFold)
 	_status_tree.git_engine = git_engine
 	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
+	_log_console = GitotLogConsole.new(%LogList, %LogScroll)
 	
 	_tag_panel = GitotTagPanel.new(%TagVersioningToggle, %TagPanel, %UseProjectToggle, %TagNameEdit, %UseCommitToggle, %TagMessageEdit)
+	
+	_branch_panel = GitotBranchPanel.new(
+	git_engine, %BranchDropdown, %CreateBranchButton, %NewBranchDialog, %NewBranchNameInput
+	)
+	%CreateBranchButton.icon = EditorInterface.get_base_control().get_theme_icon("VCSCommit", "EditorIcons")
+	if git_engine:
+		git_engine.list_branches()
 
 	%SettingsToggleButton.icon = EditorInterface.get_base_control().get_theme_icon("GDScript", "EditorIcons")
 	%SettingsToggleButton.pressed.connect(
@@ -63,6 +72,8 @@ func _ready() -> void:
 func teardown() -> void:
 	if git_engine and git_engine.command_completed.is_connected(_on_status_result):
 		git_engine.command_completed.disconnect(_on_status_result)
+	if _log_console:
+		_log_console.teardown()
 
 
 ## Manual fallback Triggers a fresh git status query for unreliable save signal.
@@ -74,6 +85,23 @@ func _refresh_status() -> void:
 	git_engine.run_fast("status", GitEngine.STATUS_ARGS)
 
 
+## Notifies Godot about files changed by the branch switch. update_file()
+## refreshes EditorFileSystem's cache; any of those files currently open
+## in a scene tab also needs an explicit reload_scene_from_path(), since
+## update_file() alone doesn't touch the open tab's in-memory ResourceLoader cache.
+func _notify_changed_files() -> void:
+	var fs: EditorFileSystem = EditorInterface.get_resource_filesystem()
+	var open_scenes: PackedStringArray = EditorInterface.get_open_scenes()
+
+	for relative_path in git_engine.get_changed_files_since_switch():
+		var res_path: String = "res://" + relative_path
+		if not FileAccess.file_exists(res_path):
+			continue
+		fs.update_file(res_path)
+		if res_path in open_scenes:
+			EditorInterface.reload_scene_from_path(res_path)
+
+
 ## Auto-refreshes status when the editor window regains focus,
 ## gated by the "auto_refresh_on_focus" setting.
 func _notification(what: int) -> void:
@@ -81,7 +109,7 @@ func _notification(what: int) -> void:
 		if GitotSettings.get_value("auto_refresh_on_focus"):
 			_refresh_status()
 
-
+# TODO: diff gutter refresh
 ## Triggers a diff gutter refresh.
 ## Manual fallback for unreliable save signal.
 func _on_refresh_diff_pressed() -> void:
@@ -92,9 +120,9 @@ func _on_refresh_diff_pressed() -> void:
 func _on_status_result(command_name: String, exit_code: int, output: Array) -> void:
 	if command_name == "commit":
 		if exit_code == 0:
-			print_rich("[color=green]Gitot: Commit successful.[/color]")
+			GitotLogger.s("Commit successful.")
 		else:
-			print_rich("[color=red]Gitot ERROR: Commit failed.[/color]")
+			GitotLogger.x("Commit failed.")
 		return
 
 	if command_name in ["push", "pull"]:
@@ -105,13 +133,29 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 		# Strip internal exit-code marker before showing git's raw output to the user.
 		var clean_output: String = output[0].replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
 		if exit_code == 0:
-			print_rich("[color=green]Gitot: %s finished.[/color]" % command_name.capitalize())
+			GitotLogger.s("%s finished." % command_name.capitalize())
 		else:
-			print_rich("[color=red]Gitot ERROR: %s failed.[/color]" % command_name.capitalize())
+			GitotLogger.e("%s failed." % command_name.capitalize())
 		if not clean_output.is_empty():
-			print(clean_output)
+			GitotLogger.g(clean_output) # git's raw stderr
 		if command_name == "pull" and exit_code == 0:
 			EditorInterface.get_resource_filesystem().scan()
+		return
+
+	if command_name == "branches":
+		if not output.is_empty():
+			_branch_panel.populate(GitBranchParser.parse(output[0]))
+		return
+
+	if command_name in ["switch", "create_branch"]:
+		if exit_code == 0:
+			GitotLogger.s("%s successful, now on [color=cyan]'%s'[/color]" % [command_name.capitalize(), git_engine.get_current_branch()])
+			_notify_changed_files()
+		else:
+			GitotLogger.e("%s failed." % command_name.capitalize())
+			if not output.is_empty():
+				GitotLogger.g(output[0]) # git's raw stderr
+		git_engine.list_branches()
 		return
 
 	# Used for refreshing the status tree.
@@ -124,7 +168,7 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 func _on_commit_pressed() -> void:
 	var message: String = %CommitMessageInput.text.strip_edges()
 	if message.is_empty():
-		print_rich("[color=orange]Gitot WARNING: commit message is empty, commit aborted.[/color]")
+		GitotLogger.w("Commit message is empty. Commit aborted!")
 		return
 	git_engine.run_fast("commit", ["commit", "-m", message])
 	%CommitMessageInput.text = ""
@@ -152,10 +196,10 @@ func _do_push() -> void:
 	var tag_input: Dictionary = _tag_panel.get_tag_input(git_engine.get_last_commit_message())
 	if _tag_panel.is_enabled():
 		if tag_input["tag_name"].is_empty():
-			print_rich("[color=orange]Gitot WARNING: tag name is empty, push aborted.[/color]")
+			GitotLogger.w("Tag name is empty. Push aborted!")
 			return
 		if tag_input["tag_message"].is_empty():
-			print_rich("[color=orange]Gitot WARNING: tag message is empty, push aborted.[/color]")
+			GitotLogger.w("Tag message is empty. Push aborted!")
 			return
 	_orchestrator.start_push(tag_input)
 

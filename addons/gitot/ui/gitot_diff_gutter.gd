@@ -77,5 +77,3 @@ func _on_diff_result(command_name: String, exit_code: int, output: Array) -> voi
 		# Diff line numbers are 1-based; CodeEdit lines are 0-based.
 		code_edit.set_line_gutter_text(target_line, gutter_idx, "┃")
 		code_edit.set_line_gutter_item_color(target_line, gutter_idx, color)
-
-# TODO: _on_diff_result applies the parsed diff to whatever get_current_editor() returns at signal-arrival time, not necessarily the tab that requested the diff, and target_line isn't clamped to get_line_count(). That's the "gutter result not bound to request" issue from the original review — it's a correctness bug, not a memory one, and isn't in the current roadmap table. Worth a Phase A-style fix later.

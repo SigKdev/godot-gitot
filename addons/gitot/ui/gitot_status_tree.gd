@@ -5,17 +5,17 @@ class_name GitotStatusTree
 extends RefCounted
 
 const STATUS_COLORS: Dictionary = {
-	GitStatusParser.FileStatus.NEW_FILE: Color.LIME_GREEN,
+	GitStatusParser.FileStatus.NEW_FILE: Color.CORNFLOWER_BLUE, #Color.LIME_GREEN,
 	GitStatusParser.FileStatus.DELETED: Color.INDIAN_RED,
 	GitStatusParser.FileStatus.CONFLICT: Color.ORANGE,
+	GitStatusParser.FileStatus.MODIFIED: Color.FOREST_GREEN,
 }
 
 ## TreeItem button id for the "open file in editor" action.
 const BUTTON_OPEN_FILE: int = 0
 
-## Extensions Gitot will open directly in the script editor. Excludes scenes,
-## .uid, imported binaries (audio/video/textures) — those aren't meant to be
-## edited as text and EditorInterface.edit_resource() isn't the right tool for them.
+## Extensions Gitot will open directly in the script editor.
+## Excludes scenes, .uid, imported binaries (audio/video/textures).
 const OPENABLE_EXTENSIONS: PackedStringArray = ["gd", "cs", "gdshader", "gdshaderinc"]
 
 ## Assigned by gitot_dock.gd right after construction.
@@ -59,13 +59,13 @@ func _populate_tree(tree: Tree, entries: Array, fold_container: FoldableContaine
 		if STATUS_COLORS.has(status):
 			item.set_custom_color(0, STATUS_COLORS[status])
 		if status == GitStatusParser.FileStatus.MODIFIED:
-			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("NodeInfo", "EditorIcons"))
+			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("ImportCheck", "EditorIcons"))
 			item.set_tooltip_text(0, "Modified File")
 		if status == GitStatusParser.FileStatus.DELETED:
-			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("StatusError", "EditorIcons"))
+			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("MissingNode", "EditorIcons"))
 			item.set_tooltip_text(0, "Deleted File")
 		if status == GitStatusParser.FileStatus.NEW_FILE:
-			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("StatusSuccess", "EditorIcons"))
+			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("Line2D", "EditorIcons"))
 			item.set_tooltip_text(0, "Untracked File")
 		if status == GitStatusParser.FileStatus.CONFLICT:
 			item.set_icon(0, EditorInterface.get_base_control().get_theme_icon("NodeWarning", "EditorIcons"))
@@ -104,7 +104,7 @@ func _on_unstaged_item_activated() -> void:
 	var path: String = selected.get_text(0)
 	var abs_path: String = ProjectSettings.globalize_path("res://" + path)
 	if _is_oversized(abs_path):
-		print_rich("[color=red]Gitot ERROR: '%s' exceeds Size Guard and was not staged.[/color]" % path)
+		GitotLogger.e("'%s' exceeds Size Guard and was not staged." % path)
 		return
 	git_engine.run_fast("stage", ["add", "--", path])
 
@@ -131,7 +131,7 @@ func _on_tree_button_clicked(item: TreeItem, _column: int, id: int, _mouse_butto
 		return
 	var res_path: String = "res://" + item.get_text(0)
 	if not ResourceLoader.exists(res_path):
-		print_rich("[color=orange]Gitot: '%s' has no importable resource to open.[/color]" % res_path)
+		GitotLogger.w("'%s' has no importable resource to open." % res_path)
 		return
 	EditorInterface.edit_resource(load(res_path))
 
@@ -145,7 +145,7 @@ func _on_stage_all_pressed() -> void:
 	for path: String in paths:
 		var abs_path: String = ProjectSettings.globalize_path("res://" + path)
 		if _is_oversized(abs_path):
-			print_rich("[color=orange]Gitot: staging skipped '%s' — exceeds Size Guard.[/color]" % path)
+			GitotLogger.w("Staging skipped '%s' - exceeds Size Guard." % path)
 		else:
 			to_stage.append(path)
 	if to_stage.is_empty():

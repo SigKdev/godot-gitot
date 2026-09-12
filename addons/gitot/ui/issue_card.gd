@@ -8,9 +8,7 @@ var _issue_url: String = ""
 func _ready() -> void:
 	%BodyLabel.visible = false
 	%Chevron.gui_input.connect(_on_title_input)
-	#%Chevron.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	%TitleLabel.gui_input.connect(_on_title_input)
-	#%TitleLabel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	%OpenButton.icon = EditorInterface.get_base_control().get_theme_icon("ExternalLink", "EditorIcons")
 	%OpenButton.expand_icon = false
 	%OpenButton.add_theme_constant_override("icon_max_width", 11)

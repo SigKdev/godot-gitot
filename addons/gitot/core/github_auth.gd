@@ -16,7 +16,7 @@ static func save_token(token: String) -> bool:
 	config.set_value(SECTION, KEY_TOKEN, token)
 	var err: Error = config.save(CONFIG_PATH)
 	if err != OK:
-		print_rich("[color=red]Gitot ERROR: failed to save token (error %d)[/color]" % err)
+		GitotLogger.e("Failed to save token (error %d)" % err)
 		return false
 	return true
 

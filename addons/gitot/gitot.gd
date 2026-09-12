@@ -15,7 +15,7 @@
 extends EditorPlugin
 
 ## Commands that change working tree / index state and require a status refresh.
-const STATUS_TRIGGERING_COMMANDS: PackedStringArray = ["stage", "unstage", "commit", "push", "pull"]
+const STATUS_TRIGGERING_COMMANDS: PackedStringArray = ["stage", "unstage", "commit", "push", "pull", "switch", "create_branch"]
 
 const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
 
@@ -38,12 +38,14 @@ func _enter_tree() -> void:
 
 	# Binary failsafe: hard stop if git isn't on PATH.
 	if not GitEngine.is_git_available():
-		print_rich("[color=red]Gitot ERROR: 'git' binary not found in system PATH. Plugin DISABLED.[/color]")
+		GitotLogger.x("'git' binary not found in system PATH. Plugin DISABLED!")
 		return
 
 	# Create the GitEngine instance.
 	git_engine = GitEngine.new()
 	git_engine.command_completed.connect(_on_git_command_completed)
+
+	#git_engine.list_branches()
 
 	# Create the GitotDiffGutter instance.
 	diff_gutter = GitotDiffGutter.new(git_engine)
@@ -66,7 +68,7 @@ func _enter_tree() -> void:
 		EditorInterface.get_editor_main_screen().add_child(github_panel)
 		github_panel.hide() # Godot calls _make_visible(true) when the tab is selected
 
-	print_rich("[color=green]Gitot: 'git' binary verified. Plugin ready.[/color]")
+	GitotLogger.s("'git' binary verified. Plugin ready!")
 
 
 ## Decides which finished commands should trigger an automatic status refresh.

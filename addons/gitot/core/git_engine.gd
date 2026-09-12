@@ -91,6 +91,52 @@ func get_last_commit_message() -> String:
 		return ""
 	return String(output[0]).strip_edges()
 
+
+## Returns files changed by the most recent `switch`/`create_branch` (reflog diff).
+## Sync/local — mirrors get_remote_url()/get_last_commit_message() pattern.
+## Used to call EditorFileSystem.update_file() precisely instead of a full scan().
+## @return: paths relative to project root (e.g. "scenes/player.tscn"). Empty on
+## first-ever switch (no HEAD@{1} yet) or any git failure.
+func get_changed_files_since_switch() -> PackedStringArray:
+	var output: Array = []
+	var exit_code: int = OS.execute(
+		"git", ["-C", _project_root(), "diff", "--name-only", "HEAD@{1}", "HEAD"], output
+	)
+	if exit_code != 0 or output.is_empty():
+		return PackedStringArray()
+	return PackedStringArray(output[0].strip_edges().split("\n", false))
+
+
+## Lists local branches. Fast/local op — routes through run_fast.
+## Result output[0] is fed to GitBranchParser.parse().
+func list_branches() -> void:
+	run_fast("branches", ["branch", "--format=%(refname:short)|%(HEAD)"])
+
+
+## Switches to an existing local branch. Uncommitted changes that don't
+## conflict with the target branch's content silently follow the user —
+## caller MUST trigger a status refresh + filesystem scan regardless of
+## exit_code (see gitot.gd STATUS_TRIGGERING_COMMANDS).
+## @param branch_name: existing local branch name.
+func switch_branch(branch_name: String) -> void:
+	run_fast("switch", ["switch", branch_name])
+
+
+## Creates a new local branch and switches to it in one atomic op.
+## @param branch_name: new branch name (git ref-name rules enforced by git itself).
+func create_branch(branch_name: String) -> void:
+	run_fast("create_branch", ["switch", "-c", branch_name])
+
+
+## Returns the current branch name, or empty string on failure (e.g. detached HEAD).
+func get_current_branch() -> String:
+	var output: Array = []
+	var exit_code: int = OS.execute("git", ["-C", _project_root(), "branch", "--show-current"], output)
+	if exit_code != 0 or output.is_empty():
+		return ""
+	return String(output[0]).strip_edges()
+
+
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.
 ## @param tag_name: tag identifier (e.g. "v0.3.0"). Git ref-name rules apply
 ## (no spaces, no ~^:?*[\ or control chars), enforced by git itself on failure.

@@ -46,16 +46,16 @@ func _on_command_completed(command_name: String, exit_code: int, output: Array) 
 				# instead of erroring. Known limitation: if a same-named tag was
 				# created manually pointing at a different commit, this pushes THAT
 				# tag. Documented in README.
-				print_rich("[color=orange]Gitot: Tag '%s' already exists locally — pushing as-is.[/color]" % _pending_tag["tag_name"])
+				GitotLogger.w("⚠ Tag '%s' already exists locally - Pushing as-is! ⚠" % _pending_tag["tag_name"])
 				_git_engine.push_tag(_pending_tag["tag_name"])
 			else:
-				print_rich("[color=red]Gitot ERROR: Tag creation failed. Tag push aborted.[/color]")
+				GitotLogger.e("Tag creation failed. Tag push aborted!")
 				_pending_tag = {}
 		"push_tag":
 			if exit_code == 0:
-				print_rich("[color=green]Gitot: Tag pushed.[/color]")
+				GitotLogger.s("Tag pushed")
 				tag_retry_needed.emit(false)
 				_pending_tag = {}
 			else:
-				print_rich("[color=red]Gitot ERROR: Tag '%s' created locally but failed to push. Retry pushing with new tag button on the dock[/color]" % _pending_tag["tag_name"])
+				GitotLogger.e("Tag '%s' created locally but failed to push. Retry pushing with new tag button on the dock" % _pending_tag["tag_name"])
 				tag_retry_needed.emit(true)

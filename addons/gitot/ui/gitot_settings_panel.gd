@@ -27,5 +27,5 @@ func _ready() -> void:
 			GitotSettings.set_value("github_issues_enabled", v)
 			if not v:
 				GithubAuth.clear_token()
-				print_rich("[color=yellow]Gitot: GitHub Issues Tracker disabled. Restart the editor to fully remove the feature.[/color]")
+				GitotLogger.w("GitHub Issues Tracker disabled. Restart the editor to completely remove the feature.")
 	)

@@ -63,7 +63,7 @@ func fetch_current_repo_issues() -> void:
 	var match_result: RegExMatch = regex.search(remote_url)
 
 	if not match_result:
-		print_rich("[color=orange]Gitot WARNING: could not parse owner/repo from remote '%s'.[/color]" % remote_url)
+		GitotLogger.w("Could not parse owner/repo from remote '%s'." % remote_url)
 		return
 
 	_api.fetch_issues(match_result.get_string(1), match_result.get_string(2))
@@ -83,7 +83,7 @@ func _on_clear_token_pressed() -> void:
 func _on_auth_failed() -> void:
 	%RefreshButton.disabled = false
 	%StatusLabel.visible = false
-	print_rich("[color=orange]Gitot WARNING: Github token invalid/expired — re-auth needed.[/color]")
+	GitotLogger.w("Github token invalid/expired, re-auth needed!")
 	var dialog: ConfirmationDialog = AuthDialogScene.instantiate()
 	add_child(dialog)
 	dialog.confirmed.connect(func() -> void: fetch_current_repo_issues(), CONNECT_ONE_SHOT)
@@ -98,7 +98,7 @@ func _on_request_failed(status_code: int) -> void:
 	%StatusLabel.visible = true
 	if status_code == 0:
 		%StatusLabel.text = "[b][color=orange]Network error - check your connection[/color][/b]"
-		print_rich("[color=orange]Gitot WARNING: load issues request failed; Network error - check your connection.[/color]")
+		GitotLogger.w("Load issues request failed; Network error - Check your connection!")
 	else:
 		%StatusLabel.text = "[b][color=orange]Failed to load issues (status %d)[/color][/b]" % status_code
-		print_rich("[color=orange]Gitot WARNING: load issues request failed (status %d).[/color]" % status_code)
+		GitotLogger.w("Load issues request failed (status %d)" % status_code)
