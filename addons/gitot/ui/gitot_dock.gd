@@ -10,6 +10,7 @@ extends Control
 var git_engine: GitEngine
 var _log_console: GitotLogConsole
 var _status_tree: GitotStatusTree
+var _status_panel: GitotStatusPanel
 var _log_panel: GitLogPanel
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
@@ -38,6 +39,8 @@ func set_diff_gutter(gutter: GitotDiffGutter) -> void:
 func _ready() -> void:
 	%RefreshStatButton.pressed.connect(_refresh_status)
 	%RefreshStatButton.icon = EditorInterface.get_base_control().get_theme_icon("Loop", "EditorIcons")
+	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
+	%RefreshDiffButton.icon = EditorInterface.get_base_control().get_theme_icon("Paint", "EditorIcons")
 	%CommitButton.pressed.connect(_on_commit_pressed)
 	%StashButton.pressed.connect(_on_stash_pressed)
 	%StashButton.icon = EditorInterface.get_base_control().get_theme_icon("Bake", "EditorIcons")
@@ -47,10 +50,12 @@ func _ready() -> void:
 	%PushButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveUp", "EditorIcons")
 	%PullButton.pressed.connect(_on_pull_pressed)
 	%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveDown", "EditorIcons")
-	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
-	%RefreshDiffButton.icon = EditorInterface.get_base_control().get_theme_icon("Paint", "EditorIcons")
+	%FetchButton.pressed.connect(_on_fetch_pressed)
+	%FetchButton.icon = EditorInterface.get_base_control().get_theme_icon("AssetStore", "EditorIcons")
 	_status_tree = GitotStatusTree.new(%UnstagedTree, %StagedTree, %UnstagedFold, %StagedFold)
 	_status_tree.git_engine = git_engine
+	_status_panel = GitotStatusPanel.new(%GitStatusLabel)
+	_status_panel.update_repo(GitotStatusPanel._parse_repo_name(git_engine.get_remote_url()))
 	_log_panel = GitLogPanel.new(git_engine, %GitlogFold, %GitlogTree)
 	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
 	_log_console = GitotLogConsole.new(%LogList, %LogScroll)
@@ -63,6 +68,7 @@ func _ready() -> void:
 	%CreateBranchButton.icon = EditorInterface.get_base_control().get_theme_icon("Add", "EditorIcons")
 	if git_engine:
 		git_engine.list_branches()
+		_status_panel.update_branch(git_engine.get_current_branch())
 
 	%SettingsToggleButton.icon = EditorInterface.get_base_control().get_theme_icon("GDScript", "EditorIcons")
 	%SettingsToggleButton.pressed.connect(
@@ -96,6 +102,7 @@ func _refresh_status() -> void:
 	if not git_engine:
 		return
 	git_engine.run_fast("status", GitEngine.STATUS_ARGS)
+	git_engine.get_ahead_behind()
 	_log_panel.refresh()
 
 
@@ -161,10 +168,36 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 				GitotLogger.g(output[0])
 		return
 
+	if command_name == "fetch":
+		%FetchButton.disabled = false
+		%FetchButton.icon = EditorInterface.get_base_control().get_theme_icon("AssetStore", "EditorIcons")
+		var clean_output: String = output[0].replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
+		if exit_code == 0:
+			GitotLogger.s("Fetch finished.")
+			git_engine.list_branches() # new remote branches only become visible after fetch
+		else:
+			GitotLogger.e("Fetch failed.")
+		if not clean_output.is_empty():
+			GitotLogger.g(clean_output)
+		return
+
+	if command_name == "ahead_behind":
+		if exit_code != 0 or output.is_empty():
+			_status_panel.update_sync(0, 0)
+			return
+		var parts: PackedStringArray = output[0].strip_edges().split("\t")
+		if parts.size() != 2:
+			return
+		var behind: int = int(parts[0])
+		var ahead: int = int(parts[1])
+		if _status_panel.update_sync(ahead, behind) and (ahead > 0 or behind > 0):
+			GitotLogger.i("Current branch is %d ahead, %d behind origin." % [ahead, behind])
+		return
+
 	if command_name in ["push", "pull"]:
 		if command_name == "pull":
 			%PullButton.disabled = false
-			%PullButton.text = "Pull"
+			%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveDown", "EditorIcons") 
 
 		# Strip internal exit-code marker before showing git's raw output to the user.
 		var clean_output: String = output[0].replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
@@ -192,6 +225,7 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 			if not output.is_empty():
 				GitotLogger.g(output[0]) # git's raw stderr
 		git_engine.list_branches()
+		_status_panel.update_branch(git_engine.get_current_branch())
 		return
 
 	if command_name == "log":
@@ -202,7 +236,8 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 	# Used for refreshing the status tree.
 	if command_name != "status" or output.is_empty():
 		return
-	_status_tree.populate(GitStatusParser.parse(output[0]))
+	var parsed: Dictionary = GitStatusParser.parse(output[0])
+	_status_tree.populate(parsed)
 
 
 ## Commits currently staged files with the message from the input field.
@@ -227,7 +262,8 @@ func _on_pop_pressed() -> void:
 
 func _on_push_state_changed(pushing: bool) -> void:
 	%PushButton.disabled = pushing
-	%PushButton.text = "Pushing..." if pushing else "Push"
+	%PushButton.icon = EditorInterface.get_base_control().get_theme_icon("Time", "EditorIcons") if pushing else EditorInterface.get_base_control().get_theme_icon("MoveUp", "EditorIcons")
+
 
 func _on_tag_retry_needed(needed: bool) -> void:
 	%RetryTagPushButton.visible = needed
@@ -255,8 +291,17 @@ func _do_push() -> void:
 	_orchestrator.start_push(tag_input)
 
 
+## Fetches remote refs (no working-tree changes).
+func _on_fetch_pressed() -> void:
+	%FetchButton.disabled = true
+	%FetchButton.icon = EditorInterface.get_base_control().get_theme_icon("Time", "EditorIcons")
+	git_engine.fetch()
+
+
+# FIXME: Need to wrapped commands pull/push (for consistency)
 ## Pulls latest changes from the remote tracking branch.
 func _on_pull_pressed() -> void:
 	%PullButton.disabled = true
-	%PullButton.text = "Pulling..."
+	#%PullButton.text = "Pulling..."
+	%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("Time", "EditorIcons")
 	git_engine.run_network("pull", ["pull"])

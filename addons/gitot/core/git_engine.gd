@@ -107,10 +107,10 @@ func get_changed_files_since_switch() -> PackedStringArray:
 	return PackedStringArray(output[0].strip_edges().split("\n", false))
 
 
-## Lists local branches. Fast/local op — routes through run_fast.
+## Lists branches. Fast/local op — routes through run_fast.
 ## Result output[0] is fed to GitBranchParser.parse().
 func list_branches() -> void:
-	run_fast("branches", ["branch", "--format=%(refname:short)|%(HEAD)"])
+	run_fast("branches", ["branch", "-a", "--format=%(refname)|%(HEAD)"])
 
 
 ## Format string for `git log`: hash, author, relative date, subject — separated
@@ -160,6 +160,26 @@ func stash_push() -> void:
 ## On conflict, git writes conflict markers to files and preserves the stash entry.
 func stash_pop() -> void:
 	run_fast("stash_pop", ["stash", "pop"])
+
+
+## Fetches updates from origin without touching the working tree. Network op.
+func fetch() -> void:
+	run_network("fetch", ["fetch", "origin"])
+
+
+## Compares local HEAD against its upstream. Fast/local op (reads refs only,
+## no network) — safe to call after every status-triggering command.
+## Output "behind\tahead" fed to caller; empty output/failure means no
+## upstream is set (e.g. brand-new unpushed branch) — caller must handle that.
+func get_ahead_behind() -> void:
+	run_fast("ahead_behind", ["rev-list", "--left-right", "--count", "@{u}...HEAD"])
+
+
+## Creates a local branch tracking a remote-only branch and switches to it.
+## @param remote_name: full remote ref, e.g. "origin/feature-x".
+func track_remote_branch(remote_name: String) -> void:
+	var local_name: String = remote_name.trim_prefix("origin/")
+	run_fast("create_branch", ["switch", "-c", local_name, "--track", remote_name])
 
 
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.

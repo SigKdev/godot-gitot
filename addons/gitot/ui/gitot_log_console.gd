@@ -33,6 +33,8 @@ func _append_line(formatted: String) -> void:
 	"normal_font_size",
 	_base.get_theme_font_size("output_source_size", "EditorFonts") - 2
 	)
+	label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 
 	label.text = formatted
 	_log_list.add_child(label)

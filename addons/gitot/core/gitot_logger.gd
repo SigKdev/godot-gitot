@@ -48,9 +48,9 @@ static func _print(message: String, level: Level) -> void:
 			color = "dark_gray"
 			prefix = "[color=dark_gray][git raw][/color]"
 		Level.INFO:
-			color = "white"
-			prefix = "[color=cyan][Gitot Info][/color]"
-			
+			color = "dark_gray"
+			prefix = "[color=dark_gray][Gitot Info][/color]"
+
 	var formatted := "%s [color=%s]%s[/color]" % [prefix, color, message]
 	log_history.append(formatted)
 	if log_history.size() > MAX_HISTORY:

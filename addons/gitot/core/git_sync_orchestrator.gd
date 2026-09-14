@@ -23,7 +23,7 @@ func _init(git_engine: GitEngine) -> void:
 func start_push(tag_input: Dictionary) -> void:
 	_pending_tag = tag_input
 	push_state_changed.emit(true)
-	_git_engine.run_network("push", ["push"])
+	_git_engine.run_network("push", ["push", "-u", "origin", "HEAD"])
 
 
 ## Re-attempts pushing the tag that was created locally but failed to push.

@@ -1,4 +1,4 @@
-# Gitot - WIP
+# Gitot
 
 A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intended for solo developers who want fast, reliable local Git operations (stage/unstage, commit, stash/pop, push/pull), inline diff visibility and issue tracker without leaving the editor.
 
@@ -8,11 +8,12 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 ---
 
-## Features (v0.6.0)
+## Features (v0.7.0)
 
 - **Commit & Sync:** Single and bulk Staging/Unstaging, commit message (multiline supported), and Commit / Push / Pull buttons.
 - **Stash Quick-Actions:** One-click stash and pop from the dock toolbar, for shelving experimental changes before a branch switch.
 - **Local Branch Management:** Switch branches, create new local branches. Scenes open in the editor refresh automatically on switch, without a full project rescan. (read: [Limitation](#known-limitations))
+- **Remote Branch Management:** Fetch button, remote-only branches listed and checked out with automatic tracking. Packed with a one-line Status panel summarizing current repo, current branch (detached HEAD flagged in red), ahead/behind sync status.
 - **Tags Versioning:** Push with/without annotated tag. *(auto tagging settings - see details)*. (read: [Limitation](#known-limitations)).
 - **Commit History:** List of recent commits (message, author, date) with a count filter (10/20/30).
 - **Color-only diff gutter:** Modified and added lines are marked directly in the script editor's gutter.
@@ -25,9 +26,11 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 - **Failsafe startup:** verifies `git` is available before initializing; disables cleanly with a clear error if not.
 - **Async execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored background process with a 30-second timeout guard, so a slow or stalled connection never freezes the editor.
-- **Commit & Sync (Gitot dock):** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with single and bulk stage/unstage. Status color & icon. Warning icon for conflicted file and large-file guard.
+- **Commit & Sync:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with single and bulk stage/unstage. Status color & icon. Warning icon for conflicted file and large-file guard. Push targets `-u origin HEAD`.
 - **Stash Quick-Actions:** One-click stash with `-u` flag (staged + unstaged + untracked) and pop from the dock toolbar. Fixed stash message. Pop conflicts output.
 - **Local Branch Management:** Branch dropdown, and a "new branch" button/dialogue. On switch/create, only files git actually changed are refreshed — `EditorFileSystem.update_file()` for cache bookkeeping, plus `EditorInterface.reload_scene_from_path()` for any of those files currently open in a tab - avoiding the full-project `scan()` noise (unrelated `.import` errors) that a refresh would trigger.
+- **Remote Branch Management:** `git fetch origin` via button, refreshing the branch list on success. Remote-tracking branches with no local counterpart appear in the dropdown, selecting one runs `switch -c <name> --track origin/<name>` in one atomic op.
+- **Repo Status Panel:** Show `owner/repo · branch · ↑ahead ↓behind`. Updates live on every status-triggering command. Detached HEAD shown in red in place of a branch name. Ahead/behind only logs to console on actual change, not on redundant refreshes (e.g. focus-in polling).
 - **Tags Versioning:** Tag is push with commit. Settings to auto use Version *(from project settings)* for the tag's name (with auto `v` prefix) and the commit message for the tag's message. (read: [Limitation](#known-limitations)).
 - **Commit History:** `git log` parsed via `\x1f`-delimited format string. Count-filtered dropdown (10/20/30, default reflects last selection). Relative date shown in-list, exact short date (`YYYY-MM-DD HH-MM`) on date hover tooltip. Auto-refreshes alongside status on the same trigger set (commit/push/pull/switch) and on manual *Refresh Status* fallback button.
 - **Gitot Settings Panel:** Add Settings (user://gitot_settings.cfg), large_file_mb, confirm_push, auto_refresh_on_focus, github_issues_enabled.
@@ -46,7 +49,7 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 - [x] Local Branch Management
 - [x] Commit History
 - [x] Stash Quick-Actions
-- [ ] Remote Branch Management
+- [x] Remote Branch Management
 - [ ] Diff hover popup & bottom-dock full diff view
 - [ ] Stash Manager
 - [ ] Git LFS support and asset locking
@@ -77,7 +80,9 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 - The diff gutter only applies to **tracked** files. Untracked (never-committed) files have no `HEAD` version to diff against.
 
-- **Branch Management** scene/resource refresh relies on the git reflog (`HEAD@{1}`) to detect changed files, so it only compares against the immediately-previous checkout. On the very first switch after a fresh clone (no prior reflog entry) or after multiple rapid switches, the changed-file list may be empty and open tabs won't auto-refresh - close/reopen the tab manually in that case. **Only local branches are supported (no remote tracking, no checkout of remote-only branches).**
+- **Branch Management** scene/resource refresh relies on the git reflog (`HEAD@{1}`) to detect changed files, so it only compares against the immediately-previous checkout. On the very first switch after a fresh clone (no prior reflog entry) or after multiple rapid switches, the changed-file list may be empty and open tabs won't auto-refresh - close/reopen the tab manually in that case.
+
+- Switching to a branch whose `project.godot` differs from the current one *(e.g. different enabled plugins/autoloads)* triggers Godot's own **"File has been modified outside Godot"** dialog for `project.godot`. This is a Godot editor behavior outside Gitot's control (separate watcher from `EditorFileSystem`) - click **Reload from Disk** reflects the real branch content.
 
 - **Tags Versioning** self-heals from a failed tag push: if `Push` previously created a tag locally but failed to push it (network/timeout), retrying will detect the existing local tag and **push it as-is** instead of erroring. **Caveat:** if you reuse a tag name that already exists locally from an *unrelated*, fully-completed push (pointing at an older commit), **Gitot will push that existing tag silently instead of creating a new one (no error is shown)**. Verify on GitHub that the tag lands on the commit you expect, or use a unique tag name to avoid collisions.
 
@@ -121,7 +126,7 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 <summary>Core</summary>
 
 - `gitot.gd` - `EditorPlugin` entry point; lifecycle, wiring, and main-screen tab registration.
-- `core/git_engine.gd` - all `git` CLI execution (sync-fast and async-network paths), including commit, push, pull, branch, switch, stash, pop.
+- `core/git_engine.gd` - all `git` CLI execution (sync-fast and async-network paths), including commit, push, pull, branch, switch, stash, pop, fetch.
 - `core/git_sync_orchestrator.gd` - push -> create-tag -> push-tag state machine; reacts to `GitEngine.command_completed`, decoupled from UI via signals.
 - `core/git_branch_parser.gd` - parses `git branch --format=...` into local branch entries.
 - `core/git_status_parser.gd` - parses `git status --porcelain=v2`.
@@ -140,6 +145,7 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 - `ui/gitot_status_tree.gd` - staged/Unstaged file trees: population, staging/unstaging, bulk actions, size guard.
 - `ui/git_log_panel.gd` - commit history fold: Tree population, count-filter dropdown, relative/short date tooltip.
 - `ui/gitot_branch_panel.gd` - branch dropdown (switch) and new-branch dialog.
+- `ui/gitot_status_panel.gd` - compact repo-state summary (owner/repo, branch, ahead/behind); constructor-injected `RichTextLabel`.
 - `ui/gitot_tag_panel.gd` - tag-versioning UI: toggles, version-tag formatting, tag input resolution.
 - `ui/gitot_settings_panel.gd` - settings panel UI; self-contained, reads/writes `GitotSettings` directly.
 - `ui/gitot_diff_gutter.gd` - script editor gutter coloring.
@@ -150,6 +156,20 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 </details>
 
 ## Changelog
+
+<details>
+<summary>v0.7.0</summary>
+
+feat: Remote Branch Management & Status Panel
+
+- `GitEngine`: `fetch()` wrapper (`git fetch origin`, network op), `get_ahead_behind()` (`rev-list --left-right --count @{u}...HEAD`, fast/local), `track_remote_branch()` (`switch -c <name> --track origin/<name>`, reuses `"create_branch"` result path).
+- Push fixed: `-u origin HEAD` instead of bare `push` — resolves first-push failure on branches with no upstream.
+- `GitBranchParser`: switched from `%(refname:short)` to `%(refname)` to reliably detect and exclude the `origin/HEAD` symbolic-ref alias; added `is_remote` flag.
+- `GitotBranchPanel`: filters remote entries that already have a matching local branch (avoids `main` + `origin/main` duplicate clutter); cloud vs. branch icon per entry.
+- New `GitotStatusPanel` (`RefCounted`, constructor-injected `RichTextLabel`): owner/repo, branch name (truncated), ahead/behind. Detached HEAD flagged in red.
+- `fetch` on success triggers `list_branches()` refresh (new remote branches only become visible after a fetch).
+<hr>
+</details>
 
 <details>
 <summary>v0.6.0</summary>

@@ -45,8 +45,6 @@ func _enter_tree() -> void:
 	git_engine = GitEngine.new()
 	git_engine.command_completed.connect(_on_git_command_completed)
 
-	#git_engine.list_branches()
-
 	# Create the GitotDiffGutter instance.
 	diff_gutter = GitotDiffGutter.new(git_engine)
 
@@ -77,6 +75,7 @@ func _enter_tree() -> void:
 func _on_git_command_completed(command_name: String, _exit_code: int, _output: Array) -> void:
 	if command_name in STATUS_TRIGGERING_COMMANDS:
 		git_engine.run_fast("status", GitEngine.STATUS_ARGS)
+		git_engine.get_ahead_behind()
 		dock.refresh_log() # exposed passthrough
 
 

@@ -76,7 +76,7 @@ Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
 }
 
 [sub_resource type="DPITexture" id="DPITexture_byujs"]
-_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"none\" stroke=\"#e0e0e0\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M6 14h4m-2-4V2m4 5L8 2 4 7\"/></svg>
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><g fill=\"none\" stroke=\"#e0e0e0\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M8 1v9l4-4m-4 4L4 6\"/><path stroke-linecap=\"round\" d=\"M2 10v4h12v-4\"/></g></svg>
 "
 saturation = 2.0
 color_map = {
@@ -86,6 +86,16 @@ Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
 }
 
 [sub_resource type="DPITexture" id="DPITexture_sfyls"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"none\" stroke=\"#e0e0e0\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M6 14h4m-2-4V2m4 5L8 2 4 7\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="DPITexture" id="DPITexture_4kcxk"]
 _source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"none\" stroke=\"#e0e0e0\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 2H6m2 4v8M4 9l4 5 4-5\"/></svg>
 "
 saturation = 2.0
@@ -127,7 +137,7 @@ layout_mode = 2
 [node name="GitotVersion" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=1117852408]
 layout_mode = 2
 bbcode_enabled = true
-text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.6.0[/font_size]"
+text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.7.0[/font_size]"
 fit_content = true
 autowrap_mode = 0
 
@@ -160,6 +170,12 @@ tooltip_text = "Gitot Settings"
 mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_cj8b4")
 flat = true
+
+[node name="GitStatusLabel" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox" unique_id=1507315657]
+unique_name_in_owner = true
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
 
 [node name="SettingsPanel" type="PanelContainer" parent="MainVBox/MainTopPanel/VBox" unique_id=1235964481]
 unique_name_in_owner = true
@@ -432,11 +448,21 @@ clip_text = true
 [node name="CreateBranchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=1649246415]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Create New Branch"
+tooltip_text = "Create new Local branch"
 mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_jljbu")
 
 [node name="--" type="VSeparator" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=247290972]
+layout_mode = 2
+
+[node name="FetchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=727873841]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Fetch "
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_byujs")
+
+[node name="--2" type="VSeparator" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=161808370]
 layout_mode = 2
 
 [node name="PushButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=1817765002]
@@ -445,15 +471,16 @@ layout_mode = 2
 tooltip_text = "Push Commit
 (and tag if set)"
 mouse_default_cursor_shape = 2
-icon = SubResource("DPITexture_byujs")
+icon = SubResource("DPITexture_sfyls")
 
 [node name="PullButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=48988369]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "⚠ Godot may not refresh pulled scripts open
+tooltip_text = "Pull
+⚠ Godot may not refresh pulled scripts open
 in the editor, a restart may be needed ⚠"
 mouse_default_cursor_shape = 2
-icon = SubResource("DPITexture_sfyls")
+icon = SubResource("DPITexture_4kcxk")
 
 [node name="RetryTagPushButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=2130813696]
 unique_name_in_owner = true
