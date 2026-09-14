@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bv6e88pnv4esg"]
 
-[ext_resource type="Script" uid="uid://pbd7dghmcr82" path="res://addons/gitot/core/github_api.gd" id="1_j8tw0"]
-[ext_resource type="Script" uid="uid://cm34pi6xboytc" path="res://addons/gitot/ui/github_panel.gd" id="1_yhiux"]
+[ext_resource type="Script" uid="uid://b3fsk1db41jyu" path="res://addons/gitot/core/github_api.gd" id="1_j8tw0"]
+[ext_resource type="Script" uid="uid://d38ncblkaf17r" path="res://addons/gitot/ui/github_panel.gd" id="1_yhiux"]
 
 [node name="GithubPanel" type="Control" unique_id=1996964266]
 layout_mode = 3
@@ -26,7 +26,7 @@ offset_bottom = 34.0
 [node name="GitotVersion" type="RichTextLabel" parent="PanelToolbar" unique_id=1610675493]
 layout_mode = 2
 bbcode_enabled = true
-text = " [b][font_size=24]Gitot[/font_size][/b] [font_size=11]v0.5.0[/font_size]"
+text = " [b][font_size=24]Gitot[/font_size][/b] [font_size=11]v0.6.0[/font_size]"
 fit_content = true
 autowrap_mode = 0
 

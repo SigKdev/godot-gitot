@@ -80,7 +80,7 @@ func _populate_tree(tree: Tree, entries: Array, fold_container: FoldableContaine
 ## Creates and wires the Stage All / Unstage All buttons into each fold header.
 func _setup_bulk_buttons() -> void:
 	var stage_all: Button = Button.new()
-	stage_all.icon = EditorInterface.get_base_control().get_theme_icon("MoveDown", "EditorIcons")
+	stage_all.icon = EditorInterface.get_base_control().get_theme_icon("ArrowDown", "EditorIcons")
 	stage_all.flat = true
 	stage_all.tooltip_text = "Stage All"
 	stage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -88,7 +88,7 @@ func _setup_bulk_buttons() -> void:
 	_unstaged_fold.add_title_bar_control(stage_all)
 
 	var unstage_all: Button = Button.new()
-	unstage_all.icon = EditorInterface.get_base_control().get_theme_icon("MoveUp", "EditorIcons")
+	unstage_all.icon = EditorInterface.get_base_control().get_theme_icon("ArrowUp", "EditorIcons")
 	unstage_all.flat = true
 	unstage_all.tooltip_text = "Unstage All"
 	unstage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

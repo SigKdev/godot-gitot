@@ -15,7 +15,7 @@
 extends EditorPlugin
 
 ## Commands that change working tree / index state and require a status refresh.
-const STATUS_TRIGGERING_COMMANDS: PackedStringArray = ["stage", "unstage", "commit", "push", "pull", "switch", "create_branch"]
+const STATUS_TRIGGERING_COMMANDS: PackedStringArray = ["stage", "unstage", "commit", "push", "pull", "switch", "create_branch", "stash", "stash_pop"]
 
 const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
 
@@ -77,6 +77,7 @@ func _enter_tree() -> void:
 func _on_git_command_completed(command_name: String, _exit_code: int, _output: Array) -> void:
 	if command_name in STATUS_TRIGGERING_COMMANDS:
 		git_engine.run_fast("status", GitEngine.STATUS_ARGS)
+		dock.refresh_log() # exposed passthrough
 
 
 ## Triggers gutter refresh on script save

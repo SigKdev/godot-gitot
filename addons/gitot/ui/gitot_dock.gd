@@ -10,6 +10,7 @@ extends Control
 var git_engine: GitEngine
 var _log_console: GitotLogConsole
 var _status_tree: GitotStatusTree
+var _log_panel: GitLogPanel
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
 var _branch_panel: GitotBranchPanel
@@ -38,12 +39,19 @@ func _ready() -> void:
 	%RefreshStatButton.pressed.connect(_refresh_status)
 	%RefreshStatButton.icon = EditorInterface.get_base_control().get_theme_icon("Loop", "EditorIcons")
 	%CommitButton.pressed.connect(_on_commit_pressed)
+	%StashButton.pressed.connect(_on_stash_pressed)
+	%StashButton.icon = EditorInterface.get_base_control().get_theme_icon("Bake", "EditorIcons")
+	%PopButton.pressed.connect(_on_pop_pressed)
+	%PopButton.icon = EditorInterface.get_base_control().get_theme_icon("LightmapGIData", "EditorIcons")
 	%PushButton.pressed.connect(_on_push_pressed)
+	%PushButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveUp", "EditorIcons")
 	%PullButton.pressed.connect(_on_pull_pressed)
+	%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveDown", "EditorIcons")
 	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
 	%RefreshDiffButton.icon = EditorInterface.get_base_control().get_theme_icon("Paint", "EditorIcons")
 	_status_tree = GitotStatusTree.new(%UnstagedTree, %StagedTree, %UnstagedFold, %StagedFold)
 	_status_tree.git_engine = git_engine
+	_log_panel = GitLogPanel.new(git_engine, %GitlogFold, %GitlogTree)
 	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
 	_log_console = GitotLogConsole.new(%LogList, %LogScroll)
 	
@@ -52,7 +60,7 @@ func _ready() -> void:
 	_branch_panel = GitotBranchPanel.new(
 	git_engine, %BranchDropdown, %CreateBranchButton, %NewBranchDialog, %NewBranchNameInput
 	)
-	%CreateBranchButton.icon = EditorInterface.get_base_control().get_theme_icon("VCSCommit", "EditorIcons")
+	%CreateBranchButton.icon = EditorInterface.get_base_control().get_theme_icon("Add", "EditorIcons")
 	if git_engine:
 		git_engine.list_branches()
 
@@ -76,6 +84,11 @@ func teardown() -> void:
 		_log_console.teardown()
 
 
+## Public passthrough for gitot.gd (composition root owns *when* to refresh).
+func refresh_log() -> void:
+	_log_panel.refresh()
+
+
 ## Manual fallback Triggers a fresh git status query for unreliable save signal.
 ## (e.g. during editor startup, before the setter runs)
 ## Shared refresh call. Guards against git_engine not yet injected.
@@ -83,6 +96,7 @@ func _refresh_status() -> void:
 	if not git_engine:
 		return
 	git_engine.run_fast("status", GitEngine.STATUS_ARGS)
+	_log_panel.refresh()
 
 
 ## Notifies Godot about files changed by the branch switch. update_file()
@@ -109,6 +123,7 @@ func _notification(what: int) -> void:
 		if GitotSettings.get_value("auto_refresh_on_focus"):
 			_refresh_status()
 
+
 # TODO: diff gutter refresh
 ## Triggers a diff gutter refresh.
 ## Manual fallback for unreliable save signal.
@@ -123,6 +138,27 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 			GitotLogger.s("Commit successful.")
 		else:
 			GitotLogger.x("Commit failed.")
+		return
+
+	if command_name == "stash":
+		if exit_code == 0:
+			if output[0].contains("No local changes to save"):
+				GitotLogger.w("Nothing to stash.")
+			else:
+				GitotLogger.s("Changes stashed.")
+		else:
+			GitotLogger.e("Stash failed.")
+			if not output.is_empty():
+				GitotLogger.g(output[0])
+		return
+
+	if command_name == "stash_pop":
+		if exit_code == 0:
+			GitotLogger.s("Stash popped.")
+		else:
+			GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
+			if not output.is_empty():
+				GitotLogger.g(output[0])
 		return
 
 	if command_name in ["push", "pull"]:
@@ -149,13 +185,18 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 
 	if command_name in ["switch", "create_branch"]:
 		if exit_code == 0:
-			GitotLogger.s("%s successful, now on [color=cyan]'%s'[/color]" % [command_name.capitalize(), git_engine.get_current_branch()])
+			GitotLogger.s("%s successful, now on '[color=gray]%s[/color]'" % [command_name.capitalize(), git_engine.get_current_branch()])
 			_notify_changed_files()
 		else:
 			GitotLogger.e("%s failed." % command_name.capitalize())
 			if not output.is_empty():
 				GitotLogger.g(output[0]) # git's raw stderr
 		git_engine.list_branches()
+		return
+
+	if command_name == "log":
+		if not output.is_empty():
+			_log_panel.populate(GitLogParser.parse(output[0]))
 		return
 
 	# Used for refreshing the status tree.
@@ -172,6 +213,16 @@ func _on_commit_pressed() -> void:
 		return
 	git_engine.run_fast("commit", ["commit", "-m", message])
 	%CommitMessageInput.text = ""
+
+
+## Shelves all uncommitted changes onto the stash stack.
+func _on_stash_pressed() -> void:
+	git_engine.stash_push()
+
+
+## Reapplies and removes the most recent stash entry.
+func _on_pop_pressed() -> void:
+	git_engine.stash_pop()
 
 
 func _on_push_state_changed(pushing: bool) -> void:

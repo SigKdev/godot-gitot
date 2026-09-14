@@ -45,8 +45,8 @@ static func _print(message: String, level: Level) -> void:
 			color = "red"
 			prefix = "[color=red][Gitot Error][/color]"
 		Level.GIT:
-			color = "grey"
-			prefix = "[color=grey][git raw][/color]"
+			color = "dark_gray"
+			prefix = "[color=dark_gray][git raw][/color]"
 		Level.INFO:
 			color = "white"
 			prefix = "[color=cyan][Gitot Info][/color]"

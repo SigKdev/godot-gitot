@@ -113,6 +113,20 @@ func list_branches() -> void:
 	run_fast("branches", ["branch", "--format=%(refname:short)|%(HEAD)"])
 
 
+## Format string for `git log`: hash, author, relative date, subject — separated
+## by \x1f (Unit Separator) since commit subjects can contain any printable char.
+## GDScript doesn't support \x escapes - only \uXXXX (4-digit unicode)
+## Consumed by GitLogParser.parse().
+const LOG_FORMAT: String = "--pretty=format:%h\u001f%an\u001f%ar\u001f%ad\u001f%s"
+
+
+## Lists the last `count` commits on the current branch. Fast/local op.
+## Result output[0] is fed to GitLogParser.parse().
+## @param count: max number of commits to fetch (dropdown-controlled: 10/20/30).
+func get_log(count: int) -> void:
+	run_fast("log", ["log", "-n", str(count), LOG_FORMAT, "--date=format:%Y-%m-%d %H:%M"])
+
+
 ## Switches to an existing local branch. Uncommitted changes that don't
 ## conflict with the target branch's content silently follow the user —
 ## caller MUST trigger a status refresh + filesystem scan regardless of
@@ -135,6 +149,17 @@ func get_current_branch() -> String:
 	if exit_code != 0 or output.is_empty():
 		return ""
 	return String(output[0]).strip_edges()
+
+
+## Stashes all uncommitted changes (staged + unstaged), resetting the working tree to HEAD.
+func stash_push() -> void:
+	run_fast("stash", ["stash", "push", "-u", "-m", "Gitot quick-stash"])
+
+
+## Reapplies the most recent stash entry and removes it from the stack.
+## On conflict, git writes conflict markers to files and preserves the stash entry.
+func stash_pop() -> void:
+	run_fast("stash_pop", ["stash", "pop"])
 
 
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.

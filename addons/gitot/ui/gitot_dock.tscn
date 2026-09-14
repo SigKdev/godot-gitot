@@ -3,6 +3,8 @@
 [ext_resource type="Script" uid="uid://b2mdylfhog7rp" path="res://addons/gitot/ui/gitot_dock.gd" id="1_ap6ej"]
 [ext_resource type="Script" uid="uid://qk8vbcrvkbec" path="res://addons/gitot/ui/gitot_settings_panel.gd" id="2_p48el"]
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_104oe"]
+
 [sub_resource type="DPITexture" id="DPITexture_p48el"]
 _source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"M8 1v2H6a5 5 0 0 0-4 8l1.414-1.414A3 3 0 0 1 6 5h2v2l4-3-4-3zm6 4-1.414 1.414A3 3 0 0 1 10 11H8V9l-4 3 4 3v-2h2a5 5 0 0 0 4-8z\"/></svg>
 "
@@ -33,8 +35,58 @@ Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
 Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
 }
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_p48el"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_x0few"]
+
 [sub_resource type="DPITexture" id="DPITexture_vkx1n"]
-_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"none\" stroke=\"#e0e0e0\" stroke-width=\"1.5\" d=\"m 8.25,10.49996 c 1.380712,0 2.5,-1.1193927 2.5,-2.5002338 h 3.5 v 0 m -3.5,0 C 10.75,5.7721009 8.057154,4.6569057 6.4823232,6.2318837 4.9074925,7.8068618 6.0225834,10.49996 8.25,10.49996 M 1.75,7.9997262 h 3.5 v 0 m -3.5,0\"/></svg>
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"m2 1v2h12v-2zm-1 3v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9zm2 1h1v1h-1zm3 0h1v1h-1zm3 0h1v1h-1zm3 0h1v1h-1zm-9 2h10v6h-10zm3 1v1h4v-1z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="DPITexture" id="DPITexture_4wpot"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"m1 1v2h2v-2zm3 0v2h2v-2zm4 0v2h6v-2zm-7 3v2h2v-2zm3 0v2h2v-2zm4 0v3h5v6h-5v2h5a2 2 0 0 0 2-2v-9zm1 1h1v1h-1zm3 0h1v1h-1zm-11 2v2h2v-2zm3 0v2h2v-2zm4 1v1h2v-1zm-7 2v2h2v-2zm3 0v2h2v-2zm-3 3v2h2v-2zm3 0v2h2v-2z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_cj8b4"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_vkx1n"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_4wpot"]
+
+[sub_resource type="DPITexture" id="DPITexture_jljbu"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"m7 1v6h-6v2h6v6h2v-6h6v-2h-6v-6z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="DPITexture" id="DPITexture_byujs"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"none\" stroke=\"#e0e0e0\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M6 14h4m-2-4V2m4 5L8 2 4 7\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="DPITexture" id="DPITexture_sfyls"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"none\" stroke=\"#e0e0e0\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 2H6m2 4v8M4 9l4 5 4-5\"/></svg>
 "
 saturation = 2.0
 color_map = {
@@ -44,7 +96,7 @@ Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
 }
 
 [node name="Gitot" type="Control" unique_id=1349837442]
-clip_contents = true
+custom_minimum_size = Vector2(250, 0)
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -53,7 +105,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_ap6ej")
 
-[node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=1587278614]
+[node name="MainVBox" type="VBoxContainer" parent="." unique_id=1326235869]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -61,25 +113,28 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="ScrollContainer" unique_id=1255260125]
+[node name="MainTopPanel" type="PanelContainer" parent="MainVBox" unique_id=730263695]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
+theme_override_styles/panel = SubResource("StyleBoxEmpty_104oe")
 
-[node name="TopBar" type="HBoxContainer" parent="ScrollContainer/VBoxContainer" unique_id=912695717]
+[node name="VBox" type="VBoxContainer" parent="MainVBox/MainTopPanel" unique_id=1534430260]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TopBar" type="HBoxContainer" parent="MainVBox/MainTopPanel/VBox" unique_id=912695717]
 layout_mode = 2
 
-[node name="GitotVersion" type="RichTextLabel" parent="ScrollContainer/VBoxContainer/TopBar" unique_id=1117852408]
+[node name="GitotVersion" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=1117852408]
 layout_mode = 2
 bbcode_enabled = true
-text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.5.0[/font_size]"
+text = " [b][font_size=13]Gitot[/font_size][/b] [font_size=10]v0.6.0[/font_size]"
 fit_content = true
 autowrap_mode = 0
 
-[node name="----" type="VSeparator" parent="ScrollContainer/VBoxContainer/TopBar" unique_id=452792859]
+[node name="----" type="VSeparator" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=452792859]
 layout_mode = 2
 
-[node name="RefreshStatButton" type="Button" parent="ScrollContainer/VBoxContainer/TopBar" unique_id=1284737562]
+[node name="RefreshStatButton" type="Button" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=1284737562]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Refresh Git Status"
@@ -87,7 +142,7 @@ mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_p48el")
 flat = true
 
-[node name="RefreshDiffButton" type="Button" parent="ScrollContainer/VBoxContainer/TopBar" unique_id=674196267]
+[node name="RefreshDiffButton" type="Button" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=674196267]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Refresh Diff Gutter"
@@ -95,10 +150,10 @@ mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_104oe")
 flat = true
 
-[node name="----2" type="VSeparator" parent="ScrollContainer/VBoxContainer/TopBar" unique_id=484223927]
+[node name="----2" type="VSeparator" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=484223927]
 layout_mode = 2
 
-[node name="SettingsToggleButton" type="Button" parent="ScrollContainer/VBoxContainer/TopBar" unique_id=1410656222]
+[node name="SettingsToggleButton" type="Button" parent="MainVBox/MainTopPanel/VBox/TopBar" unique_id=1410656222]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Gitot Settings"
@@ -106,63 +161,137 @@ mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_cj8b4")
 flat = true
 
-[node name="SettingsPanel" type="PanelContainer" parent="ScrollContainer/VBoxContainer" unique_id=1235964481]
+[node name="SettingsPanel" type="PanelContainer" parent="MainVBox/MainTopPanel/VBox" unique_id=1235964481]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_p48el")
 script = ExtResource("2_p48el")
 
-[node name="VBox" type="VBoxContainer" parent="ScrollContainer/VBoxContainer/SettingsPanel" unique_id=806411000]
+[node name="VBox" type="VBoxContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel" unique_id=806411000]
 layout_mode = 2
 
-[node name="HBox" type="HBoxContainer" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox" unique_id=495646535]
+[node name="HBox" type="HBoxContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=495646535]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox/HBox" unique_id=996391763]
+[node name="Label" type="Label" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/HBox" unique_id=996391763]
 layout_mode = 2
-text = "Large file Size Guard (MB)"
+size_flags_horizontal = 3
+tooltip_text = "Large file size guard in mb"
+mouse_filter = 0
+text = "File Size Guard"
 
-[node name="LargeFileSpinBox" type="SpinBox" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox/HBox" unique_id=1725731778]
+[node name="LargeFileSpinBox" type="SpinBox" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/HBox" unique_id=1725731778]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "0 = disabled"
 max_value = 500.0
 value = 50.0
+rounded = true
+suffix = "mb"
 
-[node name="ConfirmPushCheck" type="CheckButton" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox" unique_id=2016523303]
+[node name="ConfirmPushCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=2016523303]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Confirm before Push"
+tooltip_text = "Confirmation dialogue before pushing"
+text = "Confirm Push"
 
-[node name="AutoRefreshCheck" type="CheckButton" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox" unique_id=1869038813]
+[node name="AutoRefreshCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1869038813]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Trigger \"refresh git status\" whenever you come back to the Godot editor window"
+tooltip_text = "Refresh git status on Godot editor window focus"
 button_pressed = true
-text = "Auto-refresh on editor focus"
+text = "Auto-refresh git status"
 
-[node name="GithubEnabledCheck" type="CheckButton" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox" unique_id=365186010]
+[node name="GithubEnabledCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=365186010]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Opt-out (or in) of Gitot Issues Tracker (will clear your PAT) ⚠ Restart Required ⚠"
 button_pressed = true
 text = "Gitot Issues Tracker"
 
-[node name="----" type="HSeparator" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox" unique_id=935116010]
+[node name="----" type="HSeparator" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=935116010]
 layout_mode = 2
 
-[node name="Support" type="Label" parent="ScrollContainer/VBoxContainer/SettingsPanel/VBox" unique_id=807291846]
+[node name="Support" type="FoldableContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1154570503]
 layout_mode = 2
-text = "Support Author:"
+folded = true
+title = "Support"
 
-[node name="----" type="HSeparator" parent="ScrollContainer/VBoxContainer" unique_id=695882696]
+[node name="VBox" type="VBoxContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support" unique_id=1632655616]
+visible = false
 layout_mode = 2
 
-[node name="UnstagedFold" type="FoldableContainer" parent="ScrollContainer/VBoxContainer" unique_id=442548494]
+[node name="Issue" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=595157812]
+layout_mode = 2
+bbcode_enabled = true
+text = "Report any issue on github:
+https://github.com/SigKdev/godot-gitot/"
+fit_content = true
+
+[node name="----" type="HSeparator" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=782805906]
+layout_mode = 2
+
+[node name="Dev" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=832394040]
+layout_mode = 2
+bbcode_enabled = true
+text = "Support Author!
+If Gitot has saved you time or streamlined your Godot workflow, consider supporting..."
+fit_content = true
+
+[node name="HFlow" type="HFlowContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=130140356]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+alignment = 1
+
+[node name="KofiButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=1103311778]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "KO-FI"
+flat = true
+
+[node name="GitButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=481518032]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "GitHub Sponsors"
+flat = true
+
+[node name="Button" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=2123897185]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "other link"
+flat = true
+
+[node name="Button2" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=732875133]
+layout_mode = 2
+mouse_default_cursor_shape = 2
+text = "other link"
+flat = true
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MainVBox" unique_id=1587278614]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBox" type="VBoxContainer" parent="MainVBox/ScrollContainer" unique_id=1255260125]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="CommitPanel" type="PanelContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=161813936]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_x0few")
+
+[node name="VBox" type="VBoxContainer" parent="MainVBox/ScrollContainer/VBox/CommitPanel" unique_id=285768895]
+layout_mode = 2
+
+[node name="----" type="HSeparator" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=695882696]
+layout_mode = 2
+
+[node name="UnstagedFold" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=442548494]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="UnstagedTree" type="Tree" parent="ScrollContainer/VBoxContainer/UnstagedFold" unique_id=1680823320]
+[node name="UnstagedTree" type="Tree" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/UnstagedFold" unique_id=1680823320]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 155)
 layout_mode = 2
@@ -171,11 +300,11 @@ enable_drag_unfolding = false
 hide_root = true
 select_mode = 2
 
-[node name="StagedFold" type="FoldableContainer" parent="ScrollContainer/VBoxContainer" unique_id=1209953859]
+[node name="StagedFold" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=1209953859]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="StagedTree" type="Tree" parent="ScrollContainer/VBoxContainer/StagedFold" unique_id=43213874]
+[node name="StagedTree" type="Tree" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/StagedFold" unique_id=43213874]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 155)
 layout_mode = 2
@@ -184,10 +313,10 @@ enable_drag_unfolding = false
 hide_root = true
 select_mode = 2
 
-[node name="----2" type="HSeparator" parent="ScrollContainer/VBoxContainer" unique_id=206646037]
+[node name="----2" type="HSeparator" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=206646037]
 layout_mode = 2
 
-[node name="CommitMessageInput" type="TextEdit" parent="ScrollContainer/VBoxContainer" unique_id=846062894]
+[node name="CommitMessageInput" type="TextEdit" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=846062894]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
@@ -197,35 +326,62 @@ drag_and_drop_selection_enabled = false
 wrap_mode = 1
 indent_wrapped_lines = true
 
-[node name="----3" type="HSeparator" parent="ScrollContainer/VBoxContainer" unique_id=1353693688]
+[node name="HBox" type="HBoxContainer" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=414286567]
 layout_mode = 2
 
-[node name="GitTag" type="PanelContainer" parent="ScrollContainer/VBoxContainer" unique_id=202191959]
-layout_mode = 2
-
-[node name="VBoxContainer" type="VBoxContainer" parent="ScrollContainer/VBoxContainer/GitTag" unique_id=800648609]
-layout_mode = 2
-
-[node name="TagVersioningToggle" type="CheckButton" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer" unique_id=824452578]
+[node name="CommitButton" type="Button" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/HBox" unique_id=19649693]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Push with a Version Tag"
+size_flags_horizontal = 3
+tooltip_text = "Commit"
+mouse_default_cursor_shape = 2
+text = "Commit"
+
+[node name="StashButton" type="Button" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/HBox" unique_id=560277585]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Stash"
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_vkx1n")
+
+[node name="PopButton" type="Button" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/HBox" unique_id=1764400417]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Pop"
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_4wpot")
+
+[node name="----" type="HSeparator" parent="MainVBox/ScrollContainer/VBox" unique_id=1353693688]
+layout_mode = 2
+
+[node name="GitTagPanel" type="PanelContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=202191959]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_cj8b4")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MainVBox/ScrollContainer/VBox/GitTagPanel" unique_id=800648609]
+layout_mode = 2
+
+[node name="TagVersioningToggle" type="CheckButton" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer" unique_id=824452578]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Push with an Annotated Tag"
 text = "Tag Versioning"
 
-[node name="TagPanel" type="PanelContainer" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer" unique_id=1631371179]
+[node name="TagPanel" type="PanelContainer" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer" unique_id=1631371179]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_vkx1n")
 
-[node name="VBox" type="VBoxContainer" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer/TagPanel" unique_id=214318418]
+[node name="VBox" type="VBoxContainer" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer/TagPanel" unique_id=214318418]
 layout_mode = 2
 
-[node name="UseProjectToggle" type="CheckButton" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1029725090]
+[node name="UseProjectToggle" type="CheckButton" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer/TagPanel/VBox" unique_id=1029725090]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Use version from \"project settings/version\" if set."
 
-[node name="TagNameEdit" type="LineEdit" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1143936385]
+[node name="TagNameEdit" type="LineEdit" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer/TagPanel/VBox" unique_id=1143936385]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "This input do not use the \"auto v prefix\"."
@@ -233,16 +389,16 @@ placeholder_text = "(e.g: v1.0.0 or stable)"
 emoji_menu_enabled = false
 drag_and_drop_selection_enabled = false
 
-[node name="----" type="HSeparator" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=60123677]
+[node name="----" type="HSeparator" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer/TagPanel/VBox" unique_id=60123677]
 layout_mode = 2
 
-[node name="UseCommitToggle" type="CheckButton" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1321164039]
+[node name="UseCommitToggle" type="CheckButton" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer/TagPanel/VBox" unique_id=1321164039]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Auto use your commit message"
 text = "Use Commit Message"
 
-[node name="TagMessageEdit" type="TextEdit" parent="ScrollContainer/VBoxContainer/GitTag/VBoxContainer/TagPanel/VBox" unique_id=1828487447]
+[node name="TagMessageEdit" type="TextEdit" parent="MainVBox/ScrollContainer/VBox/GitTagPanel/VBoxContainer/TagPanel/VBox" unique_id=1828487447]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
@@ -252,82 +408,98 @@ drag_and_drop_selection_enabled = false
 wrap_mode = 1
 indent_wrapped_lines = true
 
-[node name="----4" type="HSeparator" parent="ScrollContainer/VBoxContainer" unique_id=875352682]
+[node name="----2" type="HSeparator" parent="MainVBox/ScrollContainer/VBox" unique_id=875352682]
 layout_mode = 2
 
-[node name="PushBar" type="HBoxContainer" parent="ScrollContainer/VBoxContainer" unique_id=1595233777]
+[node name="Branch&PushPanel" type="PanelContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=1233234598]
 layout_mode = 2
-theme_override_constants/separation = 4
+theme_override_styles/panel = SubResource("StyleBoxEmpty_4wpot")
 
-[node name="BranchDropdown" type="OptionButton" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=997201676]
+[node name="HFlowContainer" type="HFlowContainer" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel" unique_id=1871906037]
+layout_mode = 2
+theme_override_constants/h_separation = 4
+
+[node name="BranchDropdown" type="OptionButton" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=997201676]
 unique_name_in_owner = true
+custom_maximum_size = Vector2(120, -1)
 layout_mode = 2
+size_flags_horizontal = 3
 tooltip_text = "Branches"
 mouse_default_cursor_shape = 2
+text_overrun_behavior = 3
+clip_text = true
 
-[node name="CreateBranchButton" type="Button" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=1649246415]
+[node name="CreateBranchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=1649246415]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Create New Branch"
 mouse_default_cursor_shape = 2
-icon = SubResource("DPITexture_vkx1n")
+icon = SubResource("DPITexture_jljbu")
 
-[node name="---" type="VSeparator" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=1122331377]
+[node name="--" type="VSeparator" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=247290972]
 layout_mode = 2
 
-[node name="CommitButton" type="Button" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=19649693]
+[node name="PushButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=1817765002]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Push Commit
+(and tag if set)"
 mouse_default_cursor_shape = 2
-text = "Commit"
+icon = SubResource("DPITexture_byujs")
 
-[node name="PushButton" type="Button" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=1817765002]
+[node name="PullButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=48988369]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "⚠ Godot may not refresh pulled scripts open
+in the editor, a restart may be needed ⚠"
 mouse_default_cursor_shape = 2
-text = "Push"
+icon = SubResource("DPITexture_sfyls")
 
-[node name="---2" type="VSeparator" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=1655186554]
-layout_mode = 2
-
-[node name="PullButton" type="Button" parent="ScrollContainer/VBoxContainer/PushBar" unique_id=48988369]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "⚠ Godot may not refresh pulled scripts already open in the editor, a restart may be needed (known Godot limitation) ⚠"
-mouse_default_cursor_shape = 2
-text = "Pull ⚠"
-
-[node name="MarginContainer" type="MarginContainer" parent="ScrollContainer/VBoxContainer" unique_id=933271118]
-layout_mode = 2
-theme_override_constants/margin_top = 5
-theme_override_constants/margin_bottom = 5
-
-[node name="RetryTagPushButton" type="Button" parent="ScrollContainer/VBoxContainer/MarginContainer" unique_id=2130813696]
+[node name="RetryTagPushButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Branch&PushPanel/HFlowContainer" unique_id=2130813696]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-size_flags_horizontal = 4
 tooltip_text = "⚠ Retry to push tag after a fail ⚠"
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.8865428, 0.002715585, 0.12494034, 1)
 text = "⚠ Push Tag ⚠"
 
-[node name="----5" type="HSeparator" parent="ScrollContainer/VBoxContainer" unique_id=575242349]
+[node name="----3" type="HSeparator" parent="MainVBox/ScrollContainer/VBox" unique_id=1575144882]
 layout_mode = 2
 
-[node name="LogFoldableContainer" type="FoldableContainer" parent="ScrollContainer/VBoxContainer" unique_id=764610019]
+[node name="GitlogFold" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=1393744662]
+unique_name_in_owner = true
+layout_mode = 2
+folded = true
+title = "Commit History"
+
+[node name="GitlogTree" type="Tree" parent="MainVBox/ScrollContainer/VBox/GitlogFold" unique_id=767101548]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 155)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+columns = 3
+column_titles_visible = true
+hide_root = true
+
+[node name="----4" type="HSeparator" parent="MainVBox/ScrollContainer/VBox" unique_id=43181204]
+layout_mode = 2
+
+[node name="OutputLogContainer" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=764610019]
 layout_mode = 2
 tooltip_text = "Console log in case you toggle off the visibility of standard output messages."
 folded = true
 title = "Output log"
 
-[node name="LogScroll" type="ScrollContainer" parent="ScrollContainer/VBoxContainer/LogFoldableContainer" unique_id=1549232491]
+[node name="LogScroll" type="ScrollContainer" parent="MainVBox/ScrollContainer/VBox/OutputLogContainer" unique_id=1549232491]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
+scroll_vertical = 469
 
-[node name="LogList" type="VBoxContainer" parent="ScrollContainer/VBoxContainer/LogFoldableContainer/LogScroll" unique_id=556901537]
+[node name="LogList" type="VBoxContainer" parent="MainVBox/ScrollContainer/VBox/OutputLogContainer/LogScroll" unique_id=556901537]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3

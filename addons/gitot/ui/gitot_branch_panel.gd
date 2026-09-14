@@ -3,6 +3,12 @@
 class_name GitotBranchPanel
 extends RefCounted
 
+
+## Max characters shown for a branch name in the dropdown before truncating
+## with an ellipsis. PopupMenu items have no pixel-based truncation API,
+## so we truncate the string itself for both button and popup consistency.
+const MAX_BRANCH_NAME_CHARS: int = 24
+
 var _git_engine: GitEngine
 var _branch_dropdown: OptionButton
 var _new_branch_dialog: ConfirmationDialog
@@ -38,12 +44,12 @@ func populate(branches: Array[Dictionary]) -> void:
 	var current_index: int = 0
 	for i in branches.size():
 		var branch: Dictionary = branches[i]
-		# in GitotBranchPanel.populate(), replace add_item with:
 		_branch_dropdown.add_icon_item(
 			EditorInterface.get_base_control().get_theme_icon("VcsBranches", "EditorIcons"),
-			branch["name"]
+			_truncate(branch["name"])
 		)
-		_branch_names.append(branch["name"])
+		_branch_dropdown.set_item_tooltip(i, branch["name"]) # full name on hover
+		_branch_names.append(branch["name"]) # full name kept for switch_branch()
 		if branch["is_current"]:
 			current_index = i
 
@@ -66,3 +72,10 @@ func _on_dialog_confirmed() -> void:
 		GitotLogger.w("Branch name is empty. Creation aborted!")
 		return
 	_git_engine.create_branch(name)
+
+
+## Truncates a display name with an ellipsis if it exceeds MAX_BRANCH_NAME_CHARS.
+func _truncate(text: String) -> String:
+	if text.length() <= MAX_BRANCH_NAME_CHARS:
+		return text
+	return text.substr(0, MAX_BRANCH_NAME_CHARS - 1) + "…"
