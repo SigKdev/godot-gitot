@@ -30,7 +30,7 @@ static func g(message: String) -> void: _print(message, Level.GIT)
 static func _print(message: String, level: Level) -> void:
 	var prefix := "[color=cyan][Gitot][/color]"
 	var color := "white"
-	
+
 	match level:
 		Level.SUCCESS:
 			color = "lime_green"

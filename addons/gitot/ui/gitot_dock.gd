@@ -1,13 +1,14 @@
 ## gitot_dock.gd
-## Displays staged/unstaged file trees and triggers manual status refresh.
-# Receives a GitEngine reference from the plugin (SoC: this script owns UI only).
+## Default dock for the Gitot plugin. Contains all UI elements,
+## and delegates git commands to the shared GitEngine instance.
 @tool
 class_name GitotDock
 extends Control
 
+var _git_engine: GitEngine
+var _ready_initialized: bool = false
 
-## Injected by gitot.gd on dock creation.
-var git_engine: GitEngine
+var _diff_gutter: GitotDiffGutter
 var _log_console: GitotLogConsole
 var _status_tree: GitotStatusTree
 var _status_panel: GitotStatusPanel
@@ -15,77 +16,175 @@ var _log_panel: GitLogPanel
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
 var _branch_panel: GitotBranchPanel
-var diff_gutter: GitotDiffGutter
+
+const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
+
+
+## Determines whether a branch exists locally, remotely, or both.
+static func _get_branch_scope(
+	branch_name: String,
+	branches: Array[Dictionary],
+) -> String:
+	var local_exists: bool = false
+	var remote_exists: bool = false
+
+	for branch: Dictionary in branches:
+		if branch["is_remote"]:
+			if branch["name"] == "origin/" + branch_name:
+				remote_exists = true
+		elif branch["name"] == branch_name:
+			local_exists = true
+
+	if local_exists and remote_exists:
+		return "(Local + Remote)"
+	if remote_exists:
+		return "(Remote)"
+	return "(Local)"
+
+
+func _ready() -> void:
+	if not _git_engine:
+		# GitEngine not yet injected — known Godot editor-plugin timing quirk where
+		# a @tool dock's _ready() can fire before the EditorPlugin's _enter_tree()
+		# finishes calling set_git_engine(). Retry once the current frame's
+		# synchronous injection work has completed.
+		_ready.call_deferred()
+		return
+	if _ready_initialized:
+		return
+	_ready_initialized = true
+
+	#region Version label
+	var plugin_version: String = _read_plugin_version()
+	%GitotVersion.text = (
+		"[b][font_size=14]Gitot[/font_size][/b] [font_size=9]v%s[/font_size]" % plugin_version
+	)
+	call_deferred("_set_github_panel_version", plugin_version)
+	#endregion
+
+	#region Toolbar buttons
+	%RefreshStatButton.pressed.connect(_refresh_status)
+	%RefreshStatButton.icon = _icon("Loop")
+	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
+	%RefreshDiffButton.icon = _icon("Paint")
+	%CommitButton.pressed.connect(_on_commit_pressed)
+	%StashButton.pressed.connect(_on_stash_pressed)
+	%StashButton.icon = _icon("Bake")
+	%PopButton.pressed.connect(_on_pop_pressed)
+	%PopButton.icon = _icon("LightmapGIData")
+	%PushButton.pressed.connect(_on_push_pressed)
+	%PushButton.icon = _icon("MoveUp")
+	%PullButton.pressed.connect(_on_pull_pressed)
+	%PullButton.icon = _icon("MoveDown")
+	%FetchButton.pressed.connect(_on_fetch_pressed)
+	%FetchButton.icon = _icon("AssetStore")
+	#endregion
+
+	#region Panel construction
+	# order matters: status_tree/status_panel/log_panel,
+	#must exist before _refresh_status() reads them below.
+	_status_tree = GitotStatusTree.new(
+		_git_engine,
+		%UnstagedTree,
+		%StagedTree,
+		%UnstagedFold,
+		%StagedFold,
+	)
+	_status_panel = GitotStatusPanel.new(%GitStatusLabel)
+
+	var owner_repo: Dictionary = GitEngine.parse_owner_repo(_git_engine.get_remote_url())
+	_status_panel.update_repo("%s/%s" % [owner_repo.get("owner", ""), owner_repo.get("repo", "")])
+	_log_panel = GitLogPanel.new(_git_engine, %GitlogFold, %GitlogTree)
+	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
+	_log_console = GitotLogConsole.new(%LogList, %LogScroll)
+
+	_tag_panel = GitotTagPanel.new(
+		%TagVersioningToggle,
+		%TagPanel,
+		%UseProjectToggle,
+		%TagNameEdit,
+		%UseCommitToggle,
+		%TagMessageEdit,
+	)
+
+	_branch_panel = GitotBranchPanel.new(
+		_git_engine,
+		%BranchDropdown,
+		%CreateBranchButton,
+		%NewBranchDialog,
+		%NewBranchNameInput,
+	)
+	%CreateBranchButton.icon = _icon("Add")
+	if _git_engine:
+		_git_engine.list_branches()
+		_status_panel.update_branch(_git_engine.get_current_branch())
+	#endregion
+
+	#region Settings & dialogs
+	%SettingsToggleButton.icon = _icon("GDScript")
+	%SettingsToggleButton.pressed.connect(
+		func() -> void:
+			%SettingsPanel.visible = not %SettingsPanel.visible,
+	)
+	%PushConfirmDialog.confirmed.connect(_do_push)
+
+	%UseCommitToggle.toggled.connect(
+		func(on: bool) -> void:
+			%TagMessageEdit.visible = not on,
+	)
+
+	if _orchestrator:
+		%RetryTagPushButton.pressed.connect(_orchestrator.retry_tag_push)
+	#endregion
+
+## Auto-refreshes status when the editor window regains focus,
+## gated by the "auto_refresh_on_focus" setting.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		if GitotSettings.get_value("auto_refresh_on_focus"):
+			_refresh_status()
+
+
+func _read_plugin_version() -> String:
+	var config: ConfigFile = ConfigFile.new()
+	if config.load(PLUGIN_CONFIG_PATH) != OK:
+		return ""
+	return str(config.get_value("plugin", "version", ""))
+
+
+func _set_github_panel_version(plugin_version: String) -> void:
+	var github_panel: Node = EditorInterface.get_editor_main_screen().find_child(
+		"GithubPanel",
+		true,
+		false,
+	)
+	if github_panel and github_panel.has_method("set_plugin_version"):
+		github_panel.set_plugin_version(plugin_version)
 
 
 ## Assigns the shared GitEngine instance.
 ## Called once by gitot.gd after instantiation.
 func set_git_engine(engine: GitEngine) -> void:
-	git_engine = engine
-	git_engine.command_completed.connect(_on_status_result)
+	_git_engine = engine
+	_git_engine.command_completed.connect(_on_status_result)
 
 
 func set_sync_orchestrator(orchestrator: GitSyncOrchestrator) -> void:
 	_orchestrator = orchestrator
 	orchestrator.push_state_changed.connect(_on_push_state_changed)
 	orchestrator.tag_retry_needed.connect(_on_tag_retry_needed)
-	
+
+
 ## Assigns the shared GitotDiffGutter instance.
 ## Called once by gitot.gd after instantiation.
 func set_diff_gutter(gutter: GitotDiffGutter) -> void:
-	diff_gutter = gutter
-
-
-func _ready() -> void:
-	%RefreshStatButton.pressed.connect(_refresh_status)
-	%RefreshStatButton.icon = EditorInterface.get_base_control().get_theme_icon("Loop", "EditorIcons")
-	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
-	%RefreshDiffButton.icon = EditorInterface.get_base_control().get_theme_icon("Paint", "EditorIcons")
-	%CommitButton.pressed.connect(_on_commit_pressed)
-	%StashButton.pressed.connect(_on_stash_pressed)
-	%StashButton.icon = EditorInterface.get_base_control().get_theme_icon("Bake", "EditorIcons")
-	%PopButton.pressed.connect(_on_pop_pressed)
-	%PopButton.icon = EditorInterface.get_base_control().get_theme_icon("LightmapGIData", "EditorIcons")
-	%PushButton.pressed.connect(_on_push_pressed)
-	%PushButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveUp", "EditorIcons")
-	%PullButton.pressed.connect(_on_pull_pressed)
-	%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveDown", "EditorIcons")
-	%FetchButton.pressed.connect(_on_fetch_pressed)
-	%FetchButton.icon = EditorInterface.get_base_control().get_theme_icon("AssetStore", "EditorIcons")
-	_status_tree = GitotStatusTree.new(%UnstagedTree, %StagedTree, %UnstagedFold, %StagedFold)
-	_status_tree.git_engine = git_engine
-	_status_panel = GitotStatusPanel.new(%GitStatusLabel)
-	_status_panel.update_repo(GitotStatusPanel._parse_repo_name(git_engine.get_remote_url()))
-	_log_panel = GitLogPanel.new(git_engine, %GitlogFold, %GitlogTree)
-	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
-	_log_console = GitotLogConsole.new(%LogList, %LogScroll)
-	
-	_tag_panel = GitotTagPanel.new(%TagVersioningToggle, %TagPanel, %UseProjectToggle, %TagNameEdit, %UseCommitToggle, %TagMessageEdit)
-	
-	_branch_panel = GitotBranchPanel.new(
-	git_engine, %BranchDropdown, %CreateBranchButton, %NewBranchDialog, %NewBranchNameInput
-	)
-	%CreateBranchButton.icon = EditorInterface.get_base_control().get_theme_icon("Add", "EditorIcons")
-	if git_engine:
-		git_engine.list_branches()
-		_status_panel.update_branch(git_engine.get_current_branch())
-
-	%SettingsToggleButton.icon = EditorInterface.get_base_control().get_theme_icon("GDScript", "EditorIcons")
-	%SettingsToggleButton.pressed.connect(
-		func() -> void: %SettingsPanel.visible = not %SettingsPanel.visible
-	)
-	%PushConfirmDialog.confirmed.connect(_do_push)
-
-	%UseCommitToggle.toggled.connect(func(on: bool) -> void: %TagMessageEdit.visible = not on)
-
-	if _orchestrator:
-		%RetryTagPushButton.pressed.connect(_orchestrator.retry_tag_push)
+	_diff_gutter = gutter
 
 
 ## Disconnects this dock from the shared GitEngine. Called by gitot.gd on exit.
 func teardown() -> void:
-	if git_engine and git_engine.command_completed.is_connected(_on_status_result):
-		git_engine.command_completed.disconnect(_on_status_result)
+	if _git_engine and _git_engine.command_completed.is_connected(_on_status_result):
+		_git_engine.command_completed.disconnect(_on_status_result)
 	if _log_console:
 		_log_console.teardown()
 
@@ -99,10 +198,10 @@ func refresh_log() -> void:
 ## (e.g. during editor startup, before the setter runs)
 ## Shared refresh call. Guards against git_engine not yet injected.
 func _refresh_status() -> void:
-	if not git_engine:
+	if not _git_engine:
 		return
-	git_engine.run_fast("status", GitEngine.STATUS_ARGS)
-	git_engine.get_ahead_behind()
+	_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
+	_git_engine.get_ahead_behind()
 	_log_panel.refresh()
 
 
@@ -114,7 +213,7 @@ func _notify_changed_files() -> void:
 	var fs: EditorFileSystem = EditorInterface.get_resource_filesystem()
 	var open_scenes: PackedStringArray = EditorInterface.get_open_scenes()
 
-	for relative_path in git_engine.get_changed_files_since_switch():
+	for relative_path in _git_engine.get_changed_files_since_switch():
 		var res_path: String = "res://" + relative_path
 		if not FileAccess.file_exists(res_path):
 			continue
@@ -123,33 +222,47 @@ func _notify_changed_files() -> void:
 			EditorInterface.reload_scene_from_path(res_path)
 
 
-## Auto-refreshes status when the editor window regains focus,
-## gated by the "auto_refresh_on_focus" setting.
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
-		if GitotSettings.get_value("auto_refresh_on_focus"):
-			_refresh_status()
+## Button icon helper. Avoids repeating the long EditorInterface.get_base_control() chain.
+func _icon(name: String) -> Texture2D:
+	return EditorInterface.get_base_control().get_theme_icon(name, &"EditorIcons")
 
 
-# TODO: diff gutter refresh
 ## Triggers a diff gutter refresh.
 ## Manual fallback for unreliable save signal.
 func _on_refresh_diff_pressed() -> void:
-	diff_gutter.refresh_current_script()
+	_diff_gutter.refresh_current_script()
+
+#region Status Result
+## Routes a finished GitEngine command to its domain handler.
+func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	match command:
+		GitEngine.Command.COMMIT:
+			_handle_commit_result(exit_code)
+		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
+			_handle_stash_result(command, exit_code, output)
+		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine.Command.PULL:
+			_handle_sync_result(command, exit_code, output)
+		GitEngine.Command.BRANCHES, GitEngine.Command.SWITCH, GitEngine.Command.CREATE_BRANCH:
+			_handle_branch_result(command, exit_code, output)
+		GitEngine.Command.LOG:
+			_handle_log_result(output)
+		GitEngine.Command.STATUS:
+			_handle_status_result(output)
 
 
-## Uses porcelain=v2 for reliable status parsing.
-func _on_status_result(command_name: String, exit_code: int, output: Array) -> void:
-	if command_name == "commit":
+## Handles the result of a commit command, logging success or failure.
+func _handle_commit_result(exit_code: int) -> void:
+	if exit_code == 0:
+		GitotLogger.s("Commit successful.")
+	else:
+		GitotLogger.x("Commit failed.")
+
+
+## Handles the result of a stash or stash_pop command, logging success or failure.
+func _handle_stash_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	if command == GitEngine.Command.STASH:
 		if exit_code == 0:
-			GitotLogger.s("Commit successful.")
-		else:
-			GitotLogger.x("Commit failed.")
-		return
-
-	if command_name == "stash":
-		if exit_code == 0:
-			if output[0].contains("No local changes to save"):
+			if not output.is_empty() and output[0].contains("No local changes to save"):
 				GitotLogger.w("Nothing to stash.")
 			else:
 				GitotLogger.s("Changes stashed.")
@@ -159,29 +272,31 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 				GitotLogger.g(output[0])
 		return
 
-	if command_name == "stash_pop":
-		if exit_code == 0:
-			GitotLogger.s("Stash popped.")
-		else:
-			GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
-			if not output.is_empty():
-				GitotLogger.g(output[0])
-		return
+	# stash_pop
+	if exit_code == 0:
+		GitotLogger.s("Stash popped.")
+	else:
+		GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
+		if not output.is_empty():
+			GitotLogger.g(output[0])
 
-	if command_name == "fetch":
+
+## Fetch / ahead-behind / push / pull — everything touching remote sync status.
+func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	if command == GitEngine.Command.FETCH:
 		%FetchButton.disabled = false
-		%FetchButton.icon = EditorInterface.get_base_control().get_theme_icon("AssetStore", "EditorIcons")
-		var clean_output: String = output[0].replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
+		%FetchButton.icon = _icon("AssetStore")
 		if exit_code == 0:
 			GitotLogger.s("Fetch finished.")
-			git_engine.list_branches() # new remote branches only become visible after fetch
+			_git_engine.list_branches() # new remote branches only become visible after fetch
+			_git_engine.get_ahead_behind() # keep sync status current with new remote refs
 		else:
 			GitotLogger.e("Fetch failed.")
-		if not clean_output.is_empty():
-			GitotLogger.g(clean_output)
+		if not output[0].is_empty():
+			GitotLogger.g(output[0])
 		return
 
-	if command_name == "ahead_behind":
+	if command == GitEngine.Command.AHEAD_BEHIND:
 		if exit_code != 0 or output.is_empty():
 			_status_panel.update_sync(0, 0)
 			return
@@ -194,51 +309,76 @@ func _on_status_result(command_name: String, exit_code: int, output: Array) -> v
 			GitotLogger.i("Current branch is %d ahead, %d behind origin." % [ahead, behind])
 		return
 
-	if command_name in ["push", "pull"]:
-		if command_name == "pull":
-			%PullButton.disabled = false
-			%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("MoveDown", "EditorIcons") 
+	# push / pull
+	if command == GitEngine.Command.PULL:
+		%PullButton.disabled = false
+		%PullButton.icon = _icon("MoveDown")
 
-		# Strip internal exit-code marker before showing git's raw output to the user.
-		var clean_output: String = output[0].replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
-		if exit_code == 0:
-			GitotLogger.s("%s finished." % command_name.capitalize())
-		else:
-			GitotLogger.e("%s failed." % command_name.capitalize())
-		if not clean_output.is_empty():
-			GitotLogger.g(clean_output) # git's raw stderr
-		if command_name == "pull" and exit_code == 0:
-			EditorInterface.get_resource_filesystem().scan()
-		return
+	var display_name: String = GitEngine.Command.keys()[command].capitalize()
+	if exit_code == 0:
+		GitotLogger.s("%s finished." % display_name)
+	else:
+		GitotLogger.e("%s failed." % display_name)
+	if not output[0].is_empty():
+		GitotLogger.g(output[0]) # git's raw stderr
+	if command == GitEngine.Command.PULL and exit_code == 0:
+		EditorInterface.get_resource_filesystem().scan()
 
-	if command_name == "branches":
+
+## Branch list refresh, switch, and create — everything that changes HEAD or the dropdown.
+func _handle_branch_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	if command == GitEngine.Command.BRANCHES:
 		if not output.is_empty():
-			_branch_panel.populate(GitBranchParser.parse(output[0]))
+			var branches: Array[Dictionary] = GitBranchParser.parse(output[0])
+			var branch_scopes: Dictionary[String, String] = {}
+
+			for branch: Dictionary in branches:
+				if branch["is_remote"]:
+					branch_scopes[branch["name"]] = "Remote"
+				else:
+					branch_scopes[branch["name"]] = _get_branch_scope(
+						branch["name"],
+						branches,
+					)
+
+			_branch_panel.populate(branches, branch_scopes)
+
+			var current_branch: String = _git_engine.get_current_branch()
+			_status_panel.update_branch(
+				current_branch,
+				branch_scopes.get(current_branch, ""),
+			)
 		return
 
-	if command_name in ["switch", "create_branch"]:
-		if exit_code == 0:
-			GitotLogger.s("%s successful, now on '[color=gray]%s[/color]'" % [command_name.capitalize(), git_engine.get_current_branch()])
-			_notify_changed_files()
-		else:
-			GitotLogger.e("%s failed." % command_name.capitalize())
-			if not output.is_empty():
-				GitotLogger.g(output[0]) # git's raw stderr
-		git_engine.list_branches()
-		_status_panel.update_branch(git_engine.get_current_branch())
-		return
-
-	if command_name == "log":
+	# switch / create_branch
+	var display_name: String = GitEngine.Command.keys()[command].capitalize()
+	if exit_code == 0:
+		GitotLogger.s(
+			"%s successful, now on '[color=gray]%s[/color]'"
+			% [display_name, _git_engine.get_current_branch()]
+		)
+		_notify_changed_files()
+	else:
+		GitotLogger.e("%s failed." % display_name)
 		if not output.is_empty():
-			_log_panel.populate(GitLogParser.parse(output[0]))
-		return
+			GitotLogger.g(output[0]) # git's raw stderr
+	_git_engine.list_branches()
+	_status_panel.update_branch(_git_engine.get_current_branch())
 
-	# Used for refreshing the status tree.
-	if command_name != "status" or output.is_empty():
+
+## Handles the result of a log command, populating the log panel.
+func _handle_log_result(output: Array) -> void:
+	if not output.is_empty():
+		_log_panel.populate(GitLogParser.parse(output[0]))
+
+
+## Refreshes the status tree.
+func _handle_status_result(output: Array) -> void:
+	if output.is_empty():
 		return
 	var parsed: Dictionary = GitStatusParser.parse(output[0])
 	_status_tree.populate(parsed)
-
+#endregion
 
 ## Commits currently staged files with the message from the input field.
 func _on_commit_pressed() -> void:
@@ -246,23 +386,29 @@ func _on_commit_pressed() -> void:
 	if message.is_empty():
 		GitotLogger.w("Commit message is empty. Commit aborted!")
 		return
-	git_engine.run_fast("commit", ["commit", "-m", message])
+	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message])
 	%CommitMessageInput.text = ""
 
 
 ## Shelves all uncommitted changes onto the stash stack.
 func _on_stash_pressed() -> void:
-	git_engine.stash_push()
+	_git_engine.stash_push()
 
 
 ## Reapplies and removes the most recent stash entry.
 func _on_pop_pressed() -> void:
-	git_engine.stash_pop()
+	_git_engine.stash_pop()
 
 
 func _on_push_state_changed(pushing: bool) -> void:
 	%PushButton.disabled = pushing
-	%PushButton.icon = EditorInterface.get_base_control().get_theme_icon("Time", "EditorIcons") if pushing else EditorInterface.get_base_control().get_theme_icon("MoveUp", "EditorIcons")
+	%PushButton.icon = (
+		_icon("Time")
+		if pushing
+		else EditorInterface \
+				.get_base_control() \
+				.get_theme_icon("MoveUp", "EditorIcons")
+	)
 
 
 func _on_tag_retry_needed(needed: bool) -> void:
@@ -280,7 +426,7 @@ func _on_push_pressed() -> void:
 
 ## Executes the actual push — called directly or after dialog confirmation.
 func _do_push() -> void:
-	var tag_input: Dictionary = _tag_panel.get_tag_input(git_engine.get_last_commit_message())
+	var tag_input: Dictionary = _tag_panel.get_tag_input(_git_engine.get_last_commit_message())
 	if _tag_panel.is_enabled():
 		if tag_input["tag_name"].is_empty():
 			GitotLogger.w("Tag name is empty. Push aborted!")
@@ -294,14 +440,12 @@ func _do_push() -> void:
 ## Fetches remote refs (no working-tree changes).
 func _on_fetch_pressed() -> void:
 	%FetchButton.disabled = true
-	%FetchButton.icon = EditorInterface.get_base_control().get_theme_icon("Time", "EditorIcons")
-	git_engine.fetch()
+	%FetchButton.icon = _icon("Time")
+	_git_engine.fetch()
 
 
-# FIXME: Need to wrapped commands pull/push (for consistency)
 ## Pulls latest changes from the remote tracking branch.
 func _on_pull_pressed() -> void:
 	%PullButton.disabled = true
-	#%PullButton.text = "Pulling..."
-	%PullButton.icon = EditorInterface.get_base_control().get_theme_icon("Time", "EditorIcons")
-	git_engine.run_network("pull", ["pull"])
+	%PullButton.icon = _icon("Time")
+	_git_engine.pull()

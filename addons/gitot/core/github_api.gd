@@ -23,6 +23,9 @@ func _ready() -> void:
 
 ## Sends a GET request to [param endpoint] (e.g. "/repos/owner/repo/issues").
 func get_endpoint(endpoint: String) -> void:
+	if _http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		GitotLogger.w("GitHub request already in progress - ignoring.")
+		return
 	var token: String = GithubAuth.load_token()
 	var headers: PackedStringArray = [
 		"Authorization: Bearer %s" % token,
@@ -38,8 +41,8 @@ func fetch_issues(owner: String, repo: String) -> void:
 
 
 ## Fetches all labels defined for [param owner]/[param repo].
-func fetch_labels(owner: String, repo: String) -> void:
-	get_endpoint("/repos/%s/%s/labels?per_page=100" % [owner, repo])
+# func fetch_labels(owner: String, repo: String) -> void:
+	# get_endpoint("/repos/%s/%s/labels?per_page=100" % [owner, repo])
 
 
 ## Routes the raw HTTPRequest response to the correct outcome signal.

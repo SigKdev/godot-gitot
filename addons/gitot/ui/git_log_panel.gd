@@ -22,28 +22,6 @@ func _init(git_engine: GitEngine, fold: FoldableContainer, tree: Tree) -> void:
 	_setup_tree_columns()
 	_setup_count_dropdown(fold)
 
-# setup tree
-func _setup_tree_columns() -> void:
-	_tree.hide_root = true
-	_tree.columns = 3
-	_tree.set_column_title(0, "Message")
-	_tree.set_column_title(1, "Author")
-	_tree.set_column_title(2, "Date")
-	_tree.column_titles_visible = true
-	_tree.set_column_expand(0, true) # Message gets remaining space.
-	_tree.set_column_expand(1, false)
-	_tree.set_column_expand(2, false)
-	_tree.set_column_custom_minimum_width(1, 60)
-	_tree.set_column_custom_minimum_width(2, 80)
-
-# setup button
-func _setup_count_dropdown(fold: FoldableContainer) -> void:
-	_count_dropdown = OptionButton.new()
-	for count in COUNT_OPTIONS:
-		_count_dropdown.add_item(str(count))
-	_count_dropdown.item_selected.connect(_on_count_selected)
-	fold.add_title_bar_control(_count_dropdown)
-
 
 ## Requests a fresh log using the currently selected count.
 ## Called on manual refresh (RefreshStatButton) and after state-changing commands.
@@ -64,6 +42,30 @@ func populate(entries: Array[Dictionary]) -> void:
 		item.set_text(2, entry["date_relative"])
 		item.set_tooltip_text(2, entry["date_short"])
 		item.set_tooltip_text(0, entry["message"]) # Full message on hover if truncated.
+
+
+# setup tree
+func _setup_tree_columns() -> void:
+	_tree.hide_root = true
+	_tree.columns = 3
+	_tree.set_column_title(0, "Message")
+	_tree.set_column_title(1, "Author")
+	_tree.set_column_title(2, "Date")
+	_tree.column_titles_visible = true
+	_tree.set_column_expand(0, true) # Message gets remaining space.
+	_tree.set_column_expand(1, false)
+	_tree.set_column_expand(2, false)
+	_tree.set_column_custom_minimum_width(1, 60)
+	_tree.set_column_custom_minimum_width(2, 80)
+
+
+# setup button
+func _setup_count_dropdown(fold: FoldableContainer) -> void:
+	_count_dropdown = OptionButton.new()
+	for count in COUNT_OPTIONS:
+		_count_dropdown.add_item(str(count))
+	_count_dropdown.item_selected.connect(_on_count_selected)
+	fold.add_title_bar_control(_count_dropdown)
 
 
 func _on_count_selected(_index: int) -> void:

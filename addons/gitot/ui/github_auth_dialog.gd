@@ -12,4 +12,7 @@ func _ready() -> void:
 ## Persists the entered token when the user presses OK.
 func _on_confirmed() -> void:
 	var token: String = %TokenInput.text.strip_edges()
+	if token.is_empty():
+		GitotLogger.w("Token field was empty - existing token unchanged.")
+		return
 	GithubAuth.save_token(token)

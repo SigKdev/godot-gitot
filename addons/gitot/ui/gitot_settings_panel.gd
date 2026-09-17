@@ -2,6 +2,7 @@
 ## Self-contained settings UI. Reads/writes GitotSettings directly.
 ## No dependency on gitot_dock.gd — purely a UI painter for its own controls.
 @tool
+class_name GitotSettingsPanel
 extends PanelContainer
 
 

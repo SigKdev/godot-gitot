@@ -10,6 +10,7 @@ var _repo_name: String = ""
 var _branch: String = ""
 var _ahead: int = 0
 var _behind: int = 0
+var _branch_scope: String = ""
 
 
 func _init(label: RichTextLabel) -> void:
@@ -22,8 +23,9 @@ func update_repo(name: String) -> void:
 	_render()
 
 
-func update_branch(branch: String) -> void:
+func update_branch(branch: String, scope: String = "") -> void:
 	_branch = branch
+	_branch_scope = scope
 	_render()
 
 
@@ -43,14 +45,19 @@ func _render() -> void:
 		branch_display = "[color=red](detached HEAD)[/color]"
 	elif branch_display.length() > MAX_BRANCH_CHARS:
 		branch_display = branch_display.left(MAX_BRANCH_CHARS - 1) + "…"
-	var sync_text: String = "[color=lime_green]↑%d[/color] [color=orange]↓%d[/color]" % [_ahead, _behind]
-	_label.text = "%s  ·  [b]%s[/b]  ·  %s" % [_repo_name, branch_display, sync_text]
 
+	var scope_display: String = ""
+	if not _branch_scope.is_empty():
+		scope_display = " %s" % _branch_scope
 
-## Extracts "owner/repo" from a git remote URL (SSH or HTTPS form).
-static func _parse_repo_name(url: String) -> String:
-	var cleaned: String = url.trim_suffix(".git")
-	var parts: PackedStringArray = cleaned.split("/")
-	if parts.size() < 2:
-		return ""
-	return "%s/%s" % [parts[-2].split(":")[-1], parts[-1]]
+	var sync_text: String = "[color=lime_green]↑%d[/color] [color=orange]↓%d[/color]" % [
+		_ahead,
+		_behind,
+	]
+
+	_label.text = "[font_size=11]%s  ·  [b]%s[/b]%s  ·  %s[/font_size]" % [
+		_repo_name,
+		branch_display,
+		scope_display,
+		sync_text,
+	]

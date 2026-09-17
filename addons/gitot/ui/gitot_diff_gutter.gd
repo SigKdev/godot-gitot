@@ -5,18 +5,18 @@ class_name GitotDiffGutter
 extends RefCounted
 
 ## Gutter colors per GitDiffParser.LineState.
-const COLOR_ADDED: Color = Color(0.3, 0.8, 0.3)
-const COLOR_MODIFIED: Color = Color(0.9, 0.7, 0.2)
+const COLOR_ADDED: Color = "forest_green"
+const COLOR_MODIFIED: Color = "dark_orange"
 
 ## Column index used for our custom gutter on each CodeEdit.
 const GUTTER_NAME: String = "gitot_diff_gutter"
 
-var git_engine: GitEngine
+var _git_engine: GitEngine
 
 
 func _init(engine: GitEngine) -> void:
-	git_engine = engine
-	git_engine.command_completed.connect(_on_diff_result)
+	_git_engine = engine
+	_git_engine.command_completed.connect(_on_diff_result)
 
 
 ## Runs diff for the currently active script and refreshes its gutter.
@@ -26,13 +26,13 @@ func refresh_current_script() -> void:
 	if not script:
 		return
 	var path: String = ProjectSettings.globalize_path(script.resource_path)
-	git_engine.run_fast("diff", ["diff", "-U0", "--no-ext-diff", "HEAD", "--", path])
+	_git_engine.run_fast(GitEngine.Command.DIFF, ["diff", "-U0", "--no-ext-diff", "HEAD", "--", path])
 
 
 ## Disconnects this gutter handler from the shared GitEngine. Called by gitot.gd on exit.
 func teardown() -> void:
-	if git_engine and git_engine.command_completed.is_connected(_on_diff_result):
-		git_engine.command_completed.disconnect(_on_diff_result)
+	if _git_engine and _git_engine.command_completed.is_connected(_on_diff_result):
+		_git_engine.command_completed.disconnect(_on_diff_result)
 
 
 ## Ensures the given CodeEdit has our gutter registered exactly once,
@@ -51,8 +51,8 @@ func _ensure_gutter(code_edit: CodeEdit) -> int:
 
 
 ## Applies parsed diff line states to the active CodeEdit's gutter.
-func _on_diff_result(command_name: String, exit_code: int, output: Array) -> void:
-	if command_name != "diff" or output.is_empty():
+func _on_diff_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	if command != GitEngine.Command.DIFF or exit_code != 0 or output.is_empty():
 		return
 
 	var current_editor: ScriptEditorBase = EditorInterface.get_script_editor().get_current_editor()
@@ -72,7 +72,10 @@ func _on_diff_result(command_name: String, exit_code: int, output: Array) -> voi
 	# Apply the parsed line states to the gutter.
 	var line_states: Dictionary = GitDiffParser.parse(output[0])
 	for line_num: int in line_states:
-		var color: Color = COLOR_ADDED if line_states[line_num] == GitDiffParser.LineState.ADDED else COLOR_MODIFIED
+		var color: Color = (
+			COLOR_ADDED if line_states[line_num] == GitDiffParser.LineState.ADDED
+			else COLOR_MODIFIED
+		)
 		var target_line: int = line_num - 1
 		# Diff line numbers are 1-based; CodeEdit lines are 0-based.
 		code_edit.set_line_gutter_text(target_line, gutter_idx, "┃")

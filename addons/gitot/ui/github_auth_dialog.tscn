@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cu02lfvrscgp7"]
 
-[ext_resource type="Script" uid="uid://dnd3vh7jlgn05" path="res://addons/gitot/ui/github_auth_dialog.gd" id="1_ri0rs"]
+[ext_resource type="Script" path="res://addons/gitot/ui/github_auth_dialog.gd" id="1_ri0rs"]
 
 [node name="GithubAuthDialog" type="ConfirmationDialog" unique_id=1371466796]
 oversampling_override = 1.0

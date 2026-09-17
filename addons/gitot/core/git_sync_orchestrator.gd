@@ -23,7 +23,7 @@ func _init(git_engine: GitEngine) -> void:
 func start_push(tag_input: Dictionary) -> void:
 	_pending_tag = tag_input
 	push_state_changed.emit(true)
-	_git_engine.run_network("push", ["push", "-u", "origin", "HEAD"])
+	_git_engine.run_network(GitEngine.Command.PUSH, ["push", "-u", "origin", "HEAD"])
 
 
 ## Re-attempts pushing the tag that was created locally but failed to push.
@@ -32,26 +32,28 @@ func retry_tag_push() -> void:
 	_git_engine.push_tag(_pending_tag["tag_name"])
 
 
-func _on_command_completed(command_name: String, exit_code: int, output: Array) -> void:
-	match command_name:
-		"push":
+## Disconnects from the shared GitEngine. Called by gitot.gd on exit.
+func teardown() -> void:
+	if _git_engine.command_completed.is_connected(_on_command_completed):
+		_git_engine.command_completed.disconnect(_on_command_completed)
+
+
+func _on_command_completed(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	match command:
+		GitEngine.Command.PUSH:
 			push_state_changed.emit(false)
 			if exit_code == 0 and not _pending_tag.get("tag_name", "").is_empty():
 				_git_engine.create_tag(_pending_tag["tag_name"], _pending_tag["tag_message"])
-		"tag":
+		GitEngine.Command.TAG:
 			if exit_code == 0:
 				_git_engine.push_tag(_pending_tag["tag_name"])
-			elif output[0].contains("already exists"):
-				# Tag likely survived a prior failed push_tag attempt — push it as-is
-				# instead of erroring. Known limitation: if a same-named tag was
-				# created manually pointing at a different commit, this pushes THAT
-				# tag. Documented in README.
-				GitotLogger.w("⚠ Tag '%s' already exists locally - Pushing as-is! ⚠" % _pending_tag["tag_name"])
+			elif not output.is_empty() and output[0].contains("already exists"):
+				GitotLogger.w("Tag '%s' already exists locally - Pushing as-is!" % _pending_tag["tag_name"])
 				_git_engine.push_tag(_pending_tag["tag_name"])
 			else:
 				GitotLogger.e("Tag creation failed. Tag push aborted!")
 				_pending_tag = {}
-		"push_tag":
+		GitEngine.Command.PUSH_TAG:
 			if exit_code == 0:
 				GitotLogger.s("Tag pushed")
 				tag_retry_needed.emit(false)
