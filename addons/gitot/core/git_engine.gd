@@ -165,18 +165,18 @@ func get_last_commit_message() -> String:
 ## Returns files changed by the most recent `switch`/`create_branch` (reflog diff).
 ## Sync/local — mirrors get_remote_url()/get_last_commit_message() pattern.
 ## Used to call EditorFileSystem.update_file() precisely instead of a full scan().
-## @return: paths relative to project root (e.g. "scenes/player.tscn"). Empty on
-## first-ever switch (no HEAD@{1} yet) or any git failure.
-func get_changed_files_since_switch() -> PackedStringArray:
+## @return: {"reliable": bool, "files": PackedStringArray}. reliable=false means
+## HEAD@{1} doesn't exist yet (first switch) or git failed — NOT "nothing changed".
+func get_changed_files_since_switch() -> Dictionary:
 	var output: Array = []
 	var exit_code: int = OS.execute(
-		"git",
-		["-C", _project_root(), "diff", "--name-only", "HEAD@{1}", "HEAD"],
-		output,
+		"git", ["-C", _project_root(), "diff", "--name-only", "HEAD@{1}", "HEAD"], output,
 	)
-	if exit_code != 0 or output.is_empty():
-		return PackedStringArray()
-	return PackedStringArray(output[0].strip_edges().split("\n", false))
+	if exit_code != 0:
+		return {"reliable": false, "files": PackedStringArray()}
+	if output.is_empty() or output[0].strip_edges().is_empty():
+		return {"reliable": true, "files": PackedStringArray()}
+	return {"reliable": true, "files": PackedStringArray(output[0].strip_edges().split("\n", false))}
 
 
 ## Lists branches. Fast/local op — routes through run_fast.
@@ -214,6 +214,28 @@ func get_current_branch() -> String:
 		"git",
 		["-C", _project_root(), "branch", "--show-current"],
 		output,
+	)
+	if exit_code != 0 or output.is_empty():
+		return ""
+	return String(output[0]).strip_edges()
+
+
+## Returns the commit SHA a local tag points to, or "" if the tag doesn't exist.
+func get_tag_commit(tag_name: String) -> String:
+	var output: Array = []
+	var exit_code: int = OS.execute(
+		"git", ["-C", _project_root(), "rev-list", "-n", "1", tag_name], output,
+	)
+	if exit_code != 0 or output.is_empty():
+		return ""
+	return String(output[0]).strip_edges()
+
+
+## Returns HEAD's full commit SHA, or "" on failure.
+func get_head_commit() -> String:
+	var output: Array = []
+	var exit_code: int = OS.execute(
+		"git", ["-C", _project_root(), "rev-parse", "HEAD"], output,
 	)
 	if exit_code != 0 or output.is_empty():
 		return ""

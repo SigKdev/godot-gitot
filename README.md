@@ -12,10 +12,10 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 - **Commit & Sync:** Single and bulk Staging/Unstaging, commit message (multiline supported), and Commit / Push / Pull buttons.
 - **Stash Quick-Actions:** One-click stash and pop from the dock toolbar, for shelving experimental changes before a branch switch.
-- **Local Branch Management:** Switch branches, create new local branches. Scenes open in the editor refresh automatically on switch, without a full project rescan. (read: [Limitation](#known-limitations))
+- **Local Branch Management:** Switch branches, create new local branches. Scenes open in the editor refresh automatically on switch, without a full project rescan. Editor toast warns if an open script changed on disk or if changed files couldn't be reliably detected. (read: [Limitation](#known-limitations))
 - **Remote Branch Management:** Fetch button, remote-only branches listed and checked out with automatic tracking.
 - **Gitot Settings Panel:** A one-line Status panel summarizing current repo, current branch (detached HEAD flagged in red), branch scope and ahead/behind sync status.
-- **Tags Versioning:** Push with/without annotated tag. *(auto tagging settings - see details)*. (read: [Limitation](#known-limitations)).
+- **Tags Versioning:** Push with/without annotated tag. *(auto tagging settings - see details)*.
 - **Commit History:** List of recent commits (message, author, date) with a count filter (10/20/30).
 - **Color-only diff gutter:** Modified and added lines are marked directly in the script editor's gutter.
 - **GitHub Issues Tracker Board:** Display remote GitHub issues of the project repo (read: [PAT](#github-personal-access-token)). **(opt-out in settings)**.
@@ -29,10 +29,10 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 - **Async execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored background process with a 30-second timeout guard, so a slow or stalled connection never freezes the editor.
 - **Commit & Sync:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with single and bulk stage/unstage. Status color & icon. Warning icon for conflicted file and large-file guard. Push targets `-u origin HEAD`.
 - **Stash Quick-Actions:** One-click stash with `-u` flag (staged + unstaged + untracked) and pop from the dock toolbar. Fixed stash message. Pop conflicts output.
-- **Local Branch Management:** Branch dropdown, and a "new branch" button/dialogue. On switch/create, only files git actually changed are refreshed - `EditorFileSystem.update_file()` for cache bookkeeping, plus `EditorInterface.reload_scene_from_path()` for any of those files currently open in a tab - avoiding the full-project `scan()` noise that a refresh would trigger.
+- **Local Branch Management:** Branch dropdown, and a "new branch" button/dialogue. On switch/create, only files git actually changed are refreshed - `EditorFileSystem.update_file()` for cache bookkeeping, plus `EditorInterface.reload_scene_from_path()` for any of those files currently open in a tab - avoiding the full-project `scan()` noise that a refresh would trigger. Godot has no API to reload or close an open script tab, so an editor toast flags any open script that changed on disk (close/reopen manually), and a separate toast warns when changed-file detection itself is unreliable (first switch after clone, or rapid successive switches).
 - **Remote Branch Management:** `git fetch origin` via button, refreshing the branch list on success. Remote-tracking branches with no local counterpart appear in the dropdown, selecting one runs `switch -c <name> --track origin/<name>` in one atomic op. Full name and branch scope on tooltip.
 - **Repo Status Panel:** Show `owner/repo · branch (local/remote) · ↑ahead ↓behind`. Updates live on every status-triggering command. Detached HEAD shown in red in place of a branch name. Ahead/behind only logs to console on actual change, not on redundant refreshes (e.g. focus-in polling).
-- **Tags Versioning:** Tag is push with commit. Settings to auto use Version *(from project settings)* for the tag's name (with auto `v` prefix) and the commit message for the tag's message. (read: [Limitation](#known-limitations)).
+- **Tags Versioning:** Tag is push with commit. Settings to auto use Version *(from project settings)* for the tag's name (with auto `v` prefix) and the commit message for the tag's message.
 - **Commit History:** `git log` parsed via `\x1f`-delimited format string. Count-filtered dropdown (10/20/30, default reflects last selection). Relative date shown in-list, exact short date (`YYYY-MM-DD HH-MM`) on date hover tooltip. Auto-refreshes alongside status on the same trigger set (commit/push/pull/switch) and on manual *Refresh Status* fallback button.
 - **Gitot Settings Panel:** Add Settings (user://gitot_settings.cfg), large_file_mb, confirm_push, auto_refresh_on_focus, github_issues_enabled.
 - **Color-only diff gutter:** modified and added lines are marked directly in the script editor's gutter, computed from `git diff -U0` against `HEAD`. Updates automatically on save (where Godot's save signal fires reliably), on Godot editor focus, and a manual **Refresh Diff Gutter** fallback button.
@@ -79,11 +79,9 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 - Godot's `resource_saved` signal does not fire for all save paths (e.g. Run Project/Scene auto-saves). Use the **Refresh Diff Gutter** button to catch up manually in those cases. Or switch away from the Godot windows and switch back to trigger auto-refresh (see in settings).
 
-- **Branch Management** scene/resource refresh relies on the git reflog (`HEAD@{1}`) to detect changed files, so it only compares against the immediately-previous checkout. On the very first switch after a fresh clone (no prior reflog entry) or after multiple rapid switches, the changed-file list may be empty and open tabs won't auto-refresh - close/reopen the tab manually in that case.
+- **Branch Management** scene/resource refresh relies on the git reflog (`HEAD@{1}`) to detect changed files, so it only compares against the immediately-previous checkout. On the very first switch after a fresh clone (no prior reflog entry) or after multiple rapid switches, Gitot cannot reliably tell what changed and shows an editor toast warning instead of silently doing nothing - close/reopen any open scripts/scenes manually in that case.
 
 - Switching to a branch whose `project.godot` differs from the current one *(e.g. different enabled plugins/autoloads)* triggers Godot's own **"File has been modified outside Godot"** dialog for `project.godot`. This is a Godot editor behavior outside Gitot's control (separate watcher from `EditorFileSystem`) - click **Reload from Disk** reflects the real branch content.
-
-- **Tags Versioning** self-heals from a failed tag push: if `Push` previously created a tag locally but failed to push it (network/timeout), retrying will detect the existing local tag and **push it as-is** instead of erroring. **Caveat:** if you reuse a tag name that already exists locally from an *unrelated*, fully-completed push (pointing at an older commit), **Gitot will push that existing tag silently instead of creating a new one (no error is shown)**. Verify on GitHub that the tag lands on the commit you expect, or use a unique tag name to avoid collisions.
 
 - **Stash** includes untracked files (`-u` flag). Popping after switching branches can reintroduce files that conflict with the new branch's content. Same underlying risk as any `switch` with pending changes.
 
@@ -159,6 +157,25 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 ## Changelog
 
 <details>
+<summary>v0.7.2</summary>
+
+fix: harden v0.7.1 - tag collision hardening & feedback for stale resources
+
+Previous retry-on-null-engine fix has a real flaw, it retries unconditionally forever, with no cap. Under normal conditions _git_engine gets set within a frame or two and it's harmless. But there's a Godot editor behavior I didn't account for: the editor can instantiate @tool scenes on its own, most commonly for filesystem thumbnail/preview generation, completely outside the plugin's own add_control_to_dock() flow. An instance created that way never gets set_git_engine() called on it at all, ever. With my fix, that orphaned instance's _ready() just calls _ready.call_deferred() on itself, forever, one more queued call every frame, with nothing ever stopping it. Fixed with a `MAX_READY_RETRIES: int = 30`
+
+Correctness:
+- Tag push no longer silently overwrites a same-named tag pointing at a different commit - `git_sync_orchestrator.gd` now compares the existing tag's commit against HEAD before reusing it; mismatches abort with a clear error instead of pushing.
+- Fixed misleading "Push aborted" tag-collision error - the commit push already succeeded by that point; message now says so and tells the user to rename and push again to tag it.
+- `Push` button is now disabled while a failed tag push is awaiting retry, forcing the dedicated Retry button as the single recovery path instead of two buttons silently resolving the same pending state differently.
+
+Reliability:
+- `GitEngine.get_changed_files_since_switch()` now distinguishes "nothing changed" from "couldn't determine what changed" (no reflog entry yet, or git failure) instead of returning the same empty result for both.
+- Editor toast now warns when an open script changed on disk after a branch switch/pull (Godot has no API to reload or close a script tab, so this replaces silent staleness with a visible warning).
+- Editor toast also warns when changed-file detection itself is unreliable, instead of doing nothing.
+<hr>
+</details>
+
+<details>
 <summary>v0.7.1</summary>
 
 fix: harden v0.7.0 - correctness, lifecycle, security, architecture.
@@ -174,11 +191,10 @@ Correctness:
 - Size-guard icon no longer overwrites the conflict icon/tooltip on a file that's both conflicted and oversized.
 - Empty GitHub PAT can no longer silently overwrite an existing valid token on accidental dialog confirm.
 - `GithubApi` now guards against overlapping in-flight requests instead of silently dropping the second call.
-- Fixed dock `_ready()` firing before `GitEngine` injection completes (known Godot `@tool`-dock timing quirk) - was crashing on every editor launch; now retries via deferred call, guarded against double-init.
+- Fixed dock `_ready()` firing before `GitEngine` injection completes (known Godot `@tool`-dock timing quirk), now retries via deferred call, guarded against double-init.
 
 Security:
 - `create_tag()` rejects shell-unsafe characters (`$`, `` ` ``, `;`, `&`) that are valid git ref characters but unsafe once interpolated into `push_tag()`'s shell string.
-- Confirmed PAT storage is single-sourced (`user://gitot_auth.cfg`) - no drift found.
 
 Lifecycle:
 - `GitSyncOrchestrator.teardown()` - disconnects from `GitEngine.command_completed` on plugin exit (was relying on free-order luck).

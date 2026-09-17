@@ -5,6 +5,16 @@
 class_name GitotDock
 extends Control
 
+
+const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
+
+## Caps _ready()'s self-retry when _git_engine never arrives (e.g. an orphaned
+## instance the editor spawned outside gitot.gd's own flow, such as filesystem
+## thumbnail generation) — without this, such an instance retries forever and
+## floods the message queue.
+const MAX_READY_RETRIES: int = 30
+var _ready_retry_count: int = 0
+
 var _git_engine: GitEngine
 var _ready_initialized: bool = false
 
@@ -16,8 +26,6 @@ var _log_panel: GitLogPanel
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
 var _branch_panel: GitotBranchPanel
-
-const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 
 
 ## Determines whether a branch exists locally, remotely, or both.
@@ -44,10 +52,12 @@ static func _get_branch_scope(
 
 func _ready() -> void:
 	if not _git_engine:
-		# GitEngine not yet injected — known Godot editor-plugin timing quirk where
-		# a @tool dock's _ready() can fire before the EditorPlugin's _enter_tree()
-		# finishes calling set_git_engine(). Retry once the current frame's
-		# synchronous injection work has completed.
+		# GitEngine not yet injected — either the normal @tool-dock timing quirk
+		# (resolves within a frame or two) or an orphaned instance the editor
+		# spawned outside gitot.gd's flow (never resolves — give up past the cap).
+		_ready_retry_count += 1
+		if _ready_retry_count > MAX_READY_RETRIES:
+			return
 		_ready.call_deferred()
 		return
 	if _ready_initialized:
@@ -212,17 +222,37 @@ func _refresh_status() -> void:
 func _notify_changed_files() -> void:
 	var fs: EditorFileSystem = EditorInterface.get_resource_filesystem()
 	var open_scenes: PackedStringArray = EditorInterface.get_open_scenes()
+	var open_scripts: Array[Script] = EditorInterface.get_script_editor().get_open_scripts()
+	var result: Dictionary = _git_engine.get_changed_files_since_switch()
 
-	for relative_path in _git_engine.get_changed_files_since_switch():
+	if not result["reliable"]:
+		EditorInterface.get_editor_toaster().push_toast(
+			"Gitot: couldn't verify changed files. Close and reopen any open scripts/scenes to be safe.",
+			EditorToaster.SEVERITY_WARNING,
+		)
+		return
+
+	var stale_scripts: int = 0
+	for relative_path in result["files"]:
 		var res_path: String = "res://" + relative_path
 		if not FileAccess.file_exists(res_path):
 			continue
 		fs.update_file(res_path)
 		if res_path in open_scenes:
 			EditorInterface.reload_scene_from_path(res_path)
+		for script in open_scripts:
+			if script.resource_path == res_path:
+				stale_scripts += 1
+
+	if stale_scripts > 0:
+		EditorInterface.get_editor_toaster().push_toast(
+			"Gitot: %d open script(s) changed on disk - close and reopen to see the update." % stale_scripts,
+			EditorToaster.SEVERITY_WARNING,
+		)
 
 
-## Button icon helper. Avoids repeating the long EditorInterface.get_base_control() chain.
+## Button icon helper.
+## Avoids repeating the long EditorInterface.get_base_control() chain.
 func _icon(name: String) -> Texture2D:
 	return EditorInterface.get_base_control().get_theme_icon(name, &"EditorIcons")
 
@@ -413,7 +443,8 @@ func _on_push_state_changed(pushing: bool) -> void:
 
 func _on_tag_retry_needed(needed: bool) -> void:
 	%RetryTagPushButton.visible = needed
-
+	%PushButton.disabled = needed
+# TODO: an explicit "abandon this tag" escape hatch if the user wants to push a new commit without resolving the stuck tag first. Say if you want that — it'd need a small separate action, not bundled into this fix.
 
 ## Pushes current branch to its remote tracking branch.
 ## Gated by the "confirm_push" setting to avoid accidental remote pushes.

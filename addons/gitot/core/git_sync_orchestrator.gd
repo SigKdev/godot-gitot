@@ -48,8 +48,7 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 			if exit_code == 0:
 				_git_engine.push_tag(_pending_tag["tag_name"])
 			elif not output.is_empty() and output[0].contains("already exists"):
-				GitotLogger.w("Tag '%s' already exists locally - Pushing as-is!" % _pending_tag["tag_name"])
-				_git_engine.push_tag(_pending_tag["tag_name"])
+				_handle_tag_collision(_pending_tag["tag_name"])
 			else:
 				GitotLogger.e("Tag creation failed. Tag push aborted!")
 				_pending_tag = {}
@@ -61,3 +60,19 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 			else:
 				GitotLogger.e("Tag '%s' created locally but failed to push. Retry pushing with new tag button on the dock" % _pending_tag["tag_name"])
 				tag_retry_needed.emit(true)
+
+
+## Resolves a "tag already exists" TAG failure. Only pushes if the existing local
+## tag already points at HEAD (legitimate retry after a prior failed push) -
+## never pushes a same-named tag pointing at an unrelated commit.
+func _handle_tag_collision(tag_name: String) -> void:
+	if _git_engine.get_tag_commit(tag_name) == _git_engine.get_head_commit():
+		GitotLogger.w("Tag '%s' already exists locally on this commit - Pushing as-is!" % tag_name)
+		_git_engine.push_tag(tag_name)
+	else:
+		GitotLogger.e("Commit pushed. Tag '%s' already exists on a different commit - tag NOT created. Rename tag and push again to tag this commit." % tag_name)
+		EditorInterface.get_editor_toaster().push_toast(
+			"Gitot: Commit pushed, but tag '%s' exists on another commit. Rename tag and push again to tag it." % tag_name,
+			EditorToaster.SEVERITY_ERROR,
+		)
+		_pending_tag = {}
