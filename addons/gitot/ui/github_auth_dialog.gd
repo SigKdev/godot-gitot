@@ -9,6 +9,7 @@ func _ready() -> void:
 	%TokenInput.text = GithubAuth.load_token()
 	confirmed.connect(_on_confirmed)
 
+
 ## Persists the entered token when the user presses OK.
 func _on_confirmed() -> void:
 	var token: String = %TokenInput.text.strip_edges()

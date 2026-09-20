@@ -1,18 +1,24 @@
 ## issue_card.gd
 ## A single issue card: title, label pills, body preview, browser link.
 @tool
+class_name IssueCard
 extends PanelContainer
 
 var _issue_url: String = ""
+
 
 func _ready() -> void:
 	%BodyLabel.visible = false
 	%Chevron.gui_input.connect(_on_title_input)
 	%TitleLabel.gui_input.connect(_on_title_input)
-	%OpenButton.icon = EditorInterface.get_base_control().get_theme_icon("ExternalLink", "EditorIcons")
+	%OpenButton.icon = EditorInterface.get_base_control().get_theme_icon(
+		"ExternalLink",
+		"EditorIcons",
+	)
 	%OpenButton.expand_icon = false
 	%OpenButton.add_theme_constant_override("icon_max_width", 11)
 	%OpenButton.pressed.connect(_on_open_pressed)
+
 
 ## Populates the card from a raw GitHub issue JSON dictionary.
 func setup(issue: Dictionary) -> void:
@@ -28,8 +34,8 @@ func setup(issue: Dictionary) -> void:
 		pill.add_theme_color_override("font_color", _readable_text_color(bg_color))
 		pill.add_theme_stylebox_override("normal", _make_pill_stylebox(bg_color))
 		%LabelsRow.add_child(pill)
-	
-	var author: String = issue.get("user", {}).get("login", "unknown")
+
+	var author: String = issue.get("user", { }).get("login", "unknown")
 	var created: String = issue.get("created_at", "").left(10) # YYYY-MM-DD from ISO 8601
 	%MetaLabel.text = "by %s · %s" % [author, created]
 

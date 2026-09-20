@@ -1,6 +1,6 @@
 ## gitot_tag_panel.gd
 ## Owns the tag-versioning UI: toggles, version-tag formatting, tag input resolution.
-## Pure UI unit (SoC) — no knowledge of push/tag git orchestration.
+## Pure UI unit, no knowledge of push/tag git orchestration.
 class_name GitotTagPanel
 extends RefCounted
 
@@ -58,7 +58,7 @@ func is_enabled() -> bool:
 
 
 ## Resolves current tag input state for the push orchestration.
-## Returns empty tag_name if tag versioning is off — caller treats that as no-tag push.
+## Returns empty tag_name if tag versioning is off - caller treats that as no-tag push.
 func get_tag_input(last_commit_message: String) -> Dictionary:
 	if not is_enabled():
 		return { "tag_name": "", "tag_message": "" }

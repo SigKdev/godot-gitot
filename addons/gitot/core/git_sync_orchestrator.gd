@@ -1,17 +1,17 @@
 ## git_sync_orchestrator.gd
 ## Owns the push -> create-tag -> push-tag state machine.
-## Domain orchestration (SoC): reacts to GitEngine results and issues the next git command.
-## Dock only calls start_push()/retry_tag_push() and reacts to the two signals below.
+## Reacts to GitEngine results and issues the next git command.
 class_name GitSyncOrchestrator
 extends RefCounted
 
 ## Emitted when a push starts/ends — dock updates the Push button state.
 signal push_state_changed(pushing: bool)
+
 ## Emitted when a tag was created but its push failed (true), or on success/reset (false).
 signal tag_retry_needed(needed: bool)
 
 var _git_engine: GitEngine
-var _pending_tag: Dictionary = {}
+var _pending_tag: Dictionary = { }
 
 
 func _init(git_engine: GitEngine) -> void:
@@ -38,6 +38,7 @@ func teardown() -> void:
 		_git_engine.command_completed.disconnect(_on_command_completed)
 
 
+## Reacts to GitEngine command completion events and issues the next command in the push->tag->push-tag chain.
 func _on_command_completed(command: GitEngine.Command, exit_code: int, output: Array) -> void:
 	match command:
 		GitEngine.Command.PUSH:
@@ -51,14 +52,17 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 				_handle_tag_collision(_pending_tag["tag_name"])
 			else:
 				GitotLogger.e("Tag creation failed. Tag push aborted!")
-				_pending_tag = {}
+				_pending_tag = { }
 		GitEngine.Command.PUSH_TAG:
 			if exit_code == 0:
 				GitotLogger.s("Tag pushed")
 				tag_retry_needed.emit(false)
-				_pending_tag = {}
+				_pending_tag = { }
 			else:
-				GitotLogger.e("Tag '%s' created locally but failed to push. Retry pushing with new tag button on the dock" % _pending_tag["tag_name"])
+				GitotLogger.e(
+					"Tag '%s' created locally but failed to push. Retry pushing with new tag button on the dock"
+					% _pending_tag["tag_name"]
+				)
 				tag_retry_needed.emit(true)
 
 
@@ -70,9 +74,13 @@ func _handle_tag_collision(tag_name: String) -> void:
 		GitotLogger.w("Tag '%s' already exists locally on this commit - Pushing as-is!" % tag_name)
 		_git_engine.push_tag(tag_name)
 	else:
-		GitotLogger.e("Commit pushed. Tag '%s' already exists on a different commit - tag NOT created. Rename tag and push again to tag this commit." % tag_name)
+		GitotLogger.e(
+			"Commit pushed. Tag '%s' already exists on a different commit - tag NOT created. Rename tag and push again to tag this commit."
+			% tag_name
+		)
 		EditorInterface.get_editor_toaster().push_toast(
-			"Gitot: Commit pushed, but tag '%s' exists on another commit. Rename tag and push again to tag it." % tag_name,
+			"Gitot: Commit pushed, but tag '%s' exists on another commit. Rename tag and push again to tag it."
+			% tag_name,
 			EditorToaster.SEVERITY_ERROR,
 		)
-		_pending_tag = {}
+		_pending_tag = { }

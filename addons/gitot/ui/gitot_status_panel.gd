@@ -17,7 +17,7 @@ func _init(label: RichTextLabel) -> void:
 	_label = label
 
 
-## Sets the static "owner/repo" label. Called once in _ready() — never changes mid-session.
+## Sets the static "owner/repo" label. Called once in _ready() - never changes mid-session.
 func update_repo(name: String) -> void:
 	_repo_name = name
 	_render()

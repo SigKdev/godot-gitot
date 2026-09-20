@@ -4,7 +4,6 @@
 class_name GitLogPanel
 extends RefCounted
 
-## Dropdown options, index-matched to their commit count.
 const COUNT_OPTIONS: PackedInt32Array = [10, 20, 30]
 
 var _git_engine: GitEngine
@@ -44,7 +43,6 @@ func populate(entries: Array[Dictionary]) -> void:
 		item.set_tooltip_text(0, entry["message"]) # Full message on hover if truncated.
 
 
-# setup tree
 func _setup_tree_columns() -> void:
 	_tree.hide_root = true
 	_tree.columns = 3
@@ -59,7 +57,6 @@ func _setup_tree_columns() -> void:
 	_tree.set_column_custom_minimum_width(2, 80)
 
 
-# setup button
 func _setup_count_dropdown(fold: FoldableContainer) -> void:
 	_count_dropdown = OptionButton.new()
 	for count in COUNT_OPTIONS:

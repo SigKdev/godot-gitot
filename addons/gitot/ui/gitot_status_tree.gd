@@ -1,11 +1,11 @@
 ## gitot_status_tree.gd
 ## Owns Staged/Unstaged file trees: population, staging/unstaging, bulk actions, size guard.
-## Pure UI unit (SoC), no knowledge of commit/push/pull/tag flows.
+## Pure UI unit, no knowledge of commit/push/pull/tag flows.
 class_name GitotStatusTree
 extends RefCounted
 
 const STATUS_COLORS: Dictionary = {
-	GitStatusParser.FileStatus.NEW_FILE: Color.CORNFLOWER_BLUE, # Color.LIME_GREEN,
+	GitStatusParser.FileStatus.NEW_FILE: Color.CORNFLOWER_BLUE,
 	GitStatusParser.FileStatus.DELETED: Color.INDIAN_RED,
 	GitStatusParser.FileStatus.CONFLICT: Color.ORANGE,
 	GitStatusParser.FileStatus.MODIFIED: Color.FOREST_GREEN,
@@ -54,7 +54,6 @@ func populate(parsed: Dictionary) -> void:
 	_populate_tree(_unstaged_tree, parsed["unstaged"], _unstaged_fold, "Unstaged", true)
 
 
-## Button icon helper. Avoids repeating the long EditorInterface.get_base_control() chain.
 func _icon(name: String) -> Texture2D:
 	return EditorInterface.get_base_control().get_theme_icon(name, &"EditorIcons")
 
@@ -165,7 +164,6 @@ func _on_tree_button_clicked(
 	EditorInterface.edit_resource(load(res_path))
 
 
-## Stages every unstaged/untracked file, skipping (and reporting) any that exceed the size guard.
 func _on_stage_all_pressed() -> void:
 	var paths: Array[String] = _get_tree_paths(_unstaged_tree)
 	if paths.is_empty():
@@ -182,7 +180,6 @@ func _on_stage_all_pressed() -> void:
 	_git_engine.run_fast(GitEngine.Command.STAGE, ["add", "--"] + to_stage)
 
 
-## Unstages every currently staged file. No size guard — unstaging never writes objects.
 func _on_unstage_all_pressed() -> void:
 	if _staged_tree.get_root() == null or _staged_tree.get_root().get_child(0) == null:
 		return
@@ -199,7 +196,6 @@ func _get_tree_paths(tree: Tree) -> Array[String]:
 	return paths
 
 
-## Reads the configurable large-file threshold, converted to bytes.
 func _max_file_size_bytes() -> int:
 	return int(GitotSettings.get_value("large_file_mb")) * 1024 * 1024
 
@@ -210,5 +206,5 @@ func _is_oversized(abs_path: String) -> bool:
 		return false
 	var file: FileAccess = FileAccess.open(abs_path, FileAccess.READ)
 	if not file:
-		return false # Unreadable/missing — let git report the real error, not gitot.
+		return false # Unreadable/missing - let git report the real error, not gitot.
 	return file.get_length() >= _max_file_size_bytes()

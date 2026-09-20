@@ -1,13 +1,12 @@
 ## gitot_settings.gd
-## Static SSOT for user-configurable plugin settings.
-## Storage: user://gitot_settings.cfg — plaintext, non-sensitive values only.
+## Static for user-configurable plugin settings.
+## Storage: user://gitot_settings.cfg - plaintext, non-sensitive values only.
 class_name GitotSettings
 extends RefCounted
 
 const PATH: String = "user://gitot_settings.cfg"
 const SECTION: String = "settings"
 
-## Default values — single source of truth for every known key.
 const DEFAULTS: Dictionary = {
 	"large_file_mb": 50,
 	"confirm_push": true,

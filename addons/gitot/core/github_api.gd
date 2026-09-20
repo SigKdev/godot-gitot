@@ -1,14 +1,16 @@
 ## github_api.gd
 ## Thin authenticated wrapper around HTTPRequest for the GitHub REST API.
-## Emits raw parsed JSON on success; never touches local git state (SoC).
+## Emits raw parsed JSON on success; never touches local git state.
 @tool
 class_name GithubApi
 extends Node
 
 ## Emitted when a request succeeds. [param data] is the parsed JSON body.
 signal request_succeeded(data: Variant)
+
 ## Emitted on 401 — token is invalid/expired/revoked.
 signal auth_failed
+
 ## Emitted on any other failure (network, non-200/401 status).
 signal request_failed(status_code: int)
 
@@ -17,9 +19,11 @@ const USER_AGENT: String = "Gitot-Godot-Plugin"
 
 var _http: HTTPRequest = HTTPRequest.new()
 
+
 func _ready() -> void:
 	add_child(_http)
 	_http.request_completed.connect(_on_request_completed)
+
 
 ## Sends a GET request to [param endpoint] (e.g. "/repos/owner/repo/issues").
 func get_endpoint(endpoint: String) -> void:
@@ -34,19 +38,21 @@ func get_endpoint(endpoint: String) -> void:
 	]
 	_http.request(API_BASE + endpoint, headers)
 
+
 ## Fetches up to 100 open issues for [param owner]/[param repo].
-## Note: repos with more than 100 open issues are truncated in v1 — no pagination.
+## Note: repos with more than 100 open issues are truncated in v1
+# TODO: Pagination.
 func fetch_issues(owner: String, repo: String) -> void:
 	get_endpoint("/repos/%s/%s/issues?per_page=100&state=open" % [owner, repo])
 
 
-## Fetches all labels defined for [param owner]/[param repo].
-# func fetch_labels(owner: String, repo: String) -> void:
-	# get_endpoint("/repos/%s/%s/labels?per_page=100" % [owner, repo])
-
-
 ## Routes the raw HTTPRequest response to the correct outcome signal.
-func _on_request_completed(_result: int, status_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_request_completed(
+	_result: int,
+	status_code: int,
+	_headers: PackedStringArray,
+	body: PackedByteArray,
+) -> void:
 	if status_code == 401:
 		auth_failed.emit()
 		return

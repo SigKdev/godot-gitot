@@ -17,6 +17,7 @@ signal command_completed(command: Command, exit_code: int, output: Array)
 enum Command {
 	STATUS,
 	DIFF,
+	DIFF_FULL,
 	COMMIT,
 	STAGE,
 	UNSTAGE,
@@ -33,9 +34,6 @@ enum Command {
 	TAG,
 	PUSH_TAG,
 }
-
-## Timeout for network operations (push/pull), in seconds.
-const NETWORK_TIMEOUT_SEC: float = 30.0
 
 ## Canonical status args. --untracked-files=all forces recursion into
 ## untracked directories instead of collapsing them to one folder entry.
@@ -57,8 +55,12 @@ const LOG_FORMAT: String = "--pretty=format:%h\u001f%an\u001f%ar\u001f%ad\u001f%
 ## since it gates every path that can lead there.
 const UNSAFE_TAG_CHARS: String = "$`;&"
 
-## PIDs of currently running network operations (push/pull), so they can be
-## killed if the plugin is disabled mid-operation.
+## Timeout for network operations (push/pull), in seconds.
+const NETWORK_TIMEOUT_SEC: float = 30.0
+
+## Process Identifiers of currently running network operations (push/pull),
+## returned by OS.create_process() and polled via OS.is_process_running().
+## They can be killed if the plugin is disabled mid-operation.
 var _active_pids: Array[int] = []
 
 
@@ -68,20 +70,20 @@ static func is_git_available() -> bool:
 	return OS.execute("git", ["--version"], output) == 0
 
 
-## Returns the absolute path to the project root, used to anchor every
-## git call so it always targets this repo regardless of editor CWD.
-static func _project_root() -> String:
-	return ProjectSettings.globalize_path("res://")
-
-
 ## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
 ## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
 static func parse_owner_repo(url: String) -> Dictionary:
 	var cleaned: String = url.trim_suffix(".git")
 	var parts: PackedStringArray = cleaned.split("/")
 	if parts.size() < 2:
-		return {}
-	return {"owner": parts[-2].split(":")[-1], "repo": parts[-1]}
+		return { }
+	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
+
+
+## Returns the absolute path to the project root, used to anchor every
+## git call so it always targets this repo regardless of editor CWD.
+static func _project_root() -> String:
+	return ProjectSettings.globalize_path("res://")
 
 
 ## Runs a fast, local git command (read or write) off the main thread.
@@ -99,7 +101,10 @@ func run_network(command: Command, args: PackedStringArray) -> void:
 	# Time.get_ticks_usec() disambiguates concurrent same-named ops (e.g. two
 	# fetches in flight); the real PID isn't known until after
 	# OS.create_process() returns, too late to embed in this path.
-	var log_path: String = "user://gitot_%s_%d.log" % [Command.keys()[command], Time.get_ticks_usec()]
+	var log_path: String = "user://gitot_%s_%d.log" % [
+		Command.keys()[command],
+		Time.get_ticks_usec(),
+	]
 	var abs_log_path: String = ProjectSettings.globalize_path(log_path)
 
 	# Build the full command: redirect output, then append the real exit status
@@ -122,13 +127,7 @@ func run_network(command: Command, args: PackedStringArray) -> void:
 	# Create the process and store the PID.
 	var pid: int = OS.create_process(shell, shell_args)
 	if pid == -1:
-		call_deferred(
-			"emit_signal",
-			"command_completed",
-			command,
-			-1,
-			["Failed to start process."],
-		)
+		call_deferred("emit_signal", "command_completed", command, -1, ["Failed to start process."])
 		return
 
 	_active_pids.append(pid)
@@ -170,13 +169,18 @@ func get_last_commit_message() -> String:
 func get_changed_files_since_switch() -> Dictionary:
 	var output: Array = []
 	var exit_code: int = OS.execute(
-		"git", ["-C", _project_root(), "diff", "--name-only", "HEAD@{1}", "HEAD"], output,
+		"git",
+		["-C", _project_root(), "diff", "--name-only", "HEAD@{1}", "HEAD"],
+		output,
 	)
 	if exit_code != 0:
-		return {"reliable": false, "files": PackedStringArray()}
+		return { "reliable": false, "files": PackedStringArray() }
 	if output.is_empty() or output[0].strip_edges().is_empty():
-		return {"reliable": true, "files": PackedStringArray()}
-	return {"reliable": true, "files": PackedStringArray(output[0].strip_edges().split("\n", false))}
+		return { "reliable": true, "files": PackedStringArray() }
+	return {
+		"reliable": true,
+		"files": PackedStringArray(output[0].strip_edges().split("\n", false)),
+	}
 
 
 ## Lists branches. Fast/local op — routes through run_fast.
@@ -224,7 +228,9 @@ func get_current_branch() -> String:
 func get_tag_commit(tag_name: String) -> String:
 	var output: Array = []
 	var exit_code: int = OS.execute(
-		"git", ["-C", _project_root(), "rev-list", "-n", "1", tag_name], output,
+		"git",
+		["-C", _project_root(), "rev-list", "-n", "1", tag_name],
+		output,
 	)
 	if exit_code != 0 or output.is_empty():
 		return ""
@@ -234,9 +240,7 @@ func get_tag_commit(tag_name: String) -> String:
 ## Returns HEAD's full commit SHA, or "" on failure.
 func get_head_commit() -> String:
 	var output: Array = []
-	var exit_code: int = OS.execute(
-		"git", ["-C", _project_root(), "rev-parse", "HEAD"], output,
-	)
+	var exit_code: int = OS.execute("git", ["-C", _project_root(), "rev-parse", "HEAD"], output)
 	if exit_code != 0 or output.is_empty():
 		return ""
 	return String(output[0]).strip_edges()
@@ -276,6 +280,13 @@ func get_ahead_behind() -> void:
 func track_remote_branch(remote_name: String) -> void:
 	var local_name: String = remote_name.trim_prefix("origin/")
 	run_fast(Command.CREATE_BRANCH, ["switch", "-c", local_name, "--track", remote_name])
+
+
+## Runs a full-context diff (-U3) for the bottom-dock diff viewer.
+## Separate from the gutter's -U0 Command.DIFF — different consumer, different parser.
+## @param path: absolute path to the file (globalized, matches gutter's convention).
+func diff_full(path: String) -> void:
+	run_fast(Command.DIFF_FULL, ["diff", "-U3", "--no-ext-diff", "HEAD", "--", path])
 
 
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.
@@ -348,7 +359,10 @@ func _poll_process(pid: int, command: Command, log_path: String, start_time_ms: 
 	# The marker is the actual exit status of the git command,
 	# not a guess based on stdout/stderr content. (see git_cmd above)
 	var success: bool = log_content.contains("EXITCODE:0")
-	var clean_output: String = log_content.replace("EXITCODE:0", "").replace("EXITCODE:1", "").strip_edges()
+	var clean_output: String = log_content \
+			.replace("EXITCODE:0", "") \
+			.replace("EXITCODE:1", "") \
+			.strip_edges()
 	output.append(clean_output)
 	emit_signal("command_completed", command, 0 if success else 1, output)
 

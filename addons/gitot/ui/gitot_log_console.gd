@@ -1,10 +1,9 @@
 ## gitot_log_console.gd
-## Renders GitotLogger output live inside the dock's FoldableContainer.
-## SoC: pure UI painter, owns no git logic, just listens to GitotLogger.
+## Renders GitotLogger output live inside the dock.
+## no git logic, just listens to GitotLogger.
 class_name GitotLogConsole
 extends RefCounted
 
-## Container holding one RichTextLabel per log line (bbcode-formatted).
 var _log_list: VBoxContainer
 var _scroll: ScrollContainer
 var _base: Control
@@ -29,7 +28,7 @@ func teardown() -> void:
 		_log_list.resized.disconnect(_scroll_to_bottom)
 
 
-## Adds one formatted (bbcode) log line, styled to match Godot's own Output panel.
+## Adds formatted (bbcode) log line, styled to match Godot's own Output panel.
 func _append_line(formatted: String) -> void:
 	var label := RichTextLabel.new()
 	label.bbcode_enabled = true

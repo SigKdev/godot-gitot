@@ -10,6 +10,7 @@ const CONFIG_PATH: String = "user://gitot_auth.cfg"
 const SECTION: String = "auth"
 const KEY_TOKEN: String = "pat"
 
+
 ## Saves the token to disk. Returns true on success.
 static func save_token(token: String) -> bool:
 	var config: ConfigFile = ConfigFile.new()
@@ -20,6 +21,7 @@ static func save_token(token: String) -> bool:
 		return false
 	return true
 
+
 ## Returns the stored token, or an empty string if none exists.
 static func load_token() -> String:
 	var config: ConfigFile = ConfigFile.new()
@@ -27,6 +29,7 @@ static func load_token() -> String:
 	if err != OK:
 		return ""
 	return config.get_value(SECTION, KEY_TOKEN, "")
+
 
 ## Clears the stored token (used on 401 / auth_failed).
 static func clear_token() -> void:

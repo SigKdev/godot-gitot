@@ -4,11 +4,9 @@
 class_name GithubPanel
 extends Control
 
-## The three meaningfully distinct states of the Refresh button — each implies
-## different click behavior, not just a different label.
 enum RefreshButtonState {
-	IDLE,       # Ready to fetch. Label varies (default/failed/empty-result).
-	LOADING,    # Request in flight. Disabled.
+	IDLE, # Ready to fetch. Label varies (default/failed/empty-result).
+	LOADING, # Request in flight. Disabled.
 	NEEDS_AUTH, # No valid PAT. Clicking re-opens the auth dialog.
 }
 
@@ -18,7 +16,6 @@ const AuthDialogScene: PackedScene = preload("res://addons/gitot/ui/github_auth_
 
 ## Called by the editor when the user switches to/away from this tab.
 var has_fetched: bool = false
-## Injected the same way git_engine is injected into the dock (setter, not direct assignment).
 var _git_engine: GitEngine
 
 @onready var _api: GithubApi = %GithubApi
@@ -54,9 +51,8 @@ func fetch_current_repo_issues() -> void:
 	%StatusLabel.visible = false
 
 
-## Single source of truth for the Refresh button's text/disabled state —
+## Refresh button's text/disabled state,
 ## every transition goes through here so none can forget to reset either.
-## @param label: display text for IDLE (ignored for LOADING/NEEDS_AUTH, which have fixed text).
 func _set_refresh_state(state: RefreshButtonState, label: String = "Refresh Issues") -> void:
 	match state:
 		RefreshButtonState.IDLE:

@@ -1,9 +1,19 @@
+## gitot_logger.gd
+## Centralized print wrapper (info/success/warning/error/extreme/git)
+## with capped history and an optional UI listener;
+## `EXTREME` also routes through `printerr`.
 class_name GitotLogger
 extends RefCounted
 
-enum Level { INFO, SUCCESS, WARNING, ERROR, EXTREME, GIT }
+enum Level {
+	INFO,
+	SUCCESS,
+	WARNING,
+	ERROR,
+	EXTREME,
+	GIT,
+}
 
-## Caps log_history so a long editor session doesn't grow it unbounded.
 const MAX_HISTORY: int = 200
 
 static var log_history: Array[String] = []
@@ -20,12 +30,29 @@ static func set_listener(callback: Callable) -> void:
 	_on_log = callback
 
 
-static func i(message: String) -> void: _print(message, Level.INFO)
-static func s(message: String) -> void: _print(message, Level.SUCCESS)
-static func w(message: String) -> void: _print(message, Level.WARNING)
-static func e(message: String) -> void: _print(message, Level.ERROR)
-static func x(message: String) -> void: _print(message, Level.EXTREME)
-static func g(message: String) -> void: _print(message, Level.GIT)
+static func i(message: String) -> void:
+	_print(message, Level.INFO)
+
+
+static func s(message: String) -> void:
+	_print(message, Level.SUCCESS)
+
+
+static func w(message: String) -> void:
+	_print(message, Level.WARNING)
+
+
+static func e(message: String) -> void:
+	_print(message, Level.ERROR)
+
+
+static func x(message: String) -> void:
+	_print(message, Level.EXTREME)
+
+
+static func g(message: String) -> void:
+	_print(message, Level.GIT)
+
 
 static func _print(message: String, level: Level) -> void:
 	var prefix := "[color=cyan][Gitot][/color]"

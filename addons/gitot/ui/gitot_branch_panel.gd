@@ -1,11 +1,10 @@
 ## gitot_branch_panel.gd
-## Branch dropdown (switch) + new-branch dialog. UI-only — no OS.execute() calls.
+## Branch switch + new-branch dialog. UI-only — no OS.execute() calls.
 class_name GitotBranchPanel
 extends RefCounted
 
-## Max characters shown for a branch name in the dropdown before truncating
-## with an ellipsis. PopupMenu items have no pixel-based truncation API,
-## so we truncate the string itself for both button and popup consistency.
+## PopupMenu items have no pixel-based truncation API,
+## truncate the string itself for both button and popup consistency.
 const MAX_BRANCH_NAME_CHARS: int = 24
 
 var _git_engine: GitEngine
@@ -19,11 +18,9 @@ var _branch_names: PackedStringArray = []
 var _branch_is_remote: Array[bool] = []
 
 
-## Filters out remote entries that already have a matching local branch.
-## e.g. "origin/main" is hidden when local "main" already tracks it.
+## Filters out remote entries to voids redundant dropdown clutter
+## (e.g. "main" + "origin/main" both showing).
 ## tooltips show the full name and scope (local/remote) for all entries.
-## Filters out remote entries that already have a matching local branch —
-## avoids redundant dropdown clutter (e.g. "main" + "origin/main" both showing).
 static func _filter_redundant_remotes(branches: Array[Dictionary]) -> Array[Dictionary]:
 	var local_names: Array[String] = []
 
@@ -59,13 +56,8 @@ func _init(
 
 
 ## Rebuilds the dropdown from a fresh branch list. Called by dock on "branches" result.
-## Remote entries with a matching local branch are filtered out (redundant —
-## e.g. "origin/main" hidden when local "main" already tracks it).
 ## @param branches: Array[Dictionary] from GitBranchParser.parse().
-func populate(
-	branches: Array[Dictionary],
-	branch_scopes: Dictionary[String, String],
-) -> void:
+func populate(branches: Array[Dictionary], branch_scopes: Dictionary[String, String]) -> void:
 	_branch_dropdown.clear()
 	_branch_names.clear()
 	_branch_is_remote.clear()
@@ -118,7 +110,6 @@ func _on_dialog_confirmed() -> void:
 	_git_engine.create_branch(name)
 
 
-## Truncates a display name with an ellipsis if it exceeds MAX_BRANCH_NAME_CHARS.
 func _truncate(text: String) -> String:
 	if text.length() <= MAX_BRANCH_NAME_CHARS:
 		return text

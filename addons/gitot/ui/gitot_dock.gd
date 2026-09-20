@@ -1,23 +1,19 @@
 ## gitot_dock.gd
-## Default dock for the Gitot plugin. Contains all UI elements,
+## Main dock for the Gitot plugin. Contains all UI elements,
 ## and delegates git commands to the shared GitEngine instance.
 @tool
 class_name GitotDock
 extends Control
 
-
 const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 
-## Caps _ready()'s self-retry when _git_engine never arrives (e.g. an orphaned
-## instance the editor spawned outside gitot.gd's own flow, such as filesystem
-## thumbnail generation) — without this, such an instance retries forever and
-## floods the message queue.
+# Caps _ready()'s self-retry when _git_engine never arrives.
 const MAX_READY_RETRIES: int = 30
+
 var _ready_retry_count: int = 0
 
 var _git_engine: GitEngine
 var _ready_initialized: bool = false
-
 var _diff_gutter: GitotDiffGutter
 var _log_console: GitotLogConsole
 var _status_tree: GitotStatusTree
@@ -29,10 +25,7 @@ var _branch_panel: GitotBranchPanel
 
 
 ## Determines whether a branch exists locally, remotely, or both.
-static func _get_branch_scope(
-	branch_name: String,
-	branches: Array[Dictionary],
-) -> String:
+static func _get_branch_scope(branch_name: String, branches: Array[Dictionary]) -> String:
 	var local_exists: bool = false
 	var remote_exists: bool = false
 
@@ -147,12 +140,44 @@ func _ready() -> void:
 		%RetryTagPushButton.pressed.connect(_orchestrator.retry_tag_push)
 	#endregion
 
+
 ## Auto-refreshes status when the editor window regains focus,
 ## gated by the "auto_refresh_on_focus" setting.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		if GitotSettings.get_value("auto_refresh_on_focus"):
 			_refresh_status()
+
+
+## Assigns the shared GitEngine instance.
+func set_git_engine(engine: GitEngine) -> void:
+	_git_engine = engine
+	_git_engine.command_completed.connect(_on_status_result)
+
+
+## Assigns the Push chain sync.
+func set_sync_orchestrator(orchestrator: GitSyncOrchestrator) -> void:
+	_orchestrator = orchestrator
+	orchestrator.push_state_changed.connect(_on_push_state_changed)
+	orchestrator.tag_retry_needed.connect(_on_tag_retry_needed)
+
+
+## Assigns the shared GitotDiffGutter instance.
+func set_diff_gutter(gutter: GitotDiffGutter) -> void:
+	_diff_gutter = gutter
+
+
+## Disconnects this dock from the shared GitEngine. Called by gitot.gd on exit.
+func teardown() -> void:
+	if _git_engine and _git_engine.command_completed.is_connected(_on_status_result):
+		_git_engine.command_completed.disconnect(_on_status_result)
+	if _log_console:
+		_log_console.teardown()
+
+
+## Public passthrough for gitot.gd.
+func refresh_log() -> void:
+	_log_panel.refresh()
 
 
 func _read_plugin_version() -> String:
@@ -170,38 +195,6 @@ func _set_github_panel_version(plugin_version: String) -> void:
 	)
 	if github_panel and github_panel.has_method("set_plugin_version"):
 		github_panel.set_plugin_version(plugin_version)
-
-
-## Assigns the shared GitEngine instance.
-## Called once by gitot.gd after instantiation.
-func set_git_engine(engine: GitEngine) -> void:
-	_git_engine = engine
-	_git_engine.command_completed.connect(_on_status_result)
-
-
-func set_sync_orchestrator(orchestrator: GitSyncOrchestrator) -> void:
-	_orchestrator = orchestrator
-	orchestrator.push_state_changed.connect(_on_push_state_changed)
-	orchestrator.tag_retry_needed.connect(_on_tag_retry_needed)
-
-
-## Assigns the shared GitotDiffGutter instance.
-## Called once by gitot.gd after instantiation.
-func set_diff_gutter(gutter: GitotDiffGutter) -> void:
-	_diff_gutter = gutter
-
-
-## Disconnects this dock from the shared GitEngine. Called by gitot.gd on exit.
-func teardown() -> void:
-	if _git_engine and _git_engine.command_completed.is_connected(_on_status_result):
-		_git_engine.command_completed.disconnect(_on_status_result)
-	if _log_console:
-		_log_console.teardown()
-
-
-## Public passthrough for gitot.gd (composition root owns *when* to refresh).
-func refresh_log() -> void:
-	_log_panel.refresh()
 
 
 ## Manual fallback Triggers a fresh git status query for unreliable save signal.
@@ -246,13 +239,12 @@ func _notify_changed_files() -> void:
 
 	if stale_scripts > 0:
 		EditorInterface.get_editor_toaster().push_toast(
-			"Gitot: %d open script(s) changed on disk - close and reopen to see the update." % stale_scripts,
+			"Gitot: %d open script(s) changed on disk - close and reopen to see the update."
+			% stale_scripts,
 			EditorToaster.SEVERITY_WARNING,
 		)
 
 
-## Button icon helper.
-## Avoids repeating the long EditorInterface.get_base_control() chain.
 func _icon(name: String) -> Texture2D:
 	return EditorInterface.get_base_control().get_theme_icon(name, &"EditorIcons")
 
@@ -262,6 +254,7 @@ func _icon(name: String) -> Texture2D:
 func _on_refresh_diff_pressed() -> void:
 	_diff_gutter.refresh_current_script()
 
+
 #region Status Result
 ## Routes a finished GitEngine command to its domain handler.
 func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
@@ -270,7 +263,9 @@ func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array
 			_handle_commit_result(exit_code)
 		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
 			_handle_stash_result(command, exit_code, output)
-		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine.Command.PULL:
+		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine \
+				.Command \
+				.PULL:
 			_handle_sync_result(command, exit_code, output)
 		GitEngine.Command.BRANCHES, GitEngine.Command.SWITCH, GitEngine.Command.CREATE_BRANCH:
 			_handle_branch_result(command, exit_code, output)
@@ -311,7 +306,7 @@ func _handle_stash_result(command: GitEngine.Command, exit_code: int, output: Ar
 			GitotLogger.g(output[0])
 
 
-## Fetch / ahead-behind / push / pull — everything touching remote sync status.
+## Fetch / ahead-behind / push / pull - everything touching remote sync status.
 func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
 	if command == GitEngine.Command.FETCH:
 		%FetchButton.disabled = false
@@ -355,29 +350,23 @@ func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Arr
 		EditorInterface.get_resource_filesystem().scan()
 
 
-## Branch list refresh, switch, and create — everything that changes HEAD or the dropdown.
+## Branch list refresh, switch, and create - everything that changes HEAD or the dropdown.
 func _handle_branch_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
 	if command == GitEngine.Command.BRANCHES:
 		if not output.is_empty():
 			var branches: Array[Dictionary] = GitBranchParser.parse(output[0])
-			var branch_scopes: Dictionary[String, String] = {}
+			var branch_scopes: Dictionary[String, String] = { }
 
 			for branch: Dictionary in branches:
 				if branch["is_remote"]:
 					branch_scopes[branch["name"]] = "Remote"
 				else:
-					branch_scopes[branch["name"]] = _get_branch_scope(
-						branch["name"],
-						branches,
-					)
+					branch_scopes[branch["name"]] = _get_branch_scope(branch["name"], branches)
 
 			_branch_panel.populate(branches, branch_scopes)
 
 			var current_branch: String = _git_engine.get_current_branch()
-			_status_panel.update_branch(
-				current_branch,
-				branch_scopes.get(current_branch, ""),
-			)
+			_status_panel.update_branch(current_branch, branch_scopes.get(current_branch, ""))
 		return
 
 	# switch / create_branch
@@ -391,7 +380,7 @@ func _handle_branch_result(command: GitEngine.Command, exit_code: int, output: A
 	else:
 		GitotLogger.e("%s failed." % display_name)
 		if not output.is_empty():
-			GitotLogger.g(output[0]) # git's raw stderr
+			GitotLogger.g(output[0])
 	_git_engine.list_branches()
 	_status_panel.update_branch(_git_engine.get_current_branch())
 
@@ -409,6 +398,7 @@ func _handle_status_result(output: Array) -> void:
 	var parsed: Dictionary = GitStatusParser.parse(output[0])
 	_status_tree.populate(parsed)
 #endregion
+
 
 ## Commits currently staged files with the message from the input field.
 func _on_commit_pressed() -> void:
@@ -444,8 +434,9 @@ func _on_push_state_changed(pushing: bool) -> void:
 func _on_tag_retry_needed(needed: bool) -> void:
 	%RetryTagPushButton.visible = needed
 	%PushButton.disabled = needed
-# TODO: an explicit "abandon this tag" escape hatch if the user wants to push a new commit without resolving the stuck tag first. Say if you want that — it'd need a small separate action, not bundled into this fix.
 
+
+# TODO: an explicit "abandon this tag" escape hatch if I wants to push a new commit without resolving the stuck tag first.
 ## Pushes current branch to its remote tracking branch.
 ## Gated by the "confirm_push" setting to avoid accidental remote pushes.
 func _on_push_pressed() -> void:
@@ -455,7 +446,7 @@ func _on_push_pressed() -> void:
 		_do_push()
 
 
-## Executes the actual push — called directly or after dialog confirmation.
+## Executes the actual push - called directly or after dialog confirmation.
 func _do_push() -> void:
 	var tag_input: Dictionary = _tag_panel.get_tag_input(_git_engine.get_last_commit_message())
 	if _tag_panel.is_enabled():

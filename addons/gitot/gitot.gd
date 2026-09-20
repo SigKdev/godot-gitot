@@ -29,22 +29,21 @@ const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 
 const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
 
-## Reference to the GitEngine instance.
-var _git_engine: GitEngine
+const GitotDiffPanelScene: PackedScene = preload("res://addons/gitot/ui/gitot_diff_panel.tscn")
 
-## Reference to the dock UI instance, kept for clean removal on exit.
+var _git_engine: GitEngine
 var _dock: GitotDock
 var _diff_gutter: GitotDiffGutter
 var _sync_orchestrator: GitSyncOrchestrator
-
 var _github_panel: Control
+var _diff_panel: GitotDiffPanel
+var _pending_diff_path: String = ""
+var _pending_diff_line: int = -1
+
 
 #region Plugin Initialisation
-
-## Initializes the plugin when it is added to the editor.
 func _enter_tree() -> void:
-	# Suppress interactive credential prompts for this editor session.
-	# Must be set before any git network command runs.
+	# Suppress interactive credential prompts for this session.
 	OS.set_environment("GIT_TERMINAL_PROMPT", "0")
 
 	# Binary failsafe: hard stop if git isn't on PATH.
@@ -52,12 +51,12 @@ func _enter_tree() -> void:
 		GitotLogger.x("'git' binary not found in system PATH. Plugin DISABLED!")
 		return
 
-	# Create the GitEngine instance.
 	_git_engine = GitEngine.new()
 	_git_engine.command_completed.connect(_on_git_command_completed)
 
-	# Create the GitotDiffGutter instance.
 	_diff_gutter = GitotDiffGutter.new(_git_engine)
+	_diff_gutter.hunk_clicked.connect(_on_hunk_clicked)
+	_git_engine.command_completed.connect(_on_diff_full_result)
 
 	_sync_orchestrator = GitSyncOrchestrator.new(_git_engine)
 
@@ -77,10 +76,13 @@ func _enter_tree() -> void:
 		EditorInterface.get_editor_main_screen().add_child(_github_panel)
 		_github_panel.hide() # Godot calls _make_visible(true) when tab is selected
 
+	_diff_panel = GitotDiffPanelScene.instantiate()
+	add_control_to_bottom_panel(_diff_panel, "Gitot Diff")
+	_diff_panel.refresh_requested.connect(_on_diff_refresh_requested)
+
 	GitotLogger.s("'git' binary verified. Plugin ready!")
 
 
-## Cleans up the plugin on exit.
 func _exit_tree() -> void:
 	OS.unset_environment("GIT_TERMINAL_PROMPT")
 
@@ -104,6 +106,12 @@ func _exit_tree() -> void:
 	if _git_engine and _git_engine.command_completed.is_connected(_on_git_command_completed):
 		_git_engine.command_completed.disconnect(_on_git_command_completed)
 
+	if _git_engine and _git_engine.command_completed.is_connected(_on_diff_full_result):
+		_git_engine.command_completed.disconnect(_on_diff_full_result)
+
+	if _diff_panel and _diff_panel.refresh_requested.is_connected(_on_diff_refresh_requested):
+		_diff_panel.refresh_requested.disconnect(_on_diff_refresh_requested)
+
 	if _git_engine:
 		_git_engine.teardown()
 		_git_engine = null
@@ -112,36 +120,38 @@ func _exit_tree() -> void:
 		_github_panel.queue_free()
 		_github_panel = null
 
+	if _diff_panel:
+		remove_control_from_bottom_panel(_diff_panel)
+		_diff_panel.queue_free()
+		_diff_panel = null
 #endregion
 
 
+#region Gitot Issues Panel
 ## Required for the panel to appear as a selectable main-screen tab (2D/3D/Script/AssetLib row).
 func _has_main_screen() -> bool:
 	return GitotSettings.get_value("github_issues_enabled")
 
 
-## Called by the editor when the user switches to/away from this tab.
+func _get_plugin_name() -> String:
+	return "Gitot Issues"
+
+
+func _get_plugin_icon() -> Texture2D:
+	return EditorInterface.get_base_control().get_theme_icon("Debug", "EditorIcons")
+
+
+## Called by the editor when the user switches to/away from the tab.
 func _make_visible(visible: bool) -> void:
 	if _github_panel:
 		_github_panel.visible = visible
 		if visible and not _github_panel.has_fetched:
 			_github_panel.has_fetched = true
 			_github_panel.fetch_current_repo_issues()
-
-
-## main-screen Tab label text.
-func _get_plugin_name() -> String:
-	return "Gitot Issues"
-
-
-## main-screen Tab icon.
-func _get_plugin_icon() -> Texture2D:
-	return EditorInterface.get_base_control().get_theme_icon("Debug", "EditorIcons")
+#endregion
 
 
 ## Decides which finished commands should trigger an automatic status refresh.
-## Kept here (composition root) rather than in GitEngine (generic executor)
-## or GitotDock (UI painter) — neither should own this workflow decision.
 func _on_git_command_completed(command: GitEngine.Command, _exit_code: int, _output: Array) -> void:
 	if command in STATUS_TRIGGERING_COMMANDS:
 		_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
@@ -154,3 +164,37 @@ func _on_git_command_completed(command: GitEngine.Command, _exit_code: int, _out
 func _on_resource_saved(resource: Resource) -> void:
 	if resource is Script:
 		_diff_gutter.refresh_current_script()
+
+
+## Gutter click, request full-context diff. Line/path stored to guard against
+## a stale result if the user switches script tabs before git responds.
+func _on_hunk_clicked(file_path: String, line: int) -> void:
+	_pending_diff_path = file_path
+	_pending_diff_line = line + 1 # CodeEdit's 0-based -> git's 1-based (matches GitDiffParser)
+	_git_engine.diff_full(ProjectSettings.globalize_path(file_path))
+	make_bottom_panel_item_visible(_diff_panel)
+
+
+## Re-fetches the diff for the file currently shown in the panel.
+## Refreshes content in place, it doesn't re-navigate (see _on_hunk_clicked).
+func _on_diff_refresh_requested(file_path: String) -> void:
+	_pending_diff_path = file_path
+	_pending_diff_line = -1
+	_git_engine.diff_full(ProjectSettings.globalize_path(file_path))
+
+
+## Applies a finished DIFF_FULL result, discarding it if the active script
+## tab no longer matches the file that was requested.
+func _on_diff_full_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+	if command != GitEngine.Command.DIFF_FULL or exit_code != 0 or output.is_empty():
+		return
+	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
+	if not current_script or current_script.resource_path != _pending_diff_path:
+		return
+	var files: Array[Dictionary] = GitDiffParser.parse_full(output[0])
+	if files.is_empty():
+		return
+	var hunks: Array[Dictionary] = []
+	hunks.assign(files[0]["hunks"])
+	_diff_panel.show_diff(_pending_diff_path, hunks)
+	_diff_panel.jump_to_source_line(_pending_diff_line)
