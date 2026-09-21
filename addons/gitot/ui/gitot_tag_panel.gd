@@ -57,6 +57,12 @@ func is_enabled() -> bool:
 	return _toggle.button_pressed
 
 
+## True when tag versioning is on and set to reuse the commit message,
+## the signal for callers to fetch it before calling get_tag_input().
+func uses_commit_message() -> bool:
+	return _use_commit_toggle.button_pressed
+
+
 ## Resolves current tag input state for the push orchestration.
 ## Returns empty tag_name if tag versioning is off - caller treats that as no-tag push.
 func get_tag_input(last_commit_message: String) -> Dictionary:

@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://addons/gitot/ui/gitot_diff_panel.gd" id="1_wlcbe"]
 
 [node name="GitotDiffPanel" type="Control" unique_id=1397563835]
+custom_minimum_size = Vector2(0, 90)
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

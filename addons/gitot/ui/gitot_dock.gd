@@ -43,6 +43,14 @@ static func _get_branch_scope(branch_name: String, branches: Array[Dictionary]) 
 	return "(Local)"
 
 
+## Finds the current branch's name from an already-parsed branch list.
+static func _get_current_branch_from_list(branches: Array[Dictionary]) -> String:
+	for branch: Dictionary in branches:
+		if branch["is_current"]:
+			return branch["name"]
+	return ""
+
+
 func _ready() -> void:
 	if not _git_engine:
 		# GitEngine not yet injected — either the normal @tool-dock timing quirk
@@ -257,7 +265,7 @@ func _on_refresh_diff_pressed() -> void:
 
 #region Status Result
 ## Routes a finished GitEngine command to its domain handler.
-func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	match command:
 		GitEngine.Command.COMMIT:
 			_handle_commit_result(exit_code)
@@ -273,6 +281,8 @@ func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array
 			_handle_log_result(output)
 		GitEngine.Command.STATUS:
 			_handle_status_result(output)
+		GitEngine.Command.LAST_COMMIT_MSG:
+			_handle_last_commit_message_result(exit_code, output)
 
 
 ## Handles the result of a commit command, logging success or failure.
@@ -284,7 +294,11 @@ func _handle_commit_result(exit_code: int) -> void:
 
 
 ## Handles the result of a stash or stash_pop command, logging success or failure.
-func _handle_stash_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+func _handle_stash_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+) -> void:
 	if command == GitEngine.Command.STASH:
 		if exit_code == 0:
 			if not output.is_empty() and output[0].contains("No local changes to save"):
@@ -307,7 +321,7 @@ func _handle_stash_result(command: GitEngine.Command, exit_code: int, output: Ar
 
 
 ## Fetch / ahead-behind / push / pull - everything touching remote sync status.
-func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	if command == GitEngine.Command.FETCH:
 		%FetchButton.disabled = false
 		%FetchButton.icon = _icon("AssetStore")
@@ -317,7 +331,7 @@ func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Arr
 			_git_engine.get_ahead_behind() # keep sync status current with new remote refs
 		else:
 			GitotLogger.e("Fetch failed.")
-		if not output[0].is_empty():
+		if not output.is_empty() and not output[0].is_empty():
 			GitotLogger.g(output[0])
 		return
 
@@ -344,14 +358,18 @@ func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Arr
 		GitotLogger.s("%s finished." % display_name)
 	else:
 		GitotLogger.e("%s failed." % display_name)
-	if not output[0].is_empty():
+	if not output.is_empty() and not output[0].is_empty():
 		GitotLogger.g(output[0]) # git's raw stderr
 	if command == GitEngine.Command.PULL and exit_code == 0:
 		EditorInterface.get_resource_filesystem().scan()
 
 
 ## Branch list refresh, switch, and create - everything that changes HEAD or the dropdown.
-func _handle_branch_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+func _handle_branch_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+) -> void:
 	if command == GitEngine.Command.BRANCHES:
 		if not output.is_empty():
 			var branches: Array[Dictionary] = GitBranchParser.parse(output[0])
@@ -365,7 +383,7 @@ func _handle_branch_result(command: GitEngine.Command, exit_code: int, output: A
 
 			_branch_panel.populate(branches, branch_scopes)
 
-			var current_branch: String = _git_engine.get_current_branch()
+			var current_branch: String = _get_current_branch_from_list(branches)
 			_status_panel.update_branch(current_branch, branch_scopes.get(current_branch, ""))
 		return
 
@@ -374,25 +392,25 @@ func _handle_branch_result(command: GitEngine.Command, exit_code: int, output: A
 	if exit_code == 0:
 		GitotLogger.s(
 			"%s successful, now on '[color=gray]%s[/color]'"
-			% [display_name, _git_engine.get_current_branch()]
+			% [display_name, _git_engine.get_last_switch_target()]
 		)
 		_notify_changed_files()
 	else:
 		GitotLogger.e("%s failed." % display_name)
 		if not output.is_empty():
-			GitotLogger.g(output[0])
-	_git_engine.list_branches()
+			GitotLogger.g(output[0]) # git's raw stderr
+	_git_engine.list_branches() # also refreshes the status panel's branch label
 	_status_panel.update_branch(_git_engine.get_current_branch())
 
 
 ## Handles the result of a log command, populating the log panel.
-func _handle_log_result(output: Array) -> void:
+func _handle_log_result(output: Array[String]) -> void:
 	if not output.is_empty():
 		_log_panel.populate(GitLogParser.parse(output[0]))
 
 
 ## Refreshes the status tree.
-func _handle_status_result(output: Array) -> void:
+func _handle_status_result(output: Array[String]) -> void:
 	if output.is_empty():
 		return
 	var parsed: Dictionary = GitStatusParser.parse(output[0])
@@ -446,9 +464,19 @@ func _on_push_pressed() -> void:
 		_do_push()
 
 
-## Executes the actual push - called directly or after dialog confirmation.
-func _do_push() -> void:
-	var tag_input: Dictionary = _tag_panel.get_tag_input(_git_engine.get_last_commit_message())
+## Continues _do_push() once the async commit-message fetch completes.
+func _handle_last_commit_message_result(exit_code: int, output: Array) -> void:
+	var message: String = (
+		String(output[0]).strip_edges()
+		if (exit_code == 0 and not output.is_empty())
+		else ""
+	)
+	_start_push_with_tag_input(message)
+
+
+## Resolves tag input, validates it, hands off to the orchestrator.
+func _start_push_with_tag_input(last_commit_message: String) -> void:
+	var tag_input: Dictionary = _tag_panel.get_tag_input(last_commit_message)
 	if _tag_panel.is_enabled():
 		if tag_input["tag_name"].is_empty():
 			GitotLogger.w("Tag name is empty. Push aborted!")
@@ -457,6 +485,15 @@ func _do_push() -> void:
 			GitotLogger.w("Tag message is empty. Push aborted!")
 			return
 	_orchestrator.start_push(tag_input)
+
+
+## Executes the actual push - called directly or after dialog confirmation.
+## Skips the async commit-message fetch when it isn't needed (push without tag)
+func _do_push() -> void:
+	if _tag_panel.is_enabled() and _tag_panel.uses_commit_message():
+		_git_engine.request_last_commit_message()
+	else:
+		_start_push_with_tag_input("")
 
 
 ## Fetches remote refs (no working-tree changes).

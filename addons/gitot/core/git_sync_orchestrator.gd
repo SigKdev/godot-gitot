@@ -49,7 +49,7 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 			if exit_code == 0:
 				_git_engine.push_tag(_pending_tag["tag_name"])
 			elif not output.is_empty() and output[0].contains("already exists"):
-				_handle_tag_collision(_pending_tag["tag_name"])
+				_git_engine.check_tag_collision(_pending_tag["tag_name"])
 			else:
 				GitotLogger.e("Tag creation failed. Tag push aborted!")
 				_pending_tag = { }
@@ -64,13 +64,25 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 					% _pending_tag["tag_name"]
 				)
 				tag_retry_needed.emit(true)
+		GitEngine.Command.TAG_COLLISION_CHECK:
+			_handle_tag_collision_result(exit_code, output)
 
 
-## Resolves a "tag already exists" TAG failure. Only pushes if the existing local
-## tag already points at HEAD (legitimate retry after a prior failed push) -
-## never pushes a same-named tag pointing at an unrelated commit.
-func _handle_tag_collision(tag_name: String) -> void:
-	if _git_engine.get_tag_commit(tag_name) == _git_engine.get_head_commit():
+## Resolves a "tag already exists" TAG failure using the two SHAs from
+## check_tag_collision(). Only pushes if the existing local tag already
+## points at HEAD (legitimate retry after a prior failed push) - never
+## pushes a same-named tag pointing at an unrelated commit. A failed/short
+## rev-parse (exit_code != 0, or fewer than 2 SHAs) is treated as a
+## mismatch, not a match - unlike the old two-call version, this can't
+## mistake "both reads failed" for "both point at the same commit."
+func _handle_tag_collision_result(exit_code: int, output: Array) -> void:
+	var tag_name: String = _pending_tag.get("tag_name", "")
+	var shas: PackedStringArray = (
+		String(output[0]).strip_edges().split("\n", false)
+		if exit_code == 0 and not output.is_empty()
+		else []
+	)
+	if shas.size() == 2 and shas[0] == shas[1]:
 		GitotLogger.w("Tag '%s' already exists locally on this commit - Pushing as-is!" % tag_name)
 		_git_engine.push_tag(tag_name)
 	else:

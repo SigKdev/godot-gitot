@@ -4,24 +4,27 @@ A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intend
 
 **Gitot** wraps the system `git` binary directly via `OS.execute()`, in pure GDScript, with no GDExtension and no bundled `libgit2`. It inherits your existing SSH/credential setup and the full Git feature set without re-implementing any of it. This trades a small amount of raw performance for stability, transparency, and zero maintenance burden across engine/OS updates.
 
-**If Git works from your terminal, it works from Gitot because it use your terminal's git setup.**
+**If Git works from your terminal, it works from Gitot because it uses your terminal's git setup.**
+
+Gitot is fully independent of Godot's built-in Version Control integration (Editor Settings → Version Control), no VCS plugin needed, nothing to configure there. Gitot talks to your system `git` directly.
 
 ---
 
 ## Project Status (WIP)
 
-Gitot is under active, daily-use development by a solo developer, currently at v0.8.0.
-Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily in real projects and have been through several correctness/lifecycle hardening passes (see Changelog).
-That said:
+Gitot is under active, daily-use development by a solo developer, currently at v0.8.1.
+Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily in real projects and have been through several correctness/lifecycle hardening passes (see [Changelog](#changelog)).
 
-- This is **not yet a widely-tested release**. It has been validated on Windows with one developer's workflow, not across operating systems or project sizes.
-- Expect rough edges. Check [Known Limitations](#known-limitations) before relying on branch-switch or tag workflows for anything critical.
+**That said:**
+
+- This is **not yet a widely-tested release**. It has been validated on Windows with one developer's workflow, on a small repo, not across operating systems or project sizes.
+- Gitot requires significantly more testing under everyday usage conditions! Expect rough edges. Check [Known Limitations](#known-limitations).
 - **Back up your repo / commit your work before trying a new Gitot version**, same as you would for any Git tool still in active development.
 - Bug reports and real-world usage feedback are the most valuable contribution right now, the roadmap below is deliberately reliability-first before new features.
 
 ---
 
-## Features (v0.8.0)
+## Features (v0.8.1)
 
 - **Commit & Sync:** Single and bulk Staging/Unstaging, commit message (multiline supported), and Commit / Push / Pull buttons.
 - **Stash Quick-Actions:** One-click stash and pop from the dock toolbar, for shelving experimental changes before a branch switch.
@@ -169,6 +172,32 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 </details>
 
 ## Changelog
+
+<details>
+<summary>v0.8.1</summary>
+
+fix: Hardenening v0.8.0. Performance, correctness, reliability, lifecycle, type safety
+
+Performance:
+- Settings reads (`GitotSettings.get_value`) now cached in memory instead of hitting disk on every hot-path call.
+- Six previously-unbounded synchronous `OS.execute()` local queries (`get_current_branch()`, `get_remote_url()`, `get_changed_files_since_switch()`, etc.) now route through a shared `_execute_bounded()` helper capped at `LOCAL_TIMEOUT_SEC` instead of blocking the main thread indefinitely.
+- Push's commit-message read and tag-collision resolution converted from sync to async (`request_last_commit_message()`, `check_tag_collision()` via `run_fast`).
+- Branch dropdown now derives the current branch from the already-parsed branch list (`_get_current_branch_from_list()`) instead of an extra sync git call.
+
+Correctness:
+- `GitotDiffPanel` guards against a stale result: a diff response is only rendered if the script tab it was requested for is still the active one.
+- `_handle_sync_result`'s FETCH and push/pull output reads now guard `output.is_empty()` before indexing `output[0]`, matching every other handler.
+
+Reliability:
+- `GitEngine.run_fast()` rejects a new write command while one is in flight (`_write_busy`), preventing overlapping git processes from tripping `index.lock`.
+
+Lifecycle:
+- Temp log files (`user://gitot_*.log`) are now tracked per-PID and cleaned up on both the timeout-kill path and `teardown()` — previously leaked on every forced-close during a network op.
+
+Architecture:
+- `command_completed`'s `output` parameter, and every handler receiving it, typed `Array[String]` instead of bare `Array`.
+<hr>
+</details>
 
 <details>
 <summary>v0.8.0</summary>
@@ -404,9 +433,7 @@ Initial MVP commit
 Gitot is developed and maintained solo, in my own time, alongside an ongoing personal Godot game project *(stopped cause of hardware issue)*.
 If Gitot has saved you time or you'd like to see development continue, sponsoring is the most direct way to help, it goes straight toward the hours and the hardware this project and my game project runs on.
 
-- [GitHub Sponsors](#) <!-- replace with your link once set up -->
-
-<a href='https://ko-fi.com/L2X127AVEG' target='_blank'><img height='32' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+<a href='https://ko-fi.com/L2X127AVEG' target='_blank'><img height='48' style='border:0px;height:48px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
 
 No pressure! Using Gitot, reporting bugs, and sharing feedback in Discussions is just as valuable to the project.
 
@@ -415,4 +442,3 @@ No pressure! Using Gitot, reporting bugs, and sharing feedback in Discussions is
 ## License
 
 Copyright (c) 2026-present SigK - under the [MIT License](LICENSE).
-

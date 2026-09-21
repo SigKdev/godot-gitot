@@ -69,6 +69,7 @@ func _populate_tree(
 	tree.clear()
 	var root: TreeItem = tree.create_item() # required even with hide_root; acts as invisible parent
 	fold_container.title = "%s (%d)" % [title, entries.size()]
+	var max_bytes: int = _max_file_size_bytes() if check_size else 0
 	for entry: Dictionary in entries:
 		var item: TreeItem = tree.create_item(root)
 		item.set_text(0, entry["path"])
@@ -89,7 +90,7 @@ func _populate_tree(
 			item.set_tooltip_text(0, "⚠ Merge conflict — resolve before staging ⚠")
 		if (
 			check_size and status != GitStatusParser.FileStatus.CONFLICT
-			and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"]))
+			and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"]), max_bytes)
 		):
 			item.set_icon(0, _icon("StatusWarning"))
 			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard — excluded from Staging ⚠")
@@ -123,7 +124,7 @@ func _on_unstaged_item_activated() -> void:
 		return
 	var path: String = selected.get_text(0)
 	var abs_path: String = ProjectSettings.globalize_path("res://" + path)
-	if _is_oversized(abs_path):
+	if _is_oversized(abs_path, _max_file_size_bytes()):
 		GitotLogger.e("'%s' exceeds Size Guard and was not staged." % path)
 		return
 	_git_engine.run_fast(GitEngine.Command.STAGE, ["add", "--", path])
@@ -169,9 +170,10 @@ func _on_stage_all_pressed() -> void:
 	if paths.is_empty():
 		return
 	var to_stage: Array[String] = []
+	var max_bytes: int = _max_file_size_bytes()
 	for path: String in paths:
 		var abs_path: String = ProjectSettings.globalize_path("res://" + path)
-		if _is_oversized(abs_path):
+		if _is_oversized(abs_path, max_bytes):
 			GitotLogger.w("Staging skipped '%s' - exceeds Size Guard." % path)
 		else:
 			to_stage.append(path)
@@ -200,11 +202,11 @@ func _max_file_size_bytes() -> int:
 	return int(GitotSettings.get_value("large_file_mb")) * 1024 * 1024
 
 
-## @return: true if the file exists and is at/above the configured threshold (0 = guard disabled).
-func _is_oversized(abs_path: String) -> bool:
-	if GitotSettings.get_value("large_file_mb") == 0:
+## @return: true if the file exists and is at/above the given threshold (0 = guard disabled).
+func _is_oversized(abs_path: String, max_bytes: int) -> bool:
+	if max_bytes == 0:
 		return false
 	var file: FileAccess = FileAccess.open(abs_path, FileAccess.READ)
 	if not file:
 		return false # Unreadable/missing - let git report the real error, not gitot.
-	return file.get_length() >= _max_file_size_bytes()
+	return file.get_length() >= max_bytes

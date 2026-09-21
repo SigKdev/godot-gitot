@@ -152,7 +152,11 @@ func _make_visible(visible: bool) -> void:
 
 
 ## Decides which finished commands should trigger an automatic status refresh.
-func _on_git_command_completed(command: GitEngine.Command, _exit_code: int, _output: Array) -> void:
+func _on_git_command_completed(
+	command: GitEngine.Command,
+	_exit_code: int,
+	_output: Array[String],
+) -> void:
 	if command in STATUS_TRIGGERING_COMMANDS:
 		_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
 		_git_engine.get_ahead_behind()
@@ -185,7 +189,11 @@ func _on_diff_refresh_requested(file_path: String) -> void:
 
 ## Applies a finished DIFF_FULL result, discarding it if the active script
 ## tab no longer matches the file that was requested.
-func _on_diff_full_result(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+func _on_diff_full_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+) -> void:
 	if command != GitEngine.Command.DIFF_FULL or exit_code != 0 or output.is_empty():
 		return
 	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
