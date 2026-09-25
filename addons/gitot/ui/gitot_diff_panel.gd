@@ -10,6 +10,9 @@ extends Control
 ## Emitted when the panel's own refresh button is pressed.
 signal refresh_requested(file_path: String)
 
+## Emitted when a file row is selected in commit mode (repo-relative path).
+signal commit_file_selected(path: String)
+
 const COLOR_ADDED: Color = Color(0.133, 0.545, 0.133, 0.2)
 const COLOR_DELETED: Color = Color(0.3, 0.13, 0.13, 0.6)
 const COLOR_HEADER: Color = Color(0.2, 0.2, 0.2)
@@ -22,6 +25,7 @@ var _sign_gutter_idx: int = -1
 var _current_hunks: Array[Dictionary] = [] # stored for jump_to_source_line() and future refresh
 
 @onready var _code_edit: CodeEdit = %DiffCodeEdit
+@onready var _files_list: GitotCommitFilesList = %CommitFilesList
 
 
 func _ready() -> void:
@@ -41,6 +45,7 @@ func _ready() -> void:
 	_code_edit.set_gutter_width(_sign_gutter_idx, 10)
 
 	%RefreshDiffPanelButton.pressed.connect(_on_refresh_pressed)
+	_files_list.file_selected.connect(commit_file_selected.emit)
 
 
 ## Renders all hunks of one file: a @@ header before each hunk, then its lines.
@@ -117,6 +122,38 @@ func jump_to_source_line(source_line: int) -> void:
 					return
 				new_file_line += 1
 			rendered_line += 1
+
+
+## Commit mode: file list visible, refresh button hidden (a commit's diff never changes,
+## and the button would re-diff the working tree). Working-tree callers pass false.
+func set_commit_mode(enabled: bool) -> void:
+	%CommitColumn.visible = enabled # Hide the whole column: an empty one still keeps its split slot.
+	_files_list.visible = enabled
+	%RefreshDiffPanelButton.visible = not enabled
+	%CommitInfoLabel.visible = enabled
+
+
+## Shows a commit's changed files; the list auto-selects the first row.
+func show_commit_files(files: Array[Dictionary]) -> void:
+	set_commit_mode(true)
+	_files_list.show_files(files)
+	if files.is_empty():
+		_code_edit.clear() # e.g. merge commit: avoid leaving a stale diff on screen.
+		%DiffFilePathLabel.text = "[i]No file changes to show.[/i]"
+
+
+## Commit header: message / author / exact date / hash, same fields as the history list.
+## BBCode is escaped: commit messages and author names are free text and may contain "[".
+func show_commit_info(entry: Dictionary) -> void:
+	var message: String = String(entry["message"]).replace("[", "[lb]")
+	var author: String = String(entry["author"]).replace("[", "[lb]")
+	%CommitInfoLabel.text = "[b]%s[/b]  ·  %s  ·  %s  ·  [color=gray]%s[/color]" % [
+		message,
+		author,
+		entry["date_short"],
+		entry["hash"],
+	]
+	%CommitInfoLabel.visible = true
 
 
 ## Builds the @@ header for one hunk, matching git's own -U3 format. old_count/

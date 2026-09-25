@@ -4,6 +4,10 @@
 class_name GitLogPanel
 extends RefCounted
 
+## Emitted when a history row is selected (click or arrow keys).
+## @param entry: the row's GitLogParser entry (hash/author/date_*/message).
+signal commit_selected(entry: Dictionary)
+
 const COUNT_OPTIONS: PackedInt32Array = [10, 20, 30]
 
 var _git_engine: GitEngine
@@ -20,6 +24,7 @@ func _init(git_engine: GitEngine, fold: FoldableContainer, tree: Tree) -> void:
 
 	_setup_tree_columns()
 	_setup_count_dropdown(fold)
+	_tree.item_selected.connect(_on_item_selected)
 
 
 ## Requests a fresh log using the currently selected count.
@@ -41,6 +46,7 @@ func populate(entries: Array[Dictionary]) -> void:
 		item.set_text(2, entry["date_relative"])
 		item.set_tooltip_text(2, entry["date_short"])
 		item.set_tooltip_text(0, entry["message"]) # Full message on hover if truncated.
+		item.set_metadata(0, entry) # Row -> full entry: hash for git, the rest for the panel header.
 
 
 func _setup_tree_columns() -> void:
@@ -67,3 +73,9 @@ func _setup_count_dropdown(fold: FoldableContainer) -> void:
 
 func _on_count_selected(_index: int) -> void:
 	refresh()
+
+
+func _on_item_selected() -> void:
+	var item: TreeItem = _tree.get_selected()
+	if item:
+		commit_selected.emit(item.get_metadata(0) as Dictionary)

@@ -1,5 +1,7 @@
 # Gitot
 
+[![version](https://img.shields.io/badge/Gitot-0.9.0-478CBF)](https://store.godotengine.org/asset/sigk/gitot/) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![Godot 4.7+](https://img.shields.io/badge/Godot-4.7+-478CBF?logo=godotengine&logoColor=478CBF)](https://godotengine.org/) [![Git](https://img.shields.io/badge/GIT-2.0+-E44C30?logo=git&logoColor=white)](https://git-scm.com/) [![sponsor](https://img.shields.io/badge/sponsor-30363D?logo=GitHub-Sponsors)](#support-this-project)
+
 A lightweight Git workflow plugin for the Godot 4 editor in pure GDScript intended for solo developers who want fast, reliable local Git operations (stage/unstage, commit, stash/pop, push/pull), inline diff visibility and issue tracker without leaving the editor.
 
 **Gitot** wraps the system `git` binary directly via `OS.execute()`, in pure GDScript, with no GDExtension and no bundled `libgit2`. It inherits your existing SSH/credential setup and the full Git feature set without re-implementing any of it. This trades a small amount of raw performance for stability, transparency, and zero maintenance burden across engine/OS updates.
@@ -12,19 +14,17 @@ Gitot is fully independent of Godot's built-in Version Control integration (Edit
 
 ## Project Status (WIP)
 
-Gitot is under active, daily-use development by a solo developer, currently at v0.8.1.
+Gitot is under active, daily-use development by a solo developer. It is build and tested on Godot 4.7.2.
 Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily in real projects and have been through several correctness/lifecycle hardening passes (see [Changelog](#changelog)).
 
-**That said:**
-
-- This is **not yet a widely-tested release**. It has been validated on Windows with one developer's workflow, on a small repo, not across operating systems or project sizes.
-- Gitot requires significantly more testing under everyday usage conditions! Expect rough edges. Check [Known Limitations](#known-limitations).
-- **Back up your repo / commit your work before trying a new Gitot version**, same as you would for any Git tool still in active development.
-- Bug reports and real-world usage feedback are the most valuable contribution right now, the roadmap below is deliberately reliability-first before new features.
+> [!WARNING]
+> - This is **not yet a widely-tested release**. It has been validated on Windows with one developer's workflow, on a small repo, not across operating systems or project sizes. Gitot requires significantly more testing under everyday usage conditions! Expect rough edges. Check [Known Limitations](#known-limitations).
+> - **Back up your repo / commit your work before trying a new Gitot version**, same as you would for any Git tool still in active development.
+> - Bug reports and real-world usage feedback are the most valuable contribution right now, the roadmap below is deliberately reliability-first before new features.
 
 ---
 
-## Features (v0.8.1)
+## Features (v0.9.0)
 
 - **Commit & Sync:** Single and bulk Staging/Unstaging, commit message (multiline supported), and Commit / Push / Pull buttons.
 - **Stash Quick-Actions:** One-click stash and pop from the dock toolbar, for shelving experimental changes before a branch switch.
@@ -32,12 +32,12 @@ Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily i
 - **Remote Branch Management:** Fetch button, remote-only branches listed and checked out with automatic tracking.
 - **Tags Versioning:** Push with/without annotated tag. *(auto tagging settings - see details)*.
 - **Repo Status Panel:** A one-line Status panel summarizing current repo, current branch (detached HEAD flagged in red), branch scope and ahead/behind sync status.
-- **Commit History:** List of recent commits (message, author, date) with a count filter (10/20/30).
+- **Commit History:** List of recent commits (message, author, date) with a count filter (10/20/30). Click a commit to inspect its changes file by file in the bottom-dock diff viewer.
 - **Color Diff Gutter:** Modified and added lines are marked directly in the script editor's gutter. Clickable to open the matching hunk in the bottom-dock diff viewer.
-- **Diff Viewer Panel:** Bottom panel for a full-context unified diff for the current script, hunk headers, per-line +/- gutter with real source line numbers, color-coded added/deleted lines, and a manual fallback refresh button.
+- **Diff Viewer Panel:** Bottom panel for a full-context unified diff for the current script, hunk headers, per-line +/- gutter with real source line numbers, color-coded added/deleted lines, and a manual fallback refresh button. Also shows any past commit: a changed-files list on the left, the selected file's diff on the right.
 - **GitHub Issues Tracker Board:** Display remote GitHub issues of the project repo (read: [PAT](#github-personal-access-token)). **(opt-out in settings)**.
 - **Large-file Guard:** Blocks staging any file over a configurable size to prevent accidental repository bloat. Add a warning icon on those file in the staged/unstaged list.
-- **Gitot Logger:** To not bloat the Godot output log, Git and Gitot output are routed through Gitot own dock logger. (Styled with Godot's own console font).
+- **Gitot Logger:** To not bloat the Godot output log, Git and Gitot output are routed through Gitot own dock logger. (Styled with Godot's own console font). A **Reflog** button dumps the raw last 20 reflog entries to the console.
 
 <details>
 <summary>Details</summary>
@@ -50,27 +50,18 @@ Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily i
 - **Remote Branch Management:** `git fetch origin` via button, refreshing the branch list on success. Remote-tracking branches with no local counterpart appear in the dropdown, selecting one runs `switch -c <name> --track origin/<name>` in one atomic op. Full name and branch scope on tooltip.
 - **Tags Versioning:** Tag is push with commit. Settings to auto use Version *(from project settings)* for the tag's name (with auto `v` prefix) and the commit message for the tag's message.
 - **Repo Status Panel:** Show `owner/repo · branch (local/remote) · ↑ahead ↓behind`. Updates live on every status-triggering command. Detached HEAD shown in red in place of a branch name. Ahead/behind only logs to console on actual change, not on redundant refreshes (e.g. focus-in polling).
-- **Commit History:** `git log` parsed via `\x1f`-delimited format string. Count-filtered dropdown (10/20/30, default reflects last selection). Relative date shown in-list, exact short date (`YYYY-MM-DD HH-MM`) on date hover tooltip. Auto-refreshes alongside status on the same trigger set (commit/push/pull/switch) and on manual *Refresh Status* fallback button.
+- **Commit History:** `git log` parsed via `\x1f`-delimited format string. Count-filtered dropdown (10/20/30, default reflects last selection). Relative date shown in-list, exact short date (`YYYY-MM-DD HH-MM`) on date hover tooltip. Auto-refreshes alongside status on the same trigger set (commit/push/pull/switch) and on manual *Refresh Status* fallback button. Selecting a row (click or arrow keys) opens that commit history in the Diff Viewer Panel.
 - **Color Diff Gutter:** Modified and added lines are marked directly in the script editor's gutter, computed from `git diff -U0` against `HEAD`. Updates automatically on save (where Godot's save signal fires reliably), on Godot editor focus, and a manual fallback refresh diff gutter button. Clicking a marked line gutter opens the bottom-dock diff viewer, jumped to that line.
-- **Diff Viewer Panel:** Separate `git diff -U3` against `HEAD`, decoupled from the gutter's own `-U0` diff (no shared parser state, no regression risk to the gutter). Renders as a read-only `CodeEdit`: `@@ -old,count +new,count @@` header per hunk, dedicated +/- sign gutter, real source line numbers in their own gutter, color-coded background per line. File-path label at the top confirms which file is shown. Stale-result guard discards a diff response if the active script tab changed before it arrived.
-- **GitHub Issues Tracker Board:** (opt-out in settings possible). Issue report include: number, title, author, date, tags, content of the issue and a link to open it in the browser. *PAT auth, issue fetch, PR filter, main-screen panel.*
+- **Diff Viewer Panel:** Separate `git diff -U3` against `HEAD`, decoupled from the gutter's own `-U0` diff (no shared parser state, no regression risk to the gutter). Renders as a read-only `CodeEdit`: `@@ -old,count +new,count @@` header per hunk, dedicated +/- sign gutter, real source line numbers in their own gutter, color-coded background per line. File-path label at the top confirms which file is shown. Stale-result guard discards a diff response if the active script tab changed before it arrived. **Commit history mode:** selecting a history row lists the commit's changed files (`git show --name-status --format= --no-renames`, status-colored A/M/D); the selected file's diff (`git show -U3 ... -- <path>`) is fetched on demand, so large commits stay fast. The first file is auto-selected. A latest-wins gate keeps one request in flight and drops outdated results (fast arrow-key navigation always ends on the highlighted commit), and a single file diff is truncated at 200,000 characters for display. Clicking a gutter marker in a script returns the panel to working-tree mode. (read: [Limitation](#known-limitations)).
+- **GitHub Issues Tracker Board:** (opt-out in settings possible). Issue report include: number, title, author, date, tags, content of the issue and a link to open it in the browser. *PAT auth, issue fetch, PR filter, main-screen panel.* If a token expires or is revoked, Gitot detects this automatically (HTTP 401) and re-prompts for a new one.
 - **Gitot Settings Panel:** Add Settings (user://gitot_settings.cfg), large_file_mb, confirm_push, auto_refresh_on_focus, github_issues_enabled.
 - **Large-file Guard:**  Size configurable in settings, *0 to disable*.
-- **Gitot Logger:** Output routed through `GitotLogger`, so they can be filter out of Godot output log with the "standard output message" filter.
+- **Gitot Logger:** Output routed through `GitotLogger`, so they can be filter out of Godot output log with the "standard output message" filter. The console's **Reflog** button runs `git reflog -n 20` (`GitEngine.REFLOG_COUNT`) and prints the raw output.
 </details>
 
 ### Planned Features
 
-- [x] Commit & Sync (commit/push/pull)
-- [x] Color Diff Gutter
-- [x] GitHub Issues Tracker Board
-- [x] Tags Versioning
-- [x] Local Branch Management
-- [x] Commit History
-- [x] Stash Quick-Actions
-- [x] Remote Branch Management
-- [x] Bottom-dock Full Diff View
-- [ ] Stash Manager
+- [ ] Stash/Pop Manager
 - [ ] Git LFS Support and Asset Locking
 - [ ] Asset Dependency Analyzer (Pre-Commit Scene Linter)
 - [ ] Hunk-level (partial file) staging
@@ -80,7 +71,7 @@ Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily i
 
 - Godot 4.7+
 - `git` installed and available on your system `PATH`.
-- A GitHub Personal Access Token ([PAT](#github-personal-access-token)), **only for the GitHub Issues Tracker Board feature**.
+- A GitHub Personal Access Token ([PAT](#github-personal-access-token)), **(optional, only needed for the Issues integration)**.
 
 ### Installation
 
@@ -91,7 +82,7 @@ Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily i
 
 ## Known Limitations
 
-- After a `Pull` or a branch `Switch`, changed scripts already open in the editor won't visually refresh. This is a known Godot engine limitation ([godotengine/godot#104540](https://github.com/godotengine/godot/issues/104540)), Godot may fail to show the update even after closing/reopening the file ([godotengine/godot#59115](https://github.com/godotengine/godot/issues/59115)). **Use Project → Reload Current Project** or **restarting the editor** to force a refresh and guarantees correct content. **close/reopen the affected script tab *before* switching branches next time.**
+- After a `Pull` or a branch `Switch`, changed scripts already open in the editor won't visually refresh. This is a known Godot engine limitation ([godotengine/godot#104540](https://github.com/godotengine/godot/issues/104540)), Godot may fail to show the update even after closing/reopening the file ([godotengine/godot#59115](https://github.com/godotengine/godot/issues/59115)). **Use Project → Reload Current Project** or **restart the editor** to force a refresh and guarantees correct content. **close/reopen the affected script tab *before* switching branches next time.**
 
 - Godot's `resource_saved` signal does not fire for all save paths (e.g. Run Project/Scene auto-saves). Use the **Refresh Diff Gutter** button to catch up manually in those cases. Or switch away from the Godot windows and switch back to trigger auto-refresh (see in settings).
 
@@ -100,6 +91,8 @@ Core workflows (stage/commit/push/pull, branching, diff gutter) are used daily i
 - Switching to a branch whose `project.godot` differs from the current one *(e.g. different enabled plugins/autoloads)* triggers Godot's own **"File has been modified outside Godot"** dialog for `project.godot`. This is a Godot editor behavior outside Gitot's control (separate watcher from `EditorFileSystem`) - click **Reload from Disk** reflects the real branch content.
 
 - **Stash** includes untracked files (`-u` flag). Popping after switching branches can reintroduce files that conflict with the new branch's content. Same underlying risk as any `switch` with pending changes.
+
+- **Commit history diff viewer:** merge commits are not handled specially (`git show` prints a combined diff, so the file list can be short or empty). Binary files are listed but their diff body is empty. File names Git quotes (non-ASCII characters) may fail to load their diff.
 
 - The diff gutter only applies to **tracked** files. Untracked (never-committed) files have no `HEAD` version to diff against.
 
@@ -119,16 +112,17 @@ Only needed to use the **GitHub Issues Tracker Board** feature.
 **Gitot** stores your GitHub PAT locally in plaintext at `user://gitot_auth.cfg`
 (outside `res://`, so it is never committed to your repository).
 
-**This is not encrypted.** Godot/GDScript cannot access your OS-level credential store (Windows Credential Manager, macOS Keychain, etc.) without a native extension, which is outside this plugin's scope.
-**Anyone with access to your local user account can read this file.**
+> [!CAUTION]
+> **This is not encrypted.** Godot/GDScript cannot access your OS-level credential store (Windows Credential Manager, macOS Keychain, etc.) without a native extension, which is outside this plugin's scope.
+> **Anyone with access to your local user account can read this file.**
 And the Godot hot-reload and `_exit_tree()` make it not possible to auto clear the PAT when uninstalling/disabling Gitot.
-**User must click "Clear Token" before uninstalling/disabling**
+> **You must click "Clear Token" before uninstalling/disabling**
 
 **PAT Recommendations:**
 
-- Use a token scoped to `repo` access only. Never an admin or org-wide token!
+- Use a **fine-grained token** scoped to Repo Access and with Issues Access read/write only. **Never an admin or org-wide token!**
 - Use the **Clear Token** button in the Gitot Issues Panel toolbar **before uninstalling or disabling the plugin**, or when working on a shared machine!
-- If a token expires or is revoked, Gitot detects this automatically (HTTP 401) and re-prompts for a new one.
+- If you do not intent to use this feature, opt-out in settings to unload it completely!
 
 ---
 
@@ -141,11 +135,11 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 <summary>Core</summary>
 
 - `gitot.gd` - `EditorPlugin` entry point; lifecycle, wiring, and main-screen tab registration.
-- `core/git_engine.gd` - all `git` CLI execution (sync-fast and async-network paths), including commit, push, pull, branch, switch, stash, pop, fetch.
+- `core/git_engine.gd` - all `git` CLI execution (sync-fast and async-network paths), including commit, push, pull, branch, switch, stash, pop, fetch, show, reflog.
 - `core/git_sync_orchestrator.gd` - push -> create-tag -> push-tag state machine; reacts to `GitEngine.command_completed`, decoupled from UI via signals.
 - `core/git_branch_parser.gd` - parses `git branch --format=...` into local branch entries.
 - `core/git_status_parser.gd` - parses `git status --porcelain=v2`.
-- `core/git_diff_parser.gd` - parses `git diff -U0` hunk headers (gutter) and `git diff -U3` full-context hunks (bottom-dock viewer).
+- `core/git_diff_parser.gd` - parses `git diff -U0` hunk headers (gutter) and `git diff -U3` full-context hunks (bottom-dock viewer), and `--name-status` output (commit file list).
 - `core/git_log_parser.gd` - parses `git log` (custom `\x1f`-delimited format) into commit entries.
 - `core/github_auth.gd` - PAT storage (`user://gitot_auth.cfg`, plaintext)(read: [PAT](#github-personal-access-token) section).
 - `core/github_api.gd` - authenticated `HTTPRequest` wrapper for the GitHub REST API.
@@ -158,7 +152,9 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 
 - `ui/gitot_dock.tscn` / `gitot_dock.gd` - local Git dock UI shell (wiring, commit/push/pull handlers);
 - `ui/gitot_status_tree.gd` - staged/Unstaged file trees: population, staging/unstaging, bulk actions, size guard.
-- `ui/git_log_panel.gd` - commit history fold: Tree population, count-filter dropdown, relative/short date tooltip.
+- `ui/git_log_panel.gd` - commit history fold: Tree population, count-filter dropdown, relative/short date tooltip, `commit_selected` signal.
+- `ui/gitot_commit_files_list.gd` - changed-files `ItemList` for one commit (status-colored rows, auto-select first, `file_selected` signal); pure UI.
+- `ui/gitot_commit_log_diff.gd` - `GitotCommitLogDiff`, commit-mode flow (history click → file list → per-file diff) with a latest-wins request gate and diff size cap; `RefCounted`, constructor-injected, torn down by `gitot.gd`.
 - `ui/gitot_branch_panel.gd` - branch dropdown (switch) and new-branch dialog.
 - `ui/gitot_status_panel.gd` - compact repo-state summary (owner/repo, branch, branch scope); constructor-injected `RichTextLabel`.
 - `ui/gitot_tag_panel.gd` - tag-versioning UI: toggles, version-tag formatting, tag input resolution.
@@ -168,10 +164,34 @@ Each module is decoupled via signals; the Git engine has no knowledge of UI, and
 - `ui/github_panel.tscn` / `github_panel.gd` - GitHub Issues Tracker Board, main-screen tab, owns `GithubApi`, fetches on first tab-open.
 - `ui/github_auth_dialog.tscn` / `github_auth_dialog.gd` - [PAT](#github-personal-access-token) entry modal, opened on first use or 401.
 - `ui/issue_card.tscn` / `issue_card.gd` - single issue card (title, author, date, labels, body, browser link).
-- `ui/gitot_log_console.gd` - live console view backfilling `GitotLogger.log_history` and appending new entries via listener callback; styled with the editor's own Output panel font.
+- `ui/gitot_log_console.gd` - live console view backfilling `GitotLogger.log_history` and appending new entries via listener callback; styled with the editor's own Output panel font. Owns the Reflog button (constructor-injected `GitEngine` + `FoldableContainer`).
 </details>
 
 ## Changelog
+
+<details>
+<summary>v0.9.0</summary>
+
+feat: Commit history inspection
+
+- `Command.COMMIT_FILES` / `GitEngine.get_commit_files()` - `git show --name-status --format= --no-renames` (same `--no-renames` convention as `STATUS_ARGS`, so only A/M/D/T appear).
+- `Command.DIFF_COMMIT` / `GitEngine.get_commit_file_diff()` - `git show -U3` for ONE file of a commit, reusing `GitDiffParser.parse_full()`. Files are diffed on demand, not per commit, so large commits stay cheap.
+- `GitDiffParser.parse_name_status()` - `<letter>\t<path>` lines into `{status, path}` entries. The file list comes from `--name-status` because `parse_full()` cannot name deleted or binary files.
+- `GitLogPanel.commit_selected(commit_hash)` - new signal; each history row now carries its hash as metadata. Forwarded upward by `GitotDock.commit_selected`.
+- `GitotCommitFilesList` (new): status-colored `ItemList`, auto-selects the first file.
+- `GitotDiffPanel`: body wrapped in an `HSplitContainer`; new `set_commit_mode()`, `show_commit_files()` and `commit_file_selected`. The refresh button is hidden in commit mode (a commit's diff never changes).
+- `GitotCommitLogDiff` (new, `RefCounted`): serializes requests behind a latest-wins gate, since `command_completed` carries no request ID and worker threads can finish out of order. Truncates a single file diff at 200,000 characters.
+- `gitot.gd`: wires history click → presenter → bottom panel; a gutter click cancels commit mode, and the working-tree diff result restores the normal layout.
+
+feat: Reflog button
+
+- `Command.REFLOG` / `GitEngine.get_reflog()` - `git reflog -n 20` via `run_fast` (read-only, not in `WRITE_COMMANDS`); limit held in `GitEngine.REFLOG_COUNT`.
+- `GitotLogConsole`: title-bar Reflog button added via `add_title_bar_control()`, same pattern as the bulk stage/unstage buttons and the log count dropdown. `GitEngine` is now constructor-injected, and the constructor is `_init(git_engine, log_list, scroll, fold)`.
+- `gitot_dock.gd`: `_handle_reflog_result()` prints the raw output through `GitotLogger.g()`, so it lands in both the Gitot console and the Godot Output panel; failure logs an error, with git's stderr included.
+
+Also changed unstaged/staged color and icon to fit common git user habit! (Modified in orange and Untracked in green)
+<hr>
+</details>
 
 <details>
 <summary>v0.8.1</summary>
@@ -343,14 +363,14 @@ feat & fix: Tags Versioning, safeguard, cleanup gitot_dock.gd (SoC)...
 
 feat & fix: bulk stage/unstage, settings panel, status coloring, list fixes...
 
-- Fix untracked folder collapse (--untracked-files=all).
+- Fix untracked folder collapse `--untracked-files=all`
 - Fix status args drift via GitEngine.STATUS_ARGS.
 - Fix bulk-stage rename mis-parse via --no-renames.
 - Fix _refresh_status() null git_engine crash on editor startup.
 - Add Stage All / Unstage All with per-file size-guard skip.
 - Color-code + icon unstaged entries (new/modified/deleted/conflict/oversized).
 - Guard root-item click on both trees".
-- Add Settings (user://gitot_settings.cfg): large_file_mb, confirm_push, auto_refresh_on_focus.
+- Add Settings `user://gitot_settings.cfg`: large_file_mb, confirm_push, auto_refresh_on_focus.
 - Add collapsible settings panel UI (gear icon in dock TopBar).
 - Wire large-file guard, push confirmation, and focus-refresh to settings.
 - Add Push/Pull loading state feedback.

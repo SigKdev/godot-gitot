@@ -18,6 +18,8 @@ enum Command {
 	STATUS,
 	DIFF,
 	DIFF_FULL,
+	COMMIT_FILES,
+	DIFF_COMMIT,
 	COMMIT,
 	STAGE,
 	UNSTAGE,
@@ -35,6 +37,7 @@ enum Command {
 	TAG_COLLISION_CHECK,
 	PUSH_TAG,
 	LAST_COMMIT_MSG,
+	REFLOG,
 }
 
 ## Canonical status args. --untracked-files=all forces recursion into
@@ -78,6 +81,9 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.CREATE_BRANCH,
 	Command.TAG,
 ]
+
+## Max reflog entries shown by the console's Reflog button.
+const REFLOG_COUNT: int = 20
 
 ## PID → temp log path of currently running network operations (push/pull).
 ## Tracks both so a mid-operation kill (timeout or teardown) can also remove
@@ -195,6 +201,12 @@ func get_log(count: int) -> void:
 	run_fast(Command.LOG, ["log", "-n", str(count), LOG_FORMAT, "--date=format:%Y-%m-%d %H:%M"])
 
 
+## Requests the most recent reflog entries. Read-only/local, so it runs via run_fast
+## and is not in WRITE_COMMANDS. Result arrives via command_completed(REFLOG, ...).
+func get_reflog() -> void:
+	run_fast(Command.REFLOG, ["reflog", "-n", str(REFLOG_COUNT)])
+
+
 ## Returns files changed by the most recent `switch`/`create_branch` (reflog diff).
 ## Used to call EditorFileSystem.update_file() precisely instead of a full scan().
 ## @return: {"reliable": bool, "files": PackedStringArray}. reliable=false means
@@ -297,6 +309,26 @@ func get_ahead_behind() -> void:
 ## @param path: absolute path to the file (globalized, matches gutter's convention).
 func diff_full(path: String) -> void:
 	run_fast(Command.DIFF_FULL, ["diff", "-U3", "--no-ext-diff", "HEAD", "--", path])
+
+
+## Lists files changed by one commit ("<letter>\t<path>" per line). Async.
+## --format= drops the commit header; --no-renames matches STATUS_ARGS (renames = D + A).
+## @param hash: commit hash (abbreviated is fine).
+func get_commit_files(commit_hash: String) -> void:
+	run_fast(
+		Command.COMMIT_FILES,
+		["show", "--name-status", "--format=", "--no-renames", commit_hash],
+	)
+
+
+## Runs a full-context diff (-U3) of ONE file inside a commit, like `git show`.
+## Output is fed to GitDiffParser.parse_full() (same consumer as DIFF_FULL).
+## @param path: repo-relative path, as returned by get_commit_files().
+func get_commit_file_diff(commit_hash: String, path: String) -> void:
+	run_fast(
+		Command.DIFF_COMMIT,
+		["show", "-U3", "--no-ext-diff", "--no-renames", "--format=", commit_hash, "--", path],
+	)
 
 
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.

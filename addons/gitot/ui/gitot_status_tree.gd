@@ -5,10 +5,10 @@ class_name GitotStatusTree
 extends RefCounted
 
 const STATUS_COLORS: Dictionary = {
-	GitStatusParser.FileStatus.NEW_FILE: Color.CORNFLOWER_BLUE,
-	GitStatusParser.FileStatus.DELETED: Color.INDIAN_RED,
-	GitStatusParser.FileStatus.CONFLICT: Color.ORANGE,
-	GitStatusParser.FileStatus.MODIFIED: Color.FOREST_GREEN,
+	GitStatusParser.FileStatus.NEW_FILE: Color.FOREST_GREEN,
+	GitStatusParser.FileStatus.MODIFIED: Color.ORANGE,
+	GitStatusParser.FileStatus.DELETED: Color.RED,
+	GitStatusParser.FileStatus.CONFLICT: Color.INDIAN_RED,
 }
 
 ## TreeItem button id for the "open file in editor" action.
@@ -77,13 +77,16 @@ func _populate_tree(
 		if STATUS_COLORS.has(status):
 			item.set_custom_color(0, STATUS_COLORS[status])
 		if status == GitStatusParser.FileStatus.MODIFIED:
-			item.set_icon(0, _icon("ImportCheck"))
+			item.set_icon(0, _icon("Edit"))
+			item.set_icon_modulate(0, Color.ORANGE)
 			item.set_tooltip_text(0, "Modified File")
 		if status == GitStatusParser.FileStatus.DELETED:
-			item.set_icon(0, _icon("MissingNode"))
+			item.set_icon(0, _icon("Close"))
+			item.set_icon_modulate(0, Color.RED)
 			item.set_tooltip_text(0, "Deleted File")
 		if status == GitStatusParser.FileStatus.NEW_FILE:
-			item.set_icon(0, _icon("Line2D"))
+			item.set_icon(0, _icon("Add"))
+			item.set_icon_modulate(0, Color.FOREST_GREEN)
 			item.set_tooltip_text(0, "Untracked File")
 		if status == GitStatusParser.FileStatus.CONFLICT:
 			item.set_icon(0, _icon("NodeWarning"))
@@ -96,6 +99,7 @@ func _populate_tree(
 			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard — excluded from Staging ⚠")
 		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
 			item.add_button(0, _icon("ShaderDock"), BUTTON_OPEN_FILE, false, "Open file in editor")
+			item.set_button_color(0, item.get_button_by_id(0, BUTTON_OPEN_FILE), Color.DARK_GRAY)
 
 
 ## Creates and wires the Stage All / Unstage All buttons into each fold header.

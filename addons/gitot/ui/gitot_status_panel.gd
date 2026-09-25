@@ -50,7 +50,7 @@ func _render() -> void:
 	if not _branch_scope.is_empty():
 		scope_display = " %s" % _branch_scope
 
-	var sync_text: String = "[color=lime_green]↑%d[/color] [color=orange]↓%d[/color]" % [
+	var sync_text: String = "[color=forest_green]↑%d[/color] [color=indian_red]↓%d[/color]" % [
 		_ahead,
 		_behind,
 	]

@@ -5,6 +5,9 @@
 class_name GitotDock
 extends Control
 
+## Forwarded from the history list (signal up; gitot.gd owns the diff panel).
+signal commit_selected(entry: Dictionary)
+
 const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 
 # Caps _ready()'s self-retry when _git_engine never arrives.
@@ -107,7 +110,8 @@ func _ready() -> void:
 	_status_panel.update_repo("%s/%s" % [owner_repo.get("owner", ""), owner_repo.get("repo", "")])
 	_log_panel = GitLogPanel.new(_git_engine, %GitlogFold, %GitlogTree)
 	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
-	_log_console = GitotLogConsole.new(%LogList, %LogScroll)
+	_log_console = GitotLogConsole.new(_git_engine, %LogList, %LogScroll, %OutputLogFold)
+	_log_panel.commit_selected.connect(commit_selected.emit)
 
 	_tag_panel = GitotTagPanel.new(
 		%TagVersioningToggle,
@@ -283,6 +287,8 @@ func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array
 			_handle_status_result(output)
 		GitEngine.Command.LAST_COMMIT_MSG:
 			_handle_last_commit_message_result(exit_code, output)
+		GitEngine.Command.REFLOG:
+			_handle_reflog_result(exit_code, output)
 
 
 ## Handles the result of a commit command, logging success or failure.
@@ -359,7 +365,7 @@ func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Arr
 	else:
 		GitotLogger.e("%s failed." % display_name)
 	if not output.is_empty() and not output[0].is_empty():
-		GitotLogger.g(output[0]) # git's raw stderr
+		GitotLogger.g(output[0])
 	if command == GitEngine.Command.PULL and exit_code == 0:
 		EditorInterface.get_resource_filesystem().scan()
 
@@ -398,7 +404,7 @@ func _handle_branch_result(
 	else:
 		GitotLogger.e("%s failed." % display_name)
 		if not output.is_empty():
-			GitotLogger.g(output[0]) # git's raw stderr
+			GitotLogger.g(output[0])
 	_git_engine.list_branches() # also refreshes the status panel's branch label
 	_status_panel.update_branch(_git_engine.get_current_branch())
 
@@ -407,6 +413,15 @@ func _handle_branch_result(
 func _handle_log_result(output: Array[String]) -> void:
 	if not output.is_empty():
 		_log_panel.populate(GitLogParser.parse(output[0]))
+
+
+## Dumps raw reflog to Godot Output + Gitot console. stderr is merged into output,
+## so a failure's git message shows here too.
+func _handle_reflog_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code != 0:
+		GitotLogger.e("Reflog failed.")
+	if not output.is_empty() and not output[0].strip_edges().is_empty():
+		GitotLogger.g(output[0].strip_edges()) # strip: avoids trailing blank line in the label
 
 
 ## Refreshes the status tree.

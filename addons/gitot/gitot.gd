@@ -39,6 +39,7 @@ var _github_panel: Control
 var _diff_panel: GitotDiffPanel
 var _pending_diff_path: String = ""
 var _pending_diff_line: int = -1
+var _commit_log_diff: GitotCommitLogDiff
 
 
 #region Plugin Initialisation
@@ -79,6 +80,8 @@ func _enter_tree() -> void:
 	_diff_panel = GitotDiffPanelScene.instantiate()
 	add_control_to_bottom_panel(_diff_panel, "Gitot Diff")
 	_diff_panel.refresh_requested.connect(_on_diff_refresh_requested)
+	_commit_log_diff = GitotCommitLogDiff.new(_git_engine, _diff_panel)
+	_dock.commit_selected.connect(_on_commit_selected)
 
 	GitotLogger.s("'git' binary verified. Plugin ready!")
 
@@ -119,6 +122,10 @@ func _exit_tree() -> void:
 	if _github_panel:
 		_github_panel.queue_free()
 		_github_panel = null
+
+	if _commit_log_diff:
+		_commit_log_diff.teardown()
+		_commit_log_diff = null
 
 	if _diff_panel:
 		remove_control_from_bottom_panel(_diff_panel)
@@ -173,9 +180,16 @@ func _on_resource_saved(resource: Resource) -> void:
 ## Gutter click, request full-context diff. Line/path stored to guard against
 ## a stale result if the user switches script tabs before git responds.
 func _on_hunk_clicked(file_path: String, line: int) -> void:
+	_commit_log_diff.cancel()
 	_pending_diff_path = file_path
 	_pending_diff_line = line + 1 # CodeEdit's 0-based -> git's 1-based (matches GitDiffParser)
 	_git_engine.diff_full(ProjectSettings.globalize_path(file_path))
+	make_bottom_panel_item_visible(_diff_panel)
+
+
+## History row clicked: load that commit into the bottom panel and bring it to front.
+func _on_commit_selected(entry: Dictionary) -> void:
+	_commit_log_diff.show_commit(entry)
 	make_bottom_panel_item_visible(_diff_panel)
 
 
@@ -204,5 +218,6 @@ func _on_diff_full_result(
 		return
 	var hunks: Array[Dictionary] = []
 	hunks.assign(files[0]["hunks"])
+	_diff_panel.set_commit_mode(false)
 	_diff_panel.show_diff(_pending_diff_path, hunks)
 	_diff_panel.jump_to_source_line(_pending_diff_line)

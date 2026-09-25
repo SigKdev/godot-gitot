@@ -506,6 +506,7 @@ unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 155)
 layout_mode = 2
+mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 11
 columns = 3
 column_titles_visible = true
@@ -514,19 +515,20 @@ hide_root = true
 [node name="----4" type="HSeparator" parent="MainVBox/ScrollContainer/VBox" unique_id=43181204]
 layout_mode = 2
 
-[node name="OutputLogContainer" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=764610019]
+[node name="OutputLogFold" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=764610019]
+unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Console log in case you toggle off the visibility of standard output messages."
 folded = true
 title = "Output log"
 
-[node name="LogScroll" type="ScrollContainer" parent="MainVBox/ScrollContainer/VBox/OutputLogContainer" unique_id=1549232491]
+[node name="LogScroll" type="ScrollContainer" parent="MainVBox/ScrollContainer/VBox/OutputLogFold" unique_id=1549232491]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 
-[node name="LogList" type="VBoxContainer" parent="MainVBox/ScrollContainer/VBox/OutputLogContainer/LogScroll" unique_id=556901537]
+[node name="LogList" type="VBoxContainer" parent="MainVBox/ScrollContainer/VBox/OutputLogFold/LogScroll" unique_id=556901537]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3

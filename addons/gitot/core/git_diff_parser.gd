@@ -45,8 +45,7 @@ static func parse(raw_diff: String) -> Dictionary:
 
 
 ## Parses a full-context `git diff -U3` into per-file hunks for the bottom-dock viewer.
-## Multi-file-ready shape (single entry for v1's single-file -- <path> diffs; reused
-## as-is for future commit-diff support — see Command.DIFF_COMMIT, not yet implemented).
+## Multi-file-ready shape (single entry for v1's single-file -- <path> diffs; reused as-is for future commit-diff support.
 ## Line numbers are 1-based, matching git's own convention (same as parse()'s hunk parsing).
 ## @return: [{file: String, hunks: [{old_start: int, new_start: int, lines: [{type, text}]}]}]
 ##   type is "add" / "del" / "context". Malformed input yields an empty Array.
@@ -93,6 +92,17 @@ static func parse_full(raw_diff: String) -> Array[Dictionary]:
 	if not current_file.is_empty():
 		files.append(current_file)
 	return files
+
+
+## Parses `--name-status` output: one "<letter>\t<path>" per line.
+## @return: [{"status": String, "path": String}]. Malformed lines are skipped.
+static func parse_name_status(raw: String) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for line: String in raw.split("\n", false):
+		var parts: PackedStringArray = line.strip_edges().split("\t", false, 1)
+		if parts.size() == 2:
+			result.append({ "status": parts[0], "path": parts[1] })
+	return result
 
 
 ## Appends a completed hunk to its file entry, if one is in progress.
