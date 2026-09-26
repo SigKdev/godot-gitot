@@ -1,6 +1,6 @@
 ## gitot_commit_files_list.gd
 ## Changed-files list for one commit ("M  path"). Pure UI: emits the selection,
-## no git logic (SoC) - the caller fetches data and requests the file's diff.
+## no git logic - the caller fetches data and requests the file's diff.
 @tool
 class_name GitotCommitFilesList
 extends ItemList
@@ -9,11 +9,7 @@ extends ItemList
 signal file_selected(path: String)
 
 ## Row color per git status letter; other letters (e.g. T) keep the default color.
-const STATUS_COLORS: Dictionary = {
-	"A": Color.FOREST_GREEN,
-	"M": Color.ORANGE,
-	"D": Color.RED,
-}
+const STATUS_COLORS: Dictionary = { "A": Color.FOREST_GREEN, "M": Color.ORANGE, "D": Color.RED }
 
 
 func _ready() -> void:

@@ -346,6 +346,13 @@ indent_wrapped_lines = true
 [node name="HBox" type="HBoxContainer" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox" unique_id=414286567]
 layout_mode = 2
 
+[node name="AmendCheckbox" type="CheckBox" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/HBox" unique_id=412795298]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Amend last commit
+(blocked/confirmed if already pushed)"
+mouse_default_cursor_shape = 2
+
 [node name="CommitButton" type="Button" parent="MainVBox/ScrollContainer/VBox/CommitPanel/VBox/HBox" unique_id=19649693]
 unique_name_in_owner = true
 layout_mode = 2
@@ -479,7 +486,7 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Pull
 ⚠ Godot may not refresh pulled scripts open
-in the editor, a restart may be needed ⚠"
+in the editor, close it before or a restart may be needed ⚠"
 mouse_default_cursor_shape = 2
 icon = SubResource("DPITexture_4kcxk")
 
@@ -547,3 +554,9 @@ offset_right = 68.5
 offset_bottom = 31.0
 emoji_menu_enabled = false
 drag_and_drop_selection_enabled = false
+
+[node name="AmendConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1287513168]
+unique_name_in_owner = true
+dialog_text = "Last commit was already pushed to origin.
+Amending rewrites history!
+You'll need to force the next push. Continue?"

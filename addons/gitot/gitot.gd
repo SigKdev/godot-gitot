@@ -19,6 +19,7 @@ const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 	GitEngine.Command.STAGE,
 	GitEngine.Command.UNSTAGE,
 	GitEngine.Command.COMMIT,
+	GitEngine.Command.AMEND,
 	GitEngine.Command.PUSH,
 	GitEngine.Command.PULL,
 	GitEngine.Command.SWITCH,

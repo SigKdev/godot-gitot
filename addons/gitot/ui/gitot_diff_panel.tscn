@@ -30,6 +30,8 @@ layout_mode = 2
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
+tooltip_text = "Click to copy commit hash"
+mouse_default_cursor_shape = 2
 bbcode_enabled = true
 fit_content = true
 

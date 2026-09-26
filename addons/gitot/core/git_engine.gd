@@ -21,6 +21,7 @@ enum Command {
 	COMMIT_FILES,
 	DIFF_COMMIT,
 	COMMIT,
+	AMEND,
 	STAGE,
 	UNSTAGE,
 	STASH,
@@ -49,11 +50,14 @@ const STATUS_ARGS: PackedStringArray = [
 	"--no-renames",
 ]
 
+## Unit separator (0x1F) — safe delimiter unlikely to appear in git log fields.
+const UNIT_SEP: String = char(0x1F)
+
 ## Format string for `git log`: hash, author, relative date, subject - separated
-## by \x1f (Unit Separator) since commit subjects can contain any printable char.
+## by Unit Separator since commit subjects can contain any printable char.
 ## GDScript doesn't support \x escapes - only \uXXXX (4-digit unicode)
-## Consumed by GitLogParser.parse().
-const LOG_FORMAT: String = "--pretty=format:%h\u001f%an\u001f%ar\u001f%ad\u001f%s"
+# const LOG_FORMAT: String = "--pretty=format:%h\u001f%an\u001f%ar\u001f%ad\u001f%s"
+const LOG_FORMAT: String = "--pretty=format:%h" + UNIT_SEP + "%an" + UNIT_SEP + "%ar" + UNIT_SEP + "%ad" + UNIT_SEP + "%s"
 
 ## Shell metacharacters valid in git ref names but unsafe once interpolated into
 ## the shell string run_network() builds (see push_tag()). Rejected in create_tag()
@@ -73,6 +77,7 @@ const LOCAL_TIMEOUT_SEC: float = 5.0
 ## are safe to run concurrently with each other on WorkerThreadPool.
 const WRITE_COMMANDS: Array[Command] = [
 	Command.COMMIT,
+	Command.AMEND,
 	Command.STAGE,
 	Command.UNSTAGE,
 	Command.STASH,
@@ -178,6 +183,15 @@ func run_network(command: Command, args: PackedStringArray) -> void:
 	_active_pids[pid] = abs_log_path
 	# Poll the process for completion.
 	_poll_process.call_deferred(pid, command, abs_log_path, Time.get_ticks_msec())
+
+
+## True if a plain push would be rejected (local HEAD diverged from its
+## upstream - e.g. after an amend/rebase). No upstream at all -> false
+## (first push, nothing to diverge from). Bounded sync check, run right
+## before a push.
+func needs_force_push() -> bool:
+	var result: Array = _execute_bounded(["merge-base", "--is-ancestor", "@{u}", "HEAD"])
+	return result[0] == 1
 
 
 ## Returns the "origin" remote URL, or an empty string on failure.

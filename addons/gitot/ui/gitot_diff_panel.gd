@@ -23,6 +23,7 @@ var _line_num_gutter_idx: int = -1
 var _current_file_path: String = ""
 var _sign_gutter_idx: int = -1
 var _current_hunks: Array[Dictionary] = [] # stored for jump_to_source_line() and future refresh
+var _current_commit_hash: String = ""
 
 @onready var _code_edit: CodeEdit = %DiffCodeEdit
 @onready var _files_list: GitotCommitFilesList = %CommitFilesList
@@ -46,6 +47,10 @@ func _ready() -> void:
 
 	%RefreshDiffPanelButton.pressed.connect(_on_refresh_pressed)
 	_files_list.file_selected.connect(commit_file_selected.emit)
+
+	%CommitInfoLabel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	%CommitInfoLabel.tooltip_text = "Click to copy commit hash"
+	%CommitInfoLabel.gui_input.connect(_on_commit_info_gui_input)
 
 
 ## Renders all hunks of one file: a @@ header before each hunk, then its lines.
@@ -153,6 +158,7 @@ func show_commit_info(entry: Dictionary) -> void:
 		entry["date_short"],
 		entry["hash"],
 	]
+	_current_commit_hash = entry["hash"]
 	%CommitInfoLabel.visible = true
 
 
@@ -173,6 +179,15 @@ func _make_header_line(hunk: Dictionary) -> Dictionary:
 		new_count,
 	]
 	return { "type": "header", "text": text }
+
+
+func _on_commit_info_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _current_commit_hash.is_empty():
+			return
+		DisplayServer.clipboard_set(_current_commit_hash)
+		%CommitInfoLabel.modulate = Color.LIME_GREEN
+		create_tween().tween_property(%CommitInfoLabel, "modulate", Color.WHITE, 0.4)
 
 
 func _make_numbered_lines(hunk: Dictionary) -> Array[Dictionary]:

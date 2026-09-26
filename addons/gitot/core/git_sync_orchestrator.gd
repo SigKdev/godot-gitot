@@ -23,7 +23,12 @@ func _init(git_engine: GitEngine) -> void:
 func start_push(tag_input: Dictionary) -> void:
 	_pending_tag = tag_input
 	push_state_changed.emit(true)
-	_git_engine.run_network(GitEngine.Command.PUSH, ["push", "-u", "origin", "HEAD"])
+	var push_args: PackedStringArray = (
+		["push", "--force-with-lease", "-u", "origin", "HEAD"]
+		if _git_engine.needs_force_push()
+		else ["push", "-u", "origin", "HEAD"]
+	)
+	_git_engine.run_network(GitEngine.Command.PUSH, push_args)
 
 
 ## Re-attempts pushing the tag that was created locally but failed to push.
@@ -72,9 +77,7 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 ## check_tag_collision(). Only pushes if the existing local tag already
 ## points at HEAD (legitimate retry after a prior failed push) - never
 ## pushes a same-named tag pointing at an unrelated commit. A failed/short
-## rev-parse (exit_code != 0, or fewer than 2 SHAs) is treated as a
-## mismatch, not a match - unlike the old two-call version, this can't
-## mistake "both reads failed" for "both point at the same commit."
+## rev-parse (exit_code != 0, or fewer than 2 SHAs) is treated as a mismatch
 func _handle_tag_collision_result(exit_code: int, output: Array) -> void:
 	var tag_name: String = _pending_tag.get("tag_name", "")
 	var shas: PackedStringArray = (

@@ -75,8 +75,8 @@ static func _print(message: String, level: Level) -> void:
 			color = "dark_gray"
 			prefix = "[color=dark_gray][git raw][/color]"
 		Level.INFO:
-			color = "dark_gray"
-			prefix = "[color=dark_gray][Gitot Info][/color]"
+			color = "gray"
+			prefix = "[color=gray][Gitot Info][/color]"
 
 	var formatted := "%s [color=%s]%s[/color]" % [prefix, color, message]
 	log_history.append(formatted)

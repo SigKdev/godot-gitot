@@ -25,33 +25,8 @@ var _log_panel: GitLogPanel
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
 var _branch_panel: GitotBranchPanel
-
-
-## Determines whether a branch exists locally, remotely, or both.
-static func _get_branch_scope(branch_name: String, branches: Array[Dictionary]) -> String:
-	var local_exists: bool = false
-	var remote_exists: bool = false
-
-	for branch: Dictionary in branches:
-		if branch["is_remote"]:
-			if branch["name"] == "origin/" + branch_name:
-				remote_exists = true
-		elif branch["name"] == branch_name:
-			local_exists = true
-
-	if local_exists and remote_exists:
-		return "(Local + Remote)"
-	if remote_exists:
-		return "(Remote)"
-	return "(Local)"
-
-
-## Finds the current branch's name from an already-parsed branch list.
-static func _get_current_branch_from_list(branches: Array[Dictionary]) -> String:
-	for branch: Dictionary in branches:
-		if branch["is_current"]:
-			return branch["name"]
-	return ""
+var _result_router: GitotResultRouter
+var _default_push_confirm_text: String = ""
 
 
 func _ready() -> void:
@@ -61,6 +36,7 @@ func _ready() -> void:
 		# spawned outside gitot.gd's flow (never resolves — give up past the cap).
 		_ready_retry_count += 1
 		if _ready_retry_count > MAX_READY_RETRIES:
+			GitotLogger.e("GitEngine never injected - dock disabled.")
 			return
 		_ready.call_deferred()
 		return
@@ -133,6 +109,17 @@ func _ready() -> void:
 	if _git_engine:
 		_git_engine.list_branches()
 		_status_panel.update_branch(_git_engine.get_current_branch())
+
+	_result_router = GitotResultRouter.new(
+		_git_engine,
+		_status_panel,
+		_status_tree,
+		_log_panel,
+		_branch_panel,
+		%FetchButton,
+		%PullButton,
+	)
+	_result_router.branch_switched.connect(_notify_changed_files)
 	#endregion
 
 	#region Settings & dialogs
@@ -142,6 +129,16 @@ func _ready() -> void:
 			%SettingsPanel.visible = not %SettingsPanel.visible,
 	)
 	%PushConfirmDialog.confirmed.connect(_do_push)
+	%AmendConfirmDialog.confirmed.connect(_do_amend)
+	_default_push_confirm_text = %PushConfirmDialog.dialog_text
+	%PushConfirmDialog.canceled.connect(
+		func() -> void:
+			GitotLogger.w("Push cancelled."),
+	)
+	%AmendConfirmDialog.canceled.connect(
+		func() -> void:
+			GitotLogger.w("Amend cancelled."),
+	)
 
 	%UseCommitToggle.toggled.connect(
 		func(on: bool) -> void:
@@ -238,14 +235,14 @@ func _notify_changed_files() -> void:
 		return
 
 	var stale_scripts: int = 0
-	for relative_path in result["files"]:
+	for relative_path: String in result["files"]:
 		var res_path: String = "res://" + relative_path
 		if not FileAccess.file_exists(res_path):
 			continue
 		fs.update_file(res_path)
 		if res_path in open_scenes:
 			EditorInterface.reload_scene_from_path(res_path)
-		for script in open_scripts:
+		for script: Script in open_scripts:
 			if script.resource_path == res_path:
 				stale_scripts += 1
 
@@ -267,180 +264,48 @@ func _on_refresh_diff_pressed() -> void:
 	_diff_gutter.refresh_current_script()
 
 
-#region Status Result
-## Routes a finished GitEngine command to its domain handler.
+## Routes a finished GitEngine command; LAST_COMMIT_MSG stays here (push-flow specific).
 func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
-	match command:
-		GitEngine.Command.COMMIT:
-			_handle_commit_result(exit_code)
-		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
-			_handle_stash_result(command, exit_code, output)
-		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine \
-				.Command \
-				.PULL:
-			_handle_sync_result(command, exit_code, output)
-		GitEngine.Command.BRANCHES, GitEngine.Command.SWITCH, GitEngine.Command.CREATE_BRANCH:
-			_handle_branch_result(command, exit_code, output)
-		GitEngine.Command.LOG:
-			_handle_log_result(output)
-		GitEngine.Command.STATUS:
-			_handle_status_result(output)
-		GitEngine.Command.LAST_COMMIT_MSG:
-			_handle_last_commit_message_result(exit_code, output)
-		GitEngine.Command.REFLOG:
-			_handle_reflog_result(exit_code, output)
-
-
-## Handles the result of a commit command, logging success or failure.
-func _handle_commit_result(exit_code: int) -> void:
-	if exit_code == 0:
-		GitotLogger.s("Commit successful.")
-	else:
-		GitotLogger.x("Commit failed.")
-
-
-## Handles the result of a stash or stash_pop command, logging success or failure.
-func _handle_stash_result(
-	command: GitEngine.Command,
-	exit_code: int,
-	output: Array[String],
-) -> void:
-	if command == GitEngine.Command.STASH:
-		if exit_code == 0:
-			if not output.is_empty() and output[0].contains("No local changes to save"):
-				GitotLogger.w("Nothing to stash.")
-			else:
-				GitotLogger.s("Changes stashed.")
-		else:
-			GitotLogger.e("Stash failed.")
-			if not output.is_empty():
-				GitotLogger.g(output[0])
+	if command == GitEngine.Command.LAST_COMMIT_MSG:
+		_handle_last_commit_message_result(exit_code, output)
 		return
-
-	# stash_pop
-	if exit_code == 0:
-		GitotLogger.s("Stash popped.")
-	else:
-		GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
-		if not output.is_empty():
-			GitotLogger.g(output[0])
-
-
-## Fetch / ahead-behind / push / pull - everything touching remote sync status.
-func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
-	if command == GitEngine.Command.FETCH:
-		%FetchButton.disabled = false
-		%FetchButton.icon = _icon("AssetStore")
-		if exit_code == 0:
-			GitotLogger.s("Fetch finished.")
-			_git_engine.list_branches() # new remote branches only become visible after fetch
-			_git_engine.get_ahead_behind() # keep sync status current with new remote refs
-		else:
-			GitotLogger.e("Fetch failed.")
-		if not output.is_empty() and not output[0].is_empty():
-			GitotLogger.g(output[0])
-		return
-
-	if command == GitEngine.Command.AHEAD_BEHIND:
-		if exit_code != 0 or output.is_empty():
-			_status_panel.update_sync(0, 0)
-			return
-		var parts: PackedStringArray = output[0].strip_edges().split("\t")
-		if parts.size() != 2:
-			return
-		var behind: int = int(parts[0])
-		var ahead: int = int(parts[1])
-		if _status_panel.update_sync(ahead, behind) and (ahead > 0 or behind > 0):
-			GitotLogger.i("Current branch is %d ahead, %d behind origin." % [ahead, behind])
-		return
-
-	# push / pull
-	if command == GitEngine.Command.PULL:
-		%PullButton.disabled = false
-		%PullButton.icon = _icon("MoveDown")
-
-	var display_name: String = GitEngine.Command.keys()[command].capitalize()
-	if exit_code == 0:
-		GitotLogger.s("%s finished." % display_name)
-	else:
-		GitotLogger.e("%s failed." % display_name)
-	if not output.is_empty() and not output[0].is_empty():
-		GitotLogger.g(output[0])
-	if command == GitEngine.Command.PULL and exit_code == 0:
-		EditorInterface.get_resource_filesystem().scan()
-
-
-## Branch list refresh, switch, and create - everything that changes HEAD or the dropdown.
-func _handle_branch_result(
-	command: GitEngine.Command,
-	exit_code: int,
-	output: Array[String],
-) -> void:
-	if command == GitEngine.Command.BRANCHES:
-		if not output.is_empty():
-			var branches: Array[Dictionary] = GitBranchParser.parse(output[0])
-			var branch_scopes: Dictionary[String, String] = { }
-
-			for branch: Dictionary in branches:
-				if branch["is_remote"]:
-					branch_scopes[branch["name"]] = "Remote"
-				else:
-					branch_scopes[branch["name"]] = _get_branch_scope(branch["name"], branches)
-
-			_branch_panel.populate(branches, branch_scopes)
-
-			var current_branch: String = _get_current_branch_from_list(branches)
-			_status_panel.update_branch(current_branch, branch_scopes.get(current_branch, ""))
-		return
-
-	# switch / create_branch
-	var display_name: String = GitEngine.Command.keys()[command].capitalize()
-	if exit_code == 0:
-		GitotLogger.s(
-			"%s successful, now on '[color=gray]%s[/color]'"
-			% [display_name, _git_engine.get_last_switch_target()]
-		)
-		_notify_changed_files()
-	else:
-		GitotLogger.e("%s failed." % display_name)
-		if not output.is_empty():
-			GitotLogger.g(output[0])
-	_git_engine.list_branches() # also refreshes the status panel's branch label
-	_status_panel.update_branch(_git_engine.get_current_branch())
-
-
-## Handles the result of a log command, populating the log panel.
-func _handle_log_result(output: Array[String]) -> void:
-	if not output.is_empty():
-		_log_panel.populate(GitLogParser.parse(output[0]))
-
-
-## Dumps raw reflog to Godot Output + Gitot console. stderr is merged into output,
-## so a failure's git message shows here too.
-func _handle_reflog_result(exit_code: int, output: Array[String]) -> void:
-	if exit_code != 0:
-		GitotLogger.e("Reflog failed.")
-	if not output.is_empty() and not output[0].strip_edges().is_empty():
-		GitotLogger.g(output[0].strip_edges()) # strip: avoids trailing blank line in the label
-
-
-## Refreshes the status tree.
-func _handle_status_result(output: Array[String]) -> void:
-	if output.is_empty():
-		return
-	var parsed: Dictionary = GitStatusParser.parse(output[0])
-	_status_tree.populate(parsed)
-#endregion
+	_result_router.route(command, exit_code, output)
 
 
 ## Commits currently staged files with the message from the input field.
 func _on_commit_pressed() -> void:
 	var message: String = %CommitMessageInput.text.strip_edges()
+	if %AmendCheckbox.button_pressed:
+		_on_amend_pressed()
+		return
 	if message.is_empty():
 		GitotLogger.w("Commit message is empty. Commit aborted!")
 		return
 	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message])
 	%CommitMessageInput.text = ""
+
+
+## Guards against amending a commit already on origin (ahead == 0 with an
+## upstream set means HEAD == upstream). No upstream at all is always safe.
+func _on_amend_pressed() -> void:
+	if _result_router.has_upstream() and _result_router.ahead_count() == 0:
+		%AmendConfirmDialog.popup_centered()
+		return
+	_do_amend()
+
+
+## Executes the amend - called directly or after dialog confirmation.
+## Empty message keeps the existing one (--no-edit).
+func _do_amend() -> void:
+	var message: String = %CommitMessageInput.text.strip_edges()
+	var args: PackedStringArray = (
+		["commit", "--amend", "--no-edit"]
+		if message.is_empty()
+		else ["commit", "--amend", "-m", message]
+	)
+	_git_engine.run_fast(GitEngine.Command.AMEND, args)
+	%CommitMessageInput.text = ""
+	%AmendCheckbox.button_pressed = false
 
 
 ## Shelves all uncommitted changes onto the stash stack.
@@ -473,6 +338,13 @@ func _on_tag_retry_needed(needed: bool) -> void:
 ## Pushes current branch to its remote tracking branch.
 ## Gated by the "confirm_push" setting to avoid accidental remote pushes.
 func _on_push_pressed() -> void:
+	if _git_engine.needs_force_push():
+		%PushConfirmDialog.dialog_text = (
+			"Last commit was amended!\nThis push will use --force-with-lease. Continue?"
+		)
+		%PushConfirmDialog.popup_centered()
+		return
+	%PushConfirmDialog.dialog_text = _default_push_confirm_text
 	if GitotSettings.get_value("confirm_push"):
 		%PushConfirmDialog.popup_centered()
 	else:
@@ -480,7 +352,7 @@ func _on_push_pressed() -> void:
 
 
 ## Continues _do_push() once the async commit-message fetch completes.
-func _handle_last_commit_message_result(exit_code: int, output: Array) -> void:
+func _handle_last_commit_message_result(exit_code: int, output: Array[String]) -> void:
 	var message: String = (
 		String(output[0]).strip_edges()
 		if (exit_code == 0 and not output.is_empty())

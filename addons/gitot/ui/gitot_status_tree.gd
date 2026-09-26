@@ -7,8 +7,8 @@ extends RefCounted
 const STATUS_COLORS: Dictionary = {
 	GitStatusParser.FileStatus.NEW_FILE: Color.FOREST_GREEN,
 	GitStatusParser.FileStatus.MODIFIED: Color.ORANGE,
-	GitStatusParser.FileStatus.DELETED: Color.RED,
-	GitStatusParser.FileStatus.CONFLICT: Color.INDIAN_RED,
+	GitStatusParser.FileStatus.DELETED: Color.INDIAN_RED,
+	GitStatusParser.FileStatus.CONFLICT: Color.RED,
 }
 
 ## TreeItem button id for the "open file in editor" action.
@@ -82,7 +82,7 @@ func _populate_tree(
 			item.set_tooltip_text(0, "Modified File")
 		if status == GitStatusParser.FileStatus.DELETED:
 			item.set_icon(0, _icon("Close"))
-			item.set_icon_modulate(0, Color.RED)
+			item.set_icon_modulate(0, Color.INDIAN_RED)
 			item.set_tooltip_text(0, "Deleted File")
 		if status == GitStatusParser.FileStatus.NEW_FILE:
 			item.set_icon(0, _icon("Add"))
@@ -90,12 +90,14 @@ func _populate_tree(
 			item.set_tooltip_text(0, "Untracked File")
 		if status == GitStatusParser.FileStatus.CONFLICT:
 			item.set_icon(0, _icon("NodeWarning"))
+			item.set_icon_modulate(0, Color.RED)
 			item.set_tooltip_text(0, "⚠ Merge conflict — resolve before staging ⚠")
 		if (
 			check_size and status != GitStatusParser.FileStatus.CONFLICT
 			and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"]), max_bytes)
 		):
 			item.set_icon(0, _icon("StatusWarning"))
+			item.set_icon_modulate(0, Color.ORANGE)
 			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard — excluded from Staging ⚠")
 		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
 			item.add_button(0, _icon("ShaderDock"), BUTTON_OPEN_FILE, false, "Open file in editor")
