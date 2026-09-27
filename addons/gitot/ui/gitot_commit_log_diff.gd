@@ -21,6 +21,7 @@ func _init(git_engine: GitEngine, panel: GitotDiffPanel) -> void:
 	_panel = panel
 	_git_engine.command_completed.connect(_on_command_completed)
 	_panel.commit_file_selected.connect(_on_file_selected)
+	_panel.restore_file_requested.connect(_on_restore_requested)
 
 
 ## Disconnects from shared objects. Call from gitot.gd before freeing the panel.
@@ -29,6 +30,10 @@ func teardown() -> void:
 		_git_engine.command_completed.disconnect(_on_command_completed)
 	if is_instance_valid(_panel) and _panel.commit_file_selected.is_connected(_on_file_selected):
 		_panel.commit_file_selected.disconnect(_on_file_selected)
+	if is_instance_valid(_panel) and _panel.restore_file_requested.is_connected(
+			_on_restore_requested
+		):
+		_panel.restore_file_requested.disconnect(_on_restore_requested)
 
 
 ## Starts (or retargets) commit mode after a history click.
@@ -68,10 +73,14 @@ func _pump() -> void:
 		_git_engine.get_commit_file_diff(_commit_hash, _path)
 
 
+func _on_restore_requested(commit_hash: String, path: String) -> void:
+	_git_engine.restore_file(commit_hash, path)
+
+
 func _on_command_completed(
-		command: GitEngine.Command,
-		exit_code: int,
-		output: Array[String],
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
 ) -> void:
 	if command != GitEngine.Command.COMMIT_FILES and command != GitEngine.Command.DIFF_COMMIT:
 		return

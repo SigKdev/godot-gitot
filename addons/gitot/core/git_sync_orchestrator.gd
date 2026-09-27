@@ -20,12 +20,13 @@ func _init(git_engine: GitEngine) -> void:
 
 
 ## Starts a push, chained with tag creation if tag_input has a non-empty tag_name.
-func start_push(tag_input: Dictionary) -> void:
+## @param force: caller-computed needs_force_push() result - avoids a second sync git call here.
+func start_push(tag_input: Dictionary, force: bool) -> void:
 	_pending_tag = tag_input
 	push_state_changed.emit(true)
 	var push_args: PackedStringArray = (
 		["push", "--force-with-lease", "-u", "origin", "HEAD"]
-		if _git_engine.needs_force_push()
+		if force
 		else ["push", "-u", "origin", "HEAD"]
 	)
 	_git_engine.run_network(GitEngine.Command.PUSH, push_args)
@@ -44,7 +45,7 @@ func teardown() -> void:
 
 
 ## Reacts to GitEngine command completion events and issues the next command in the push->tag->push-tag chain.
-func _on_command_completed(command: GitEngine.Command, exit_code: int, output: Array) -> void:
+func _on_command_completed(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	match command:
 		GitEngine.Command.PUSH:
 			push_state_changed.emit(false)
@@ -78,7 +79,7 @@ func _on_command_completed(command: GitEngine.Command, exit_code: int, output: A
 ## points at HEAD (legitimate retry after a prior failed push) - never
 ## pushes a same-named tag pointing at an unrelated commit. A failed/short
 ## rev-parse (exit_code != 0, or fewer than 2 SHAs) is treated as a mismatch
-func _handle_tag_collision_result(exit_code: int, output: Array) -> void:
+func _handle_tag_collision_result(exit_code: int, output: Array[String]) -> void:
 	var tag_name: String = _pending_tag.get("tag_name", "")
 	var shas: PackedStringArray = (
 		String(output[0]).strip_edges().split("\n", false)

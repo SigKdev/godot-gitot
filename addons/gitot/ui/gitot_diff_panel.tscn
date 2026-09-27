@@ -3,6 +3,18 @@
 [ext_resource type="Script" path="res://addons/gitot/ui/gitot_diff_panel.gd" id="1_wlcbe"]
 [ext_resource type="Script" path="res://addons/gitot/ui/gitot_commit_files_list.gd" id="2_u4bgp"]
 
+[sub_resource type="DPITexture" id="DPITexture_u4bgp"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"m8 9.669-3.536 2.583H7v2.537h2v-2.537h2.536zm0-3.314L4.464 3.772H7V1.235h2v2.537h2.536zm-7.296.73h14.591v1.831H.704z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_cbs4n"]
+
 [node name="GitotDiffPanel" type="Control" unique_id=1397563835]
 custom_minimum_size = Vector2(0, 90)
 layout_mode = 3
@@ -43,10 +55,48 @@ layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("2_u4bgp")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="HSplitContainer" unique_id=428156519]
+[node name="VBox" type="VBoxContainer" parent="HSplitContainer" unique_id=428156519]
 layout_mode = 2
 
-[node name="RefreshDiffPanelButton" type="Button" parent="HSplitContainer/VBoxContainer" unique_id=563308986]
+[node name="Header" type="HBoxContainer" parent="HSplitContainer/VBox" unique_id=657538311]
+layout_mode = 2
+
+[node name="FoldButton" type="Button" parent="HSplitContainer/VBox/Header" unique_id=878177784]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Click to fold all header"
+mouse_default_cursor_shape = 2
+icon = SubResource("DPITexture_u4bgp")
+flat = true
+
+[node name="----" type="VSeparator" parent="HSplitContainer/VBox/Header" unique_id=1228302126]
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="DiffFilePathLabel" type="RichTextLabel" parent="HSplitContainer/VBox/Header" unique_id=1529482502]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="----2" type="VSeparator" parent="HSplitContainer/VBox/Header" unique_id=1505507661]
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="RestoreFileButton" type="Button" parent="HSplitContainer/VBox/Header" unique_id=1893568671]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Restore this file version.
+⚠ Godot may not refresh scripts open
+in the editor, close it before or a restart may be needed ⚠"
+mouse_default_cursor_shape = 2
+text = "Restore"
+
+[node name="RefreshDiffPanelButton" type="Button" parent="HSplitContainer/VBox/Header" unique_id=563308986]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
@@ -54,13 +104,15 @@ tooltip_text = "Manual fallback to refresh the diff view"
 mouse_default_cursor_shape = 2
 text = "refresh"
 
-[node name="DiffFilePathLabel" type="RichTextLabel" parent="HSplitContainer/VBoxContainer" unique_id=1529482502]
-unique_name_in_owner = true
+[node name="----3" type="VSeparator" parent="HSplitContainer/VBox/Header" unique_id=1710353089]
 layout_mode = 2
-bbcode_enabled = true
-fit_content = true
+size_flags_vertical = 4
 
-[node name="DiffCodeEdit" type="CodeEdit" parent="HSplitContainer/VBoxContainer" unique_id=943361395]
+[node name="----" type="HSeparator" parent="HSplitContainer/VBox" unique_id=2047613683]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxEmpty_cbs4n")
+
+[node name="DiffCodeEdit" type="CodeEdit" parent="HSplitContainer/VBox" unique_id=943361395]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
@@ -72,3 +124,8 @@ wrap_mode = 1
 virtual_keyboard_enabled = false
 minimap_draw = true
 minimap_width = 40
+
+[node name="RestoreConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1281778835]
+unique_name_in_owner = true
+dialog_text = "Overwrite the current file with its version from this commit?
+Uncommitted changes to this file will be lost. Continue?"

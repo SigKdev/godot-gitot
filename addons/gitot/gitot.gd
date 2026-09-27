@@ -26,6 +26,7 @@ const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 	GitEngine.Command.CREATE_BRANCH,
 	GitEngine.Command.STASH,
 	GitEngine.Command.STASH_POP,
+	GitEngine.Command.RESTORE_FILE,
 ]
 
 const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
@@ -214,7 +215,10 @@ func _on_diff_full_result(
 	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
 	if not current_script or current_script.resource_path != _pending_diff_path:
 		return
-	var files: Array[Dictionary] = GitDiffParser.parse_full(output[0])
+	var raw: String = output[0]
+	if raw.length() > GitotCommitLogDiff.MAX_DIFF_CHARS:
+		raw = raw.substr(0, GitotCommitLogDiff.MAX_DIFF_CHARS)
+	var files: Array[Dictionary] = GitDiffParser.parse_full(raw)
 	if files.is_empty():
 		return
 	var hunks: Array[Dictionary] = []

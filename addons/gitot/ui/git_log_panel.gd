@@ -65,6 +65,7 @@ func _setup_tree_columns() -> void:
 
 func _setup_count_dropdown(fold: FoldableContainer) -> void:
 	_count_dropdown = OptionButton.new()
+	_count_dropdown.set_flat(true)
 	for count in COUNT_OPTIONS:
 		_count_dropdown.add_item(str(count))
 	_count_dropdown.item_selected.connect(_on_count_selected)

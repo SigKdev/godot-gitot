@@ -39,6 +39,7 @@ enum Command {
 	PUSH_TAG,
 	LAST_COMMIT_MSG,
 	REFLOG,
+	RESTORE_FILE,
 }
 
 ## Canonical status args. --untracked-files=all forces recursion into
@@ -85,6 +86,7 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.SWITCH,
 	Command.CREATE_BRANCH,
 	Command.TAG,
+	Command.RESTORE_FILE,
 ]
 
 ## Max reflog entries shown by the console's Reflog button.
@@ -103,6 +105,10 @@ var _write_busy: bool = false
 ## Branch name targeted by the most recent switch/create_branch call, for
 ## the dock's success log — avoids a redundant git call to re-derive it.
 var _last_switch_target: String = ""
+
+## Path targeted by the most recent restore_file() call, for the dock's log
+## message — mirrors _last_switch_target (command_completed carries no path).
+var _last_restored_path: String = ""
 
 
 ## Checks if 'git' is callable from the OS PATH.
@@ -190,8 +196,10 @@ func run_network(command: Command, args: PackedStringArray) -> void:
 ## (first push, nothing to diverge from). Bounded sync check, run right
 ## before a push.
 func needs_force_push() -> bool:
-	var result: Array = _execute_bounded(["merge-base", "--is-ancestor", "@{u}", "HEAD"])
-	return result[0] == 1
+	var upstream: Array = _execute_bounded(["rev-parse", "--abbrev-ref", "@{u}"])
+	if upstream[0] != 0:
+		return false # No upstream at all - nothing to diverge from.
+	return _execute_bounded(["merge-base", "--is-ancestor", "@{u}", "HEAD"])[0] == 1
 
 
 ## Returns the "origin" remote URL, or an empty string on failure.
@@ -345,6 +353,20 @@ func get_commit_file_diff(commit_hash: String, path: String) -> void:
 	)
 
 
+## Restores one file's working-tree content to its state at commit_hash.
+## Destructive: overwrites any uncommitted changes to that file — caller must confirm first.
+## @param commit_hash: commit to restore the file's content from.
+## @param path: repo-relative path, as returned by get_commit_files().
+func restore_file(commit_hash: String, path: String) -> void:
+	_last_restored_path = path
+	run_fast(Command.RESTORE_FILE, ["restore", "--source=" + commit_hash, "--", path])
+
+
+## Path targeted by the last restore_file() call — see _last_restored_path.
+func get_last_restored_path() -> String:
+	return _last_restored_path
+
+
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.
 ## @param tag_name: tag identifier (e.g. "v0.3.0"). Rejects shell-unsafe characters
 ## ($, `, ;, &) even though git's own ref-name rules allow them — see push_tag().
@@ -403,6 +425,8 @@ func _execute_bounded(args: PackedStringArray) -> Array:
 	while OS.is_process_running(pid):
 		if (Time.get_ticks_msec() - start_msec) / 1000.0 > LOCAL_TIMEOUT_SEC:
 			OS.kill(pid)
+			if FileAccess.file_exists(log_path):
+				DirAccess.remove_absolute(log_path) # Orphaned log from the killed process.
 			return [-1, ""]
 		OS.delay_msec(10)
 
@@ -411,12 +435,8 @@ func _execute_bounded(args: PackedStringArray) -> Array:
 		log_content = FileAccess.get_file_as_string(log_path)
 		DirAccess.remove_absolute(log_path)
 
-	var success: bool = log_content.contains("EXITCODE:0")
-	var clean: String = log_content \
-			.replace("EXITCODE:0", "") \
-			.replace("EXITCODE:1", "") \
-			.strip_edges()
-	return [0 if success else 1, clean]
+	var parsed: Array = _parse_log(log_content)
+	return [0 if parsed[0] else 1, parsed[1]]
 
 
 ## Polls a running process; kills it if it exceeds NETWORK_TIMEOUT_SEC.
@@ -452,13 +472,20 @@ func _poll_process(pid: int, command: Command, log_path: String, start_time_ms: 
 
 	# The marker is the actual exit status of the git command,
 	# not a guess based on stdout/stderr content. (see git_cmd above)
+	var parsed: Array = _parse_log(log_content)
+	output.append(parsed[1])
+	emit_signal("command_completed", command, 0 if parsed[0] else 1, output)
+
+
+## Splits a redirected git-call log into (success, cleaned text) - shared by
+## _execute_bounded() and _poll_process(), the two consumers of _shell_invocation()'s output.
+static func _parse_log(log_content: String) -> Array:
 	var success: bool = log_content.contains("EXITCODE:0")
-	var clean_output: String = log_content \
+	var clean: String = log_content \
 			.replace("EXITCODE:0", "") \
 			.replace("EXITCODE:1", "") \
 			.strip_edges()
-	output.append(clean_output)
-	emit_signal("command_completed", command, 0 if success else 1, output)
+	return [success, clean]
 
 
 ## Runs on a WorkerThreadPool thread.

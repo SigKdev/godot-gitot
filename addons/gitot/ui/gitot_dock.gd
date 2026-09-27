@@ -27,6 +27,9 @@ var _orchestrator: GitSyncOrchestrator
 var _branch_panel: GitotBranchPanel
 var _result_router: GitotResultRouter
 var _default_push_confirm_text: String = ""
+## Computed once in _on_push_pressed(), reused by _do_push() -> orchestrator.start_push() -
+## avoids a second needs_force_push() git call for the same push action.
+var _needs_force_push: bool = false
 
 
 func _ready() -> void:
@@ -83,7 +86,8 @@ func _ready() -> void:
 	_status_panel = GitotStatusPanel.new(%GitStatusLabel)
 
 	var owner_repo: Dictionary = GitEngine.parse_owner_repo(_git_engine.get_remote_url())
-	_status_panel.update_repo("%s/%s" % [owner_repo.get("owner", ""), owner_repo.get("repo", "")])
+	var repo_label: String = "%s/%s" % [owner_repo["owner"], owner_repo["repo"]] if not owner_repo.is_empty() else ""
+	_status_panel.update_repo(repo_label)
 	_log_panel = GitLogPanel.new(_git_engine, %GitlogFold, %GitlogTree)
 	_refresh_status() # Populate trees immediately instead of waiting for manual git status refresh
 	_log_console = GitotLogConsole.new(_git_engine, %LogList, %LogScroll, %OutputLogFold)
@@ -107,8 +111,7 @@ func _ready() -> void:
 	)
 	%CreateBranchButton.icon = _icon("Add")
 	if _git_engine:
-		_git_engine.list_branches()
-		_status_panel.update_branch(_git_engine.get_current_branch())
+		_git_engine.list_branches() # async result also sets the status panel's branch label
 
 	_result_router = GitotResultRouter.new(
 		_git_engine,
@@ -119,7 +122,8 @@ func _ready() -> void:
 		%FetchButton,
 		%PullButton,
 	)
-	_result_router.branch_switched.connect(_notify_changed_files)
+	_result_router.head_moved.connect(_notify_changed_files)
+	_result_router.file_restored.connect(_notify_single_file_changed)
 	#endregion
 
 	#region Settings & dialogs
@@ -217,16 +221,27 @@ func _refresh_status() -> void:
 	_log_panel.refresh()
 
 
-## Notifies Godot about files changed by the branch switch. update_file()
-## refreshes EditorFileSystem's cache; any of those files currently open
-## in a scene tab also needs an explicit reload_scene_from_path(), since
-## update_file() alone doesn't touch the open tab's in-memory ResourceLoader cache.
-func _notify_changed_files() -> void:
-	var fs: EditorFileSystem = EditorInterface.get_resource_filesystem()
-	var open_scenes: PackedStringArray = EditorInterface.get_open_scenes()
-	var open_scripts: Array[Script] = EditorInterface.get_script_editor().get_open_scripts()
-	var result: Dictionary = _git_engine.get_changed_files_since_switch()
+## Refreshes EditorFileSystem's cache for one file changed on disk outside the editor,
+## and reloads it if open: reload_scene_from_path() for a scene tab, Script.reload() for a
+## script (recompiles the running class - the open tab's visible text only follows an
+## editor focus change, which is Godot's own external-change check; nothing else forces it).
+## Returns true if an open script tab was reloaded, so callers can warn about it.
+func _notify_file_changed(res_path: String) -> bool:
+	if not FileAccess.file_exists(res_path):
+		return false
+	EditorInterface.get_resource_filesystem().update_file(res_path)
+	if res_path in EditorInterface.get_open_scenes():
+		EditorInterface.reload_scene_from_path(res_path)
+	for script: Script in EditorInterface.get_script_editor().get_open_scripts():
+		if script.resource_path == res_path:
+			script.reload(true)
+			return true
+	return false
 
+
+## Notifies Godot about files changed by the branch switch.
+func _notify_changed_files() -> void:
+	var result: Dictionary = _git_engine.get_changed_files_since_switch()
 	if not result["reliable"]:
 		EditorInterface.get_editor_toaster().push_toast(
 			"Gitot: couldn't verify changed files. Close and reopen any open scripts/scenes to be safe.",
@@ -236,20 +251,23 @@ func _notify_changed_files() -> void:
 
 	var stale_scripts: int = 0
 	for relative_path: String in result["files"]:
-		var res_path: String = "res://" + relative_path
-		if not FileAccess.file_exists(res_path):
-			continue
-		fs.update_file(res_path)
-		if res_path in open_scenes:
-			EditorInterface.reload_scene_from_path(res_path)
-		for script: Script in open_scripts:
-			if script.resource_path == res_path:
-				stale_scripts += 1
+		if _notify_file_changed("res://" + relative_path):
+			stale_scripts += 1
 
 	if stale_scripts > 0:
 		EditorInterface.get_editor_toaster().push_toast(
-			"Gitot: %d open script(s) changed on disk - close and reopen to see the update."
+			"Gitot: %d open script(s) changed on disk - click away from the editor window and back to refresh."
 			% stale_scripts,
+			EditorToaster.SEVERITY_WARNING,
+		)
+
+
+## Same refresh as _notify_changed_files(), for one known restored path.
+func _notify_single_file_changed(relative_path: String) -> void:
+	if _notify_file_changed("res://" + relative_path):
+		EditorInterface.get_editor_toaster().push_toast(
+			"Gitot: '%s' restored - click away from the editor window and back to refresh the open tab."
+			% relative_path,
 			EditorToaster.SEVERITY_WARNING,
 		)
 
@@ -264,7 +282,7 @@ func _on_refresh_diff_pressed() -> void:
 	_diff_gutter.refresh_current_script()
 
 
-## Routes a finished GitEngine command; LAST_COMMIT_MSG stays here (push-flow specific).
+## Routes a finished GitEngine command;
 func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	if command == GitEngine.Command.LAST_COMMIT_MSG:
 		_handle_last_commit_message_result(exit_code, output)
@@ -338,7 +356,8 @@ func _on_tag_retry_needed(needed: bool) -> void:
 ## Pushes current branch to its remote tracking branch.
 ## Gated by the "confirm_push" setting to avoid accidental remote pushes.
 func _on_push_pressed() -> void:
-	if _git_engine.needs_force_push():
+	_needs_force_push = _git_engine.needs_force_push()
+	if _needs_force_push:
 		%PushConfirmDialog.dialog_text = (
 			"Last commit was amended!\nThis push will use --force-with-lease. Continue?"
 		)
@@ -371,7 +390,7 @@ func _start_push_with_tag_input(last_commit_message: String) -> void:
 		if tag_input["tag_message"].is_empty():
 			GitotLogger.w("Tag message is empty. Push aborted!")
 			return
-	_orchestrator.start_push(tag_input)
+	_orchestrator.start_push(tag_input, _needs_force_push)
 
 
 ## Executes the actual push - called directly or after dialog confirmation.

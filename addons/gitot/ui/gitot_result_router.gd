@@ -4,9 +4,12 @@
 class_name GitotResultRouter
 extends RefCounted
 
-## Emitted after a successful branch switch/create; dock notifies
+## Emitted after HEAD moves (switch/create/pull); dock notifies
 ## EditorFileSystem/script editor of files changed on disk.
-signal branch_switched
+signal head_moved
+
+## Emitted after a successful file restore; dock refreshes EditorFileSystem/open tabs.
+signal file_restored(path: String)
 
 var _git_engine: GitEngine
 var _status_panel: GitotStatusPanel
@@ -82,7 +85,7 @@ func ahead_count() -> int:
 func route(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	match command:
 		GitEngine.Command.COMMIT, GitEngine.Command.AMEND:
-			_handle_commit_result(exit_code)
+			_handle_commit_result(exit_code, output)
 		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
 			_handle_stash_result(command, exit_code, output)
 		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine \
@@ -97,13 +100,17 @@ func route(command: GitEngine.Command, exit_code: int, output: Array[String]) ->
 			_handle_status_result(output)
 		GitEngine.Command.REFLOG:
 			_handle_reflog_result(exit_code, output)
+		GitEngine.Command.RESTORE_FILE:
+			_handle_restore_result(exit_code, output)
 
 
-func _handle_commit_result(exit_code: int) -> void:
+func _handle_commit_result(exit_code: int, output: Array[String]) -> void:
 	if exit_code == 0:
 		GitotLogger.s("Commit successful.")
 	else:
 		GitotLogger.x("Commit failed.")
+		if not output.is_empty():
+			GitotLogger.g(output[0])
 
 
 func _handle_stash_result(
@@ -117,6 +124,7 @@ func _handle_stash_result(
 				GitotLogger.w("Nothing to stash.")
 			else:
 				GitotLogger.s("Changes stashed.")
+				GitotLogger.g(output[0])
 		else:
 			GitotLogger.e("Stash failed.")
 			if not output.is_empty():
@@ -126,8 +134,25 @@ func _handle_stash_result(
 	# stash_pop
 	if exit_code == 0:
 		GitotLogger.s("Stash popped.")
+		# No HEAD@{1}..HEAD diff exists for a pop - unlike switch/pull, affected files aren't known.
+		GitotLogger.i("Close and reopen any open scripts/scenes to be safe.")
 	else:
 		GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
+		if not output.is_empty():
+			GitotLogger.g(output[0])
+
+
+## File restored to an older commit's content.
+func _handle_restore_result(exit_code: int, output: Array[String]) -> void:
+	var path: String = _git_engine.get_last_restored_path()
+	if exit_code == 0:
+		GitotLogger.s("Restored '%s'." % path)
+		GitotLogger.i(
+			"If it was open, unfocus/focus the editor window to refresh."
+		)
+		file_restored.emit(path)
+	else:
+		GitotLogger.e("Restore failed for '%s'." % path)
 		if not output.is_empty():
 			GitotLogger.g(output[0])
 
@@ -177,7 +202,7 @@ func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Arr
 	if not output.is_empty() and not output[0].is_empty():
 		GitotLogger.g(output[0])
 	if command == GitEngine.Command.PULL and exit_code == 0:
-		EditorInterface.get_resource_filesystem().scan()
+		head_moved.emit() # pull moves HEAD like a switch - same HEAD@{1}..HEAD diff applies
 
 
 ## Branch list refresh, switch, and create - everything that changes HEAD or the dropdown.
@@ -210,7 +235,7 @@ func _handle_branch_result(
 			"%s successful, now on '[color=gray]%s[/color]'"
 			% [display_name, _git_engine.get_last_switch_target()]
 		)
-		branch_switched.emit()
+		head_moved.emit()
 	else:
 		GitotLogger.e("%s failed." % display_name)
 		if not output.is_empty():
