@@ -149,6 +149,17 @@ static func _shell_invocation(args: PackedStringArray, log_path: String) -> Arra
 	return [shell, shell_args]
 
 
+## Splits a redirected git-call log into (success, cleaned text) - shared by
+## _execute_bounded() and _poll_process(), the two consumers of _shell_invocation()'s output.
+static func _parse_log(log_content: String) -> Array:
+	var success: bool = log_content.contains("EXITCODE:0")
+	var clean: String = log_content \
+			.replace("EXITCODE:0", "") \
+			.replace("EXITCODE:1", "") \
+			.strip_edges()
+	return [success, clean]
+
+
 ## Runs a fast, local git command (read or write) off the main thread.
 ## Use for: status, diff, add, restore, commit. [b]NOT for push/pull[/b] [i](see run_network)[/i].
 func run_fast(command: Command, args: PackedStringArray) -> void:
@@ -262,9 +273,13 @@ func switch_branch(branch_name: String) -> void:
 
 ## Creates a new local branch and switches to it in one atomic op.
 ## @param branch_name: new branch name (git ref-name rules enforced by git itself).
-func create_branch(branch_name: String) -> void:
+## @param base: existing local branch to start from; empty = current HEAD (today's behavior).
+func create_branch(branch_name: String, base: String = "") -> void:
 	_last_switch_target = branch_name
-	run_fast(Command.CREATE_BRANCH, ["switch", "-c", branch_name])
+	var args: PackedStringArray = ["switch", "-c", branch_name]
+	if not base.is_empty():
+		args.append(base)
+	run_fast(Command.CREATE_BRANCH, args)
 
 
 ## Creates a local branch tracking a remote-only branch and switches to it.
@@ -475,17 +490,6 @@ func _poll_process(pid: int, command: Command, log_path: String, start_time_ms: 
 	var parsed: Array = _parse_log(log_content)
 	output.append(parsed[1])
 	emit_signal("command_completed", command, 0 if parsed[0] else 1, output)
-
-
-## Splits a redirected git-call log into (success, cleaned text) - shared by
-## _execute_bounded() and _poll_process(), the two consumers of _shell_invocation()'s output.
-static func _parse_log(log_content: String) -> Array:
-	var success: bool = log_content.contains("EXITCODE:0")
-	var clean: String = log_content \
-			.replace("EXITCODE:0", "") \
-			.replace("EXITCODE:1", "") \
-			.strip_edges()
-	return [success, clean]
 
 
 ## Runs on a WorkerThreadPool thread.

@@ -1,0 +1,102 @@
+[gd_scene format=3 uid="uid://bt15e5ipc833c"]
+
+[ext_resource type="Script" path="res://addons/gitot/ui/issue_detail.gd" id="1_t77uy"]
+
+[sub_resource type="DPITexture" id="DPITexture_vq83o"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#e0e0e0\" d=\"m5 9 5.5-5.5L8 1h7v7l-2.5-2.5L7 11zm7 6H4a3 3 0 0 1-3-3V4a3 3 0 0 1 3-3h2a1 1 0 0 1 0 2H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2a1 1 0 0 1 2 0v2a3 3 0 0 1-3 3z\"/></svg>
+"
+saturation = 2.0
+color_map = {
+Color(1, 0.37254903, 0.37254903, 1): Color(1, 0.47, 0.42, 1),
+Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
+Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
+}
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_vq83o"]
+
+[node name="IssueDetail" type="PanelContainer" unique_id=1240167463]
+custom_minimum_size = Vector2(400, 0)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1_t77uy")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=324223586]
+layout_mode = 2
+
+[node name="HeaderLabel" type="RichTextLabel" parent="VBoxContainer" unique_id=1442844086]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 2
+theme_override_constants/paragraph_separation = 4
+bbcode_enabled = true
+text = "[i]Select an issue.[/i]"
+fit_content = true
+scroll_active = false
+selection_enabled = true
+
+[node name="ActionRow" type="HFlowContainer" parent="VBoxContainer" unique_id=1925136434]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="OpenButton" type="Button" parent="VBoxContainer/ActionRow" unique_id=1594747147]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 11
+theme_override_font_sizes/font_size = 11
+text = "Open in Browser"
+icon = SubResource("DPITexture_vq83o")
+flat = true
+
+[node name="VSeparator" type="VSeparator" parent="VBoxContainer/ActionRow" unique_id=590296373]
+layout_mode = 2
+
+[node name="BranchNameEdit" type="LineEdit" parent="VBoxContainer/ActionRow" unique_id=385538378]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Edit branch name"
+placeholder_text = "\"branch name\""
+emoji_menu_enabled = false
+clear_button_enabled = true
+
+[node name="BaseBranchDropdown" type="OptionButton" parent="VBoxContainer/ActionRow" unique_id=1713239422]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+tooltip_text = "Branch from"
+mouse_default_cursor_shape = 2
+text_overrun_behavior = 5
+clip_text = true
+fit_to_longest_item = false
+
+[node name="CreateBranchButton" type="Button" parent="VBoxContainer/ActionRow" unique_id=184309310]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Create and switch to this branch"
+mouse_default_cursor_shape = 2
+text = "Create Branch"
+
+[node name="VSeparator2" type="VSeparator" parent="VBoxContainer/ActionRow" unique_id=1363838505]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxEmpty_vq83o")
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer" unique_id=916108494]
+layout_mode = 2
+
+[node name="BodyEdit" type="CodeEdit" parent="VBoxContainer" unique_id=592744977]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+editable = false
+emoji_menu_enabled = false
+middle_mouse_paste_enabled = false
+wrap_mode = 1

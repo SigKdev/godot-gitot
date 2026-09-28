@@ -7,7 +7,7 @@
 SigKgames"></a> <a href="https://godotengine.org/"><img
 src="https://img.shields.io/badge/Godot-4.7+-478CBF?logo=godotengine&logoColor=478CBF" alt="Godot 4.7"></a> <a
 href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.0+-E44C30?logo=git&logoColor=E44C30" alt="Git"></a> <a
-href="https://store.godotengine.org/asset/sigk/gitot/"><img src="https://img.shields.io/badge/Gitot-0.11.0-8A2BE2"
+href="https://store.godotengine.org/asset/sigk/gitot/"><img src="https://img.shields.io/badge/Gitot-0.12.0-B8195F"
 alt="Gitot"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -73,8 +73,10 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 - **Restore File:** In the diff viewer's commit-history mode, restore a file to its content at that commit.
   Confirmation dialog before overwriting uncommitted changes.
 
-- **GitHub Issues Tracker Board:** Displays the repo's GitHub issues (requires a [PAT](#github-personal-access-token)); opt-out in settings.
-  _(WIP — intended to support [GitHub Projects](https://docs.github.com/en/issues/planning-and-tracking-with-projects/learning-about-projects/about-projects), enabling branch creation directly from issues.)_
+- **GitHub Issues Tracker Board:** Split list/detail view (like the commit history) of the repo's open issues (requires a [PAT](#github-personal-access-token));
+  opt-out in settings. Sortable 6-column list (number, title, date, type, priority, labels), Type/Priority/Label filters,
+  full issue detail (metadata, colored labels, Markdown body, Open in Browser). Create a branch directly from an issue,
+  auto-named from its number/title/type (editable), with a base-branch picker and a dirty-working-tree confirmation.
 
 - **Repo Status Panel:** One-line summary of the current repo, branch (detached HEAD flagged in red), branch scope, and
   ahead/behind sync status.
@@ -82,8 +84,8 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 - **Large-File Guard:** Blocks staging any file over a configurable size limit to prevent repository bloat, flagging oversized
   files with a warning icon in the staged/unstaged list.
 
-- **Gitot Logger:** Git and Gitot output are routed through Gitot's own dock logger to keep the Godot output panel clean. A
-  **Reflog** button dumps the last 20 reflog entries to the console.
+- **Gitot Logger:** Git and Gitot output are routed through Gitot's own dock logger to keep the Godot output panel clean.
+  A **Reflog** button dumps the last 20 reflog entries to the console.
 
 <details>
 <summary>Details</summary>
@@ -137,9 +139,15 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
   Guarded against the no-file-changes merge-commit case (button no-ops if there's nothing to restore). If the file is open in
   the script editor, its compiled class reloads automatically, but the tab's visible text only refreshes on the next editor
   focus change. Tooltip and console log both call this out (read: [Limitations](#-known-limitations)).
-- **GitHub Issues Tracker Board:** (opt-out in settings possible). Issue report include: number, title, author, date, tags,
-  content of the issue and a link to open it in the browser. _PAT auth, issue fetch, PR filter, main-screen panel._ If a token
-  expires or is revoked, Gitot detects this automatically (HTTP 401) and re-prompts for a new one.
+- **GitHub Issues Tracker Board:** (opt-out in settings possible). Split container (columns:
+  number/title/date/type/priority/labels, header-click sort) on the left, `IssueDetail` on the right
+  (metadata header, colored label pills, Markdown body in a read-only `CodeEdit`, Open in Browser button). Parser
+  normalizes raw REST JSON (native issue Type, org "Priority" issue field, null-safe body/labels). Filter:
+  Type/Priority/Label built from the fetched data, client-side AND filter (no extra requests). Paginated
+  fetch (50 issues/page, capped at 8 pages = 400 issues), chained automatically and stopping at the first short page.
+  Branch creation from an issue: auto-generated name (`<type-prefix><number>-<title-slug>`, e.g.
+  `feature/12-fix-login`, editable), base-branch picker (defaults to current branch), confirmation dialog if the working
+  tree is dirty. If a token expires or is revoked, Gitot detects this automatically (HTTP 401) and re-prompts for a new one.
 - **Gitot Settings Panel:** Add Settings (user://gitot_settings.cfg), large_file_mb, confirm_push, auto_refresh_on_focus,
   github_issues_enabled.
 - **Large-file Guard:** Size configurable in settings, _0 to disable_.
@@ -276,6 +284,7 @@ addons/gitot/
 │   ├── git_log_parser.gd                         	# Parses `git log` (custom \x1f-delimited) into commit entries
 │   ├── github_auth.gd                            	# PAT storage (user://gitot_auth.cfg, plaintext)
 │   ├── github_api.gd                             	# Authenticated HTTPRequest wrapper for GitHub REST API
+│   ├── github_issue_parser.gd                    	# Normalizes raw GitHub issue JSON (type/priority/labels/branch-name slug)
 │   ├── gitot_settings.gd                         	# GitotSettings; settings storage (user://gitot_settings.cfg)
 │   └── gitot_logger.gd                           	# GitotLogger; centralized print wrapper, capped history + UI listener
 └── ui/
@@ -291,10 +300,12 @@ addons/gitot/
     ├── gitot_tag_panel.gd                        	# Tag-versioning UI: toggles, version-tag formatting, tag resolution
     ├── gitot_settings_panel.gd                   	# Settings panel UI; reads/writes GitotSettings directly
 	├── gitot_log_console.gd                      	# Live console view backfilling GitotLogger.log_history; owns Reflog button
+    ├── github_issue_list.gd                        # Issue Tree: population, header-click sort, filter integration
+    ├── github_issue_filter.gd                      # Type/Priority/Label dropdowns + AND-match rule
+    ├── issue_detail.tscn / issue_detail.gd         # Selected-issue detail: header, actions, branch creation, body
     ├── gitot_diff_panel.tscn / gitot_diff_panel.gd    	# Bottom-dock full diff viewer
     ├── github_panel.tscn / github_panel.gd            	# GitHub Issues Tracker Board, main-screen tab, owns GithubApi
-    ├── github_auth_dialog.tscn / github_auth_dialog.gd # PAT entry modal, opened on first use or 401
-    └── issue_card.tscn / issue_card.gd                	# Single issue card (title, author, date, labels, body, link)
+    └── github_auth_dialog.tscn / github_auth_dialog.gd # PAT entry modal, opened on first use or 401
 ```
 
 </details>
@@ -302,6 +313,41 @@ addons/gitot/
 ---
 
 ## 🗃 Changelog
+
+<details>
+<summary>v0.12.0</summary>
+
+feat: GitHub Issues Tracker Board — split list/detail refactor, base-branch picker, pagination
+
+feat: Split list/detail Issues panel (commit-history-style layout)
+
+- `GithubIssueParser` (new, `core/`): static, null-safe normalizer for raw REST issue JSON — casts float `number` to `int`,
+  reads native issue `type`, resolves the org `Priority` issue field (`issue_field_values`), computes a relative date, and
+  builds the auto branch name (see below). `PRIORITY_ORDER` (Low/Medium/High/Urgent, project-specific) is the single source
+  of truth for priority ranking.
+- `GithubIssueList` (new, `RefCounted`): 6-column `Tree` (number/title/date/type/priority/labels), header-click sort
+  (ascending/descending, empty values always last), selection survives sort/refresh/filter. Replaces the old scrolling
+  `IssueCard` list.
+- `IssueDetail` (new sub-scene): full metadata header (author, date, type, priority, colored label pills via inline
+  `[bgcolor]` BBCode), Markdown body in a read-only `CodeEdit`, Open in Browser. Replaces `issue_card.tscn`/`.gd` (removed).
+- `GithubIssueFilter` (new, `RefCounted`): Type/Priority/Label `OptionButton`s, options built from the fetched data
+  (no hardcoded vocabulary), client-side AND filter — instant, no extra requests.
+
+feat: Create branch from an issue
+
+- Auto-generated branch name: `<type-prefix><number>-<title-slug>` (`feature/`, `bugfix/`, `task/` per issue type, no prefix
+  if unset/unknown), editable before creating.
+- Base-branch picker (`OptionButton`, local branches only, defaults to the current branch); `GitEngine.create_branch()` gains
+  an optional `base` parameter (`switch -c <name> [<base>]`) — existing single-argument callers unaffected.
+- Confirmation dialog before creating a branch with a dirty working tree (uncommitted changes move with the branch).
+
+feat: Paginated issue fetch
+
+- `GithubApi.fetch_issues()` now pages (`ISSUES_PER_PAGE = 50`); `github_panel.gd` chains requests automatically up to
+  `MAX_ISSUE_PAGES = 5` (250 issues), stopping at the first short page. Bounded scope by design (solo/small-team repos) rather
+  than a full paged UI.
+<hr>
+</details>
 
 <details>
 <summary>v0.11.0</summary>

@@ -124,7 +124,8 @@ func _handle_stash_result(
 				GitotLogger.w("Nothing to stash.")
 			else:
 				GitotLogger.s("Changes stashed.")
-				GitotLogger.g(output[0])
+				if not output.is_empty():
+					GitotLogger.g(output[0])
 		else:
 			GitotLogger.e("Stash failed.")
 			if not output.is_empty():

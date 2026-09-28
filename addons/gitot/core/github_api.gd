@@ -17,6 +17,9 @@ signal request_failed(status_code: int)
 const API_BASE: String = "https://api.github.com"
 const USER_AGENT: String = "Gitot-Godot-Plugin"
 
+## Page size for fetch_issues(); kept low deliberately (solo/small-repo scope).
+const ISSUES_PER_PAGE: int = 50
+
 var _http: HTTPRequest = HTTPRequest.new()
 
 
@@ -39,11 +42,13 @@ func get_endpoint(endpoint: String) -> void:
 	_http.request(API_BASE + endpoint, headers)
 
 
-## Fetches up to 100 open issues for [param owner]/[param repo].
-## Note: repos with more than 100 open issues are truncated in v1
-# TODO: Pagination.
-func fetch_issues(owner: String, repo: String) -> void:
-	get_endpoint("/repos/%s/%s/issues?per_page=100&state=open" % [owner, repo])
+## Fetches one page of open issues for [param owner]/[param repo].
+## Pagination (page count, stop condition) is the caller's concern — see
+## github_panel.gd's page-chaining in _on_request_succeeded().
+func fetch_issues(owner: String, repo: String, page: int = 1) -> void:
+	get_endpoint(
+		"/repos/%s/%s/issues?per_page=%d&page=%d&state=open" % [owner, repo, ISSUES_PER_PAGE, page]
+	)
 
 
 ## Routes the raw HTTPRequest response to the correct outcome signal.

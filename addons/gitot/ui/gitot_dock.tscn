@@ -233,18 +233,23 @@ layout_mode = 2
 [node name="Support" type="FoldableContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1154570503]
 layout_mode = 2
 folded = true
-title = "Support"
+title = "Support & Feedback"
 
 [node name="VBox" type="VBoxContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support" unique_id=1632655616]
 visible = false
 layout_mode = 2
 
-[node name="Issue" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=595157812]
+[node name="IssueButton" type="LinkButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=406571396]
 layout_mode = 2
-bbcode_enabled = true
-text = "Report any issue on github:
-https://github.com/SigKdev/godot-gitot/"
-fit_content = true
+text = "Report any issue on GitHub"
+underline = 1
+uri = "https://github.com/SigKdev/godot-gitot/issues"
+
+[node name="FeedbackButton" type="LinkButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=837527421]
+layout_mode = 2
+text = "Feedback & idea"
+underline = 1
+uri = "https://github.com/SigKdev/godot-gitot/discussions"
 
 [node name="----" type="HSeparator" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=782805906]
 layout_mode = 2
@@ -252,7 +257,7 @@ layout_mode = 2
 [node name="Dev" type="RichTextLabel" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=832394040]
 layout_mode = 2
 bbcode_enabled = true
-text = "Support Author!
+text = "[b]Support the dev![/b]
 If Gitot has saved you time or streamlined your Godot workflow, consider supporting..."
 fit_content = true
 
@@ -261,28 +266,13 @@ layout_mode = 2
 theme_override_constants/h_separation = 8
 alignment = 1
 
-[node name="KofiButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=1103311778]
+[node name="KofiButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=30055151]
+unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "❤ Thanks a lot
+Good Luck for your projects. ❤"
 mouse_default_cursor_shape = 2
-text = "KO-FI"
-flat = true
-
-[node name="GitButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=481518032]
-layout_mode = 2
-mouse_default_cursor_shape = 2
-text = "GitHub Sponsors"
-flat = true
-
-[node name="Button" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=2123897185]
-layout_mode = 2
-mouse_default_cursor_shape = 2
-text = "other link"
-flat = true
-
-[node name="Button2" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox/HFlow" unique_id=732875133]
-layout_mode = 2
-mouse_default_cursor_shape = 2
-text = "other link"
+text = "Sponsor"
 flat = true
 
 [node name="ScrollContainer" type="ScrollContainer" parent="MainVBox" unique_id=1587278614]

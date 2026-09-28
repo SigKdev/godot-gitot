@@ -2,6 +2,10 @@
 
 [ext_resource type="Script" path="res://addons/gitot/core/github_api.gd" id="1_j8tw0"]
 [ext_resource type="Script" path="res://addons/gitot/ui/github_panel.gd" id="1_yhiux"]
+[ext_resource type="PackedScene" uid="uid://bt15e5ipc833c" path="res://addons/gitot/ui/issue_detail.tscn" id="3_4q41f"]
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_yhiux"]
+vertical = true
 
 [node name="GithubPanel" type="Control" unique_id=1996964266]
 layout_mode = 3
@@ -18,62 +22,117 @@ script = ExtResource("1_yhiux")
 unique_name_in_owner = true
 script = ExtResource("1_j8tw0")
 
-[node name="PanelToolbar" type="HBoxContainer" parent="." unique_id=583012369]
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=80595572]
 layout_mode = 1
-offset_right = 221.0
-offset_bottom = 34.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="GitotVersion2" type="RichTextLabel" parent="PanelToolbar" unique_id=1610675493]
+[node name="PanelToolbar" type="HBoxContainer" parent="VBoxContainer" unique_id=583012369]
+layout_mode = 2
+
+[node name="GitotVersion2" type="RichTextLabel" parent="VBoxContainer/PanelToolbar" unique_id=1610675493]
 unique_name_in_owner = true
 layout_mode = 2
 bbcode_enabled = true
-text = "[b][font_size=24]Gitot[/font_size][/b] [font_size=11]v0.7.0[/font_size]"
+text = "[b][font_size=24]Gitot[/font_size][/b] [font_size=11]v0.11.0[/font_size]"
 fit_content = true
 autowrap_mode = 0
 
-[node name="VSeparator" type="VSeparator" parent="PanelToolbar" unique_id=1167319272]
+[node name="--" type="VSeparator" parent="VBoxContainer/PanelToolbar" unique_id=1167319272]
 layout_mode = 2
 
-[node name="RefreshButton" type="Button" parent="PanelToolbar" unique_id=1959625265]
+[node name="RefreshButton" type="Button" parent="VBoxContainer/PanelToolbar" unique_id=1959625265]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_default_cursor_shape = 2
 text = "Refresh Issues"
 
-[node name="VSeparator2" type="VSeparator" parent="PanelToolbar" unique_id=621326735]
+[node name="---" type="VSeparator" parent="VBoxContainer/PanelToolbar" unique_id=621326735]
 layout_mode = 2
 
-[node name="ClearTokenButton" type="Button" parent="PanelToolbar" unique_id=298087169]
+[node name="ClearTokenButton" type="Button" parent="VBoxContainer/PanelToolbar" unique_id=298087169]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_default_cursor_shape = 2
 text = "Clear your PAT"
 
-[node name="HSeparator" type="HSeparator" parent="." unique_id=84118332]
-layout_mode = 1
-offset_top = 40.0
-offset_right = 1152.0
-offset_bottom = 46.0
+[node name="----" type="HSeparator" parent="VBoxContainer" unique_id=84118332]
+layout_mode = 2
 
-[node name="StatusLabel" type="RichTextLabel" parent="." unique_id=404960359]
+[node name="StatusLabel" type="RichTextLabel" parent="VBoxContainer" unique_id=404960359]
 unique_name_in_owner = true
-layout_mode = 0
-offset_top = 42.0
-offset_bottom = 42.0
+layout_mode = 2
 bbcode_enabled = true
 fit_content = true
-autowrap_mode = 0
 
-[node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=1443802623]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 42.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="HSplitContainer" type="HSplitContainer" parent="VBoxContainer" unique_id=824681835]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/split_bar_background = SubResource("StyleBoxLine_yhiux")
 
-[node name="IssueList" type="VBoxContainer" parent="ScrollContainer" unique_id=1351314797]
+[node name="IssueList" type="VBoxContainer" parent="VBoxContainer/HSplitContainer" unique_id=1055621971]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FilterRow" type="HFlowContainer" parent="VBoxContainer/HSplitContainer/IssueList" unique_id=1305657035]
+layout_mode = 2
+
+[node name="TypeFilter" type="OptionButton" parent="VBoxContainer/HSplitContainer/IssueList/FilterRow" unique_id=814458265]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+tooltip_text = "Filter by type"
+mouse_default_cursor_shape = 2
+text_overrun_behavior = 5
+clip_text = true
+fit_to_longest_item = false
+item_count = 1
+popup/item_0/text = "All types"
+popup/item_0/id = 0
+
+[node name="PriorityFilter" type="OptionButton" parent="VBoxContainer/HSplitContainer/IssueList/FilterRow" unique_id=960255256]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+tooltip_text = "Filter by priority"
+mouse_default_cursor_shape = 2
+text_overrun_behavior = 5
+clip_text = true
+fit_to_longest_item = false
+item_count = 1
+popup/item_0/text = "All priorities"
+popup/item_0/id = 0
+
+[node name="LabelFilter" type="OptionButton" parent="VBoxContainer/HSplitContainer/IssueList/FilterRow" unique_id=1604614188]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+tooltip_text = "Filter by label"
+mouse_default_cursor_shape = 2
+text_overrun_behavior = 5
+clip_text = true
+fit_to_longest_item = false
+item_count = 1
+popup/item_0/text = "All labels"
+popup/item_0/id = 0
+
+[node name="IssueTree" type="Tree" parent="VBoxContainer/HSplitContainer/IssueList" unique_id=2130305274]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
+columns = 6
+column_titles_visible = true
+hide_root = true
+select_mode = 1
+
+[node name="IssueDetail" parent="VBoxContainer/HSplitContainer" unique_id=1240167463 instance=ExtResource("3_4q41f")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CreateBranchConfirmDialog" type="ConfirmationDialog" parent="." unique_id=626482929]
+unique_name_in_owner = true

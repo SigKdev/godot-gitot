@@ -71,6 +71,8 @@ func _ready() -> void:
 	%PullButton.icon = _icon("MoveDown")
 	%FetchButton.pressed.connect(_on_fetch_pressed)
 	%FetchButton.icon = _icon("AssetStore")
+	%KofiButton.icon = _icon("Heart")
+	%KofiButton.pressed.connect(_on_kofibutton_pressed)
 	#endregion
 
 	#region Panel construction
@@ -414,3 +416,6 @@ func _on_pull_pressed() -> void:
 	%PullButton.disabled = true
 	%PullButton.icon = _icon("Time")
 	_git_engine.pull()
+
+func _on_kofibutton_pressed():
+	OS.shell_open("https://ko-fi.com/sigkgames")
