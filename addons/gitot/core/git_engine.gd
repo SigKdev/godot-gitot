@@ -26,6 +26,8 @@ enum Command {
 	UNSTAGE,
 	STASH,
 	STASH_POP,
+	STASH_LIST,
+	STASH_DROP,
 	FETCH,
 	AHEAD_BEHIND,
 	PUSH,
@@ -60,17 +62,18 @@ const UNIT_SEP: String = char(0x1F)
 # const LOG_FORMAT: String = "--pretty=format:%h\u001f%an\u001f%ar\u001f%ad\u001f%s"
 const LOG_FORMAT: String = "--pretty=format:%h" + UNIT_SEP + "%an" + UNIT_SEP + "%ar" + UNIT_SEP + "%ad" + UNIT_SEP + "%s"
 
+## Format string for `git stash list`: selector, full hash (stable preview key),
+## relative date, absolute date (tooltip), subject. Unit Separator-delimited like LOG_FORMAT.
+const STASH_LIST_FORMAT: String = "--format=%gd" + UNIT_SEP + "%H" + UNIT_SEP + "%cr" + UNIT_SEP + "%ci" + UNIT_SEP + "%s"
+
 ## Shell metacharacters valid in git ref names but unsafe once interpolated into
 ## the shell string run_network() builds (see push_tag()). Rejected in create_tag()
 ## since it gates every path that can lead there.
 const UNSAFE_TAG_CHARS: String = "$`;&"
 
-## Timeout for network operations (push/pull), in seconds.
-const NETWORK_TIMEOUT_SEC: float = 30.0
-
 ## Timeout for the bounded local reads below (get_remote_url, get_current_branch, etc.) —
 ## short, since these are cheap plumbing commands; a hang past this means a stuck
-## lock/gc, not normal latency. Distinct from NETWORK_TIMEOUT_SEC (push/pull).
+## lock/gc, not normal latency. Distinct from the user-set "network_timeout_sec" (push/pull).
 const LOCAL_TIMEOUT_SEC: float = 5.0
 
 ## Commands that mutate the index, working tree, or refs. Only these need
@@ -83,6 +86,7 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.UNSTAGE,
 	Command.STASH,
 	Command.STASH_POP,
+	Command.STASH_DROP,
 	Command.SWITCH,
 	Command.CREATE_BRANCH,
 	Command.TAG,
@@ -109,6 +113,10 @@ var _last_switch_target: String = ""
 ## Path targeted by the most recent restore_file() call, for the dock's log
 ## message — mirrors _last_switch_target (command_completed carries no path).
 var _last_restored_path: String = ""
+
+## Files the most recent stash_pop() will touch, gathered BEFORE the pop (the entry is
+## gone afterwards). Same {"reliable", "files"} shape as get_changed_files_since_switch().
+var _last_popped_files: Dictionary = { "reliable": false, "files": PackedStringArray() }
 
 
 ## Checks if 'git' is callable from the OS PATH.
@@ -158,6 +166,18 @@ static func _parse_log(log_content: String) -> Array:
 			.replace("EXITCODE:1", "") \
 			.strip_edges()
 	return [success, clean]
+
+
+## Turns an _execute_bounded() name-list result into {"reliable": bool, "files": PackedStringArray}.
+## reliable=false means git failed - NOT "nothing changed".
+static func _to_file_list(result: Array) -> Dictionary:
+	if result[0] != 0:
+		return { "reliable": false, "files": PackedStringArray() }
+	var stdout: String = String(result[1]).strip_edges()
+	var files: PackedStringArray = (
+		PackedStringArray() if stdout.is_empty() else PackedStringArray(stdout.split("\n", false))
+	)
+	return { "reliable": true, "files": files }
 
 
 ## Runs a fast, local git command (read or write) off the main thread.
@@ -245,13 +265,7 @@ func get_reflog() -> void:
 ## @return: {"reliable": bool, "files": PackedStringArray}. reliable=false means
 ## HEAD@{1} doesn't exist yet (first switch) or git failed — NOT "nothing changed".
 func get_changed_files_since_switch() -> Dictionary:
-	var result: Array = _execute_bounded(["diff", "--name-only", "HEAD@{1}", "HEAD"])
-	if result[0] != 0:
-		return { "reliable": false, "files": PackedStringArray() }
-	var stdout: String = String(result[1]).strip_edges()
-	if stdout.is_empty():
-		return { "reliable": true, "files": PackedStringArray() }
-	return { "reliable": true, "files": PackedStringArray(stdout.split("\n", false)) }
+	return _to_file_list(_execute_bounded(["diff", "--name-only", "HEAD@{1}", "HEAD"]))
 
 
 #region Branches
@@ -312,15 +326,51 @@ func check_tag_collision(tag_name: String) -> void:
 	run_fast(Command.TAG_COLLISION_CHECK, ["rev-parse", tag_name, "HEAD"])
 
 
-## Stashes all uncommitted changes (staged + unstaged), resetting the working tree to HEAD.
-func stash_push() -> void:
-	run_fast(Command.STASH, ["stash", "push", "-u", "-m", "Gitot quick-stash"])
+#region Stash
+## Lists all stash entries (no cap: terminal-made ones must stay droppable).
+## Read-only -> not in WRITE_COMMANDS. Result output[0] is fed to GitStashParser.parse().
+func list_stashes() -> void:
+	run_fast(Command.STASH_LIST, ["stash", "list", STASH_LIST_FORMAT])
 
 
-## Reapplies the most recent stash entry and removes it from the stack.
-## On conflict, git writes conflict markers to files and preserves the stash entry.
-func stash_pop() -> void:
-	run_fast(Command.STASH_POP, ["stash", "pop"])
+## Stashes staged + unstaged + untracked changes, resetting the working tree to HEAD.
+## @param message: optional name. Empty -> no -m, git's default "WIP on <branch>: ..." subject.
+## Passed via args array (no shell), so no escaping is needed.
+func stash_push(message: String = "") -> void:
+	var args: PackedStringArray = ["stash", "push", "-u"]
+	var clean: String = message.strip_edges()
+	if not clean.is_empty():
+		args.append_array(["-m", clean])
+	run_fast(Command.STASH, args)
+
+
+## Reapplies stash entry `index` and removes it from the stack.
+## On conflict, git writes conflict markers and keeps the entry.
+## The touched-file list is gathered first so the dock can refresh precisely afterwards.
+func stash_pop(index: int = 0) -> void:
+	assert(index >= 0, "GitEngine.stash_pop: negative index")
+	var ref: String = "stash@{%d}" % index # int-built only; and no '^' (cmd.exe escape char).
+	# Skipped while a write is in flight: run_fast() ignores this pop, and gathering anyway
+	# would overwrite the list the in-flight pop's result handler still needs.
+	if not _write_busy:
+		# --include-untracked (Git >= 2.32) lists stash -u files; --no-renames = D + A.
+		_last_popped_files = _to_file_list(_execute_bounded(
+			["stash", "show", "--name-only", "--include-untracked", "--no-renames", ref]
+		))
+	run_fast(Command.STASH_POP, ["stash", "pop", ref])
+
+
+## Files touched by the last stash_pop() call - see _last_popped_files.
+func get_last_popped_files() -> Dictionary:
+	return _last_popped_files
+
+
+## Permanently removes stash entry `index`. Destructive - caller must confirm first.
+## Git's output contains the dropped SHA (recoverable via `git stash store`).
+func stash_drop(index: int) -> void:
+	assert(index >= 0, "GitEngine.stash_drop: negative index")
+	run_fast(Command.STASH_DROP, ["stash", "drop", "stash@{%d}" % index])
+#endregion
 
 
 ## Fetches updates from origin without touching the working tree. Network op.
@@ -454,22 +504,19 @@ func _execute_bounded(args: PackedStringArray) -> Array:
 	return [0 if parsed[0] else 1, parsed[1]]
 
 
-## Polls a running process; kills it if it exceeds NETWORK_TIMEOUT_SEC.
+## lock/gc, not normal latency. Distinct from the user-set "network_timeout_sec" (push/pull).
 ## Reads the redirected log file once the process ends.
 func _poll_process(pid: int, command: Command, log_path: String, start_time_ms: int) -> void:
 	if OS.is_process_running(pid):
 		var elapsed_sec: float = (Time.get_ticks_msec() - start_time_ms) / 1000.0
-		if elapsed_sec > NETWORK_TIMEOUT_SEC:
+		# Read per poll (cached Dictionary lookup) so a settings change applies to in-flight ops.
+		var timeout_sec: int = GitotSettings.get_value("network_timeout_sec")
+		if elapsed_sec > timeout_sec:
 			OS.kill(pid)
 			_active_pids.erase(pid)
 			if FileAccess.file_exists(log_path):
 				DirAccess.remove_absolute(log_path) # Orphaned log from the killed process.
-			emit_signal(
-				"command_completed",
-				command,
-				-1,
-				["Timed out after %ds." % int(NETWORK_TIMEOUT_SEC)],
-			)
+			emit_signal("command_completed", command, -1, ["Timed out after %ds." % timeout_sec])
 			return
 		# Not done yet - poll again after a 0.5s deferred delay.
 		await Engine.get_main_loop().create_timer(0.5).timeout

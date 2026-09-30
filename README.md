@@ -6,8 +6,8 @@
 <a href="https://ko-fi.com/sigkgames"><img src="https://img.shields.io/badge/Sponsor-30363D?logo=GitHub-Sponsors" alt="Ko-fi
 SigKgames"></a> <a href="https://godotengine.org/"><img
 src="https://img.shields.io/badge/Godot-4.7+-478CBF?logo=godotengine&logoColor=478CBF" alt="Godot 4.7"></a> <a
-href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.0+-E44C30?logo=git&logoColor=E44C30" alt="Git"></a> <a
-href="https://store.godotengine.org/asset/sigk/gitot/"><img src="https://img.shields.io/badge/Gitot-0.12.0-B8195F"
+href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.3+-E44C30?logo=git&logoColor=E44C30" alt="Git"></a> <a
+href="https://store.godotengine.org/asset/sigk/gitot/"><img src="https://img.shields.io/badge/Gitot-0.13.0-B8195F"
 alt="Gitot"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -38,10 +38,11 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 > (stage/commit/push/pull, branching, diff gutter & viewer) are used daily in real projects and have been through several
 > correctness/lifecycle hardening passes (see [Changelog](#-changelog)).
 > 
-> - This is **not yet a widely-tested release**. It has been validated on Windows with one developer's workflow, on a small repo,
-> not across operating systems or project sizes. Gitot requires significantly more testing under everyday usage conditions! -
-> **Back up your repo / commit your work before trying a new Gitot version**, same as you would for any Git tool still in active
-> development. - Bug reports and real-world usage feedback are the most valuable contribution right now, the roadmap below is
+> - This is **not yet a widely-tested release**. It has been validated on Windows with one developer's workflow, on small repo,
+> not across operating systems or project sizes. Gitot requires significantly more testing under everyday usage conditions!
+> - **Commit your work / make backup before trying a new Gitot version**, same as you would for any Git tool in active
+> development.
+> - Bug reports and real-world usage feedback are the most valuable contribution right now, the roadmap below is
 > deliberately reliability-first before new features.
 
 
@@ -50,7 +51,8 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 - **Commit & Sync:** Stage or unstage files individually or in bulk, write multiline commit messages, and Commit, Amend, Push, or
   Pull. Amend is guarded and automatically forces the next push when required.
 
-- **Stash Quick-Actions:** One-click stash and pop from the dock toolbar — shelve experimental changes before switching branches.
+- **Stash Manager (Shelf):** Stash all changes (staged + unstaged + untracked) under an optional name, then pop or drop any
+  entry from a capped, foldable list (limit is a setting, default 10). Pop refreshes only the files it touched in the editor.
 
 - **Local Branch Management:** Switch or create local branches. Open scenes refresh automatically on switch without a full project
   rescan. A toast warns if an open script changed on disk, or if changed files couldn't be reliably detected (see [Limitations](#-known-limitations)).
@@ -92,7 +94,7 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 
 - **Failsafe Startup:** verifies `git` is available before initializing; disables cleanly with a clear error if not.
 - **Async Execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored
-  background process with a 30-second timeout guard, so a slow or stalled connection never freezes the editor.
+  background process with a 120-second timeout guard, so a slow or stalled connection never freezes the editor.
 - **Commit & Sync:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with single and bulk stage/unstage.
   Status color & icon. Warning icon for conflicted file and large-file guard. Push targets `-u origin HEAD`. **Amend** checkbox
   runs `commit --amend` (keeps message with `--no-edit` if left blank); blocked behind a confirm dialog if the tracked ahead-count
@@ -100,8 +102,16 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
   `git merge-base --is-ancestor @{u} HEAD` live - if HEAD has diverged from upstream for any reason (amend, rebase, reset,
   terminal use), the push confirm dialog warns and the push uses `--force-with-lease` instead of a plain push. Cancelling either
   confirm dialog logs a message and changes nothing.
-- **Stash Quick-Actions:** One-click stash with `-u` flag (staged + unstaged + untracked) and pop from the dock toolbar. Fixed
-  stash message. Pop conflicts output.
+- **Stash Manager (Shelf):** Foldable list (name, branch, relative date, exact date on tooltip) built from `git stash list`
+  (`\x1f`-delimited format, parsed by `GitStashParser`). Header title shows `Shelf (count/cap)`. Stash / Pop / Drop buttons.
+  An optional name field feeds `stash push -u -m`; left blank, git's own `WIP on <branch>: ...` subject is used.
+  The cap is the `max_stashes` setting (1-50, default 10): Stash is disabled when the shelf is full,
+  existing entries are never deleted, and the list shows every entry, including ones made from a terminal.
+  The selection is kept across refreshes by stash SHA (the top entry is selected by default, so Pop acts on the latest). Drop
+  asks for confirmation and re-resolves the SHA to its current `stash@{n}`, since the stack can shift while the dialog is open;
+  git's output (which contains the dropped SHA) is logged, so a mistake can be undone with `git stash store <sha>`. Before a pop,
+  the touched files are listed with `git stash show --name-only --include-untracked --no-renames` and only those are refreshed
+  (`update_file()`, open scene reload, stale-script toast). A failed pop (conflict) refreshes nothing and logs the raw output.
 - **Local Branch Management:** Branch dropdown, and a "new branch" button/dialogue. On switch/create, only files git actually
   changed are refreshed. `EditorFileSystem.update_file()` for cache bookkeeping, plus `EditorInterface.reload_scene_from_path()`
   for any of those files currently open in a tab, avoiding the full-project `scan()` noise that a refresh would trigger. Godot has
@@ -148,8 +158,8 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
   Branch creation from an issue: auto-generated name (`<type-prefix><number>-<title-slug>`, e.g.
   `feature/12-fix-login`, editable), base-branch picker (defaults to current branch), confirmation dialog if the working
   tree is dirty. If a token expires or is revoked, Gitot detects this automatically (HTTP 401) and re-prompts for a new one.
-- **Gitot Settings Panel:** Add Settings (user://gitot_settings.cfg), large_file_mb, confirm_push, auto_refresh_on_focus,
-  github_issues_enabled.
+- **Gitot Settings Panel:** Add Settings (user://gitot_settings.cfg), large_file_mb, network_timeout_sec, max_stashes,
+  confirm_push, auto_refresh_on_focus, github_issues_enabled.
 - **Large-file Guard:** Size configurable in settings, _0 to disable_.
 - **Gitot Logger:** Output routed through `GitotLogger` (Styled with Godot's own console font), so they can be filter out of Godot
   output log with the "standard output message" filter. The console's **Reflog** button runs `git reflog -n 20`
@@ -158,7 +168,6 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 
 #### 📅 Planned Features
 
-- [ ] Stash/Pop Manager
 - [ ] Git LFS Support and Asset Locking
 - [ ] Asset Dependency Analyzer (Pre-Commit Scene Linter)
 - [ ] Hunk-level (partial file) staging
@@ -181,10 +190,12 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 
 ## ⚠ Known Limitations
 
-- After a `Pull`, a branch `Switch`, or a `Restore`, changed scripts already open in the editor won't visually refresh.
-  This is a known Godot engine limitation ([godot#104540](https://github.com/godotengine/godot/issues/104540)) ([godot#73808](https://github.com/godotengine/godot/issues/73808)), Godot may fail to show the update even after
-  closing/reopening the file. **Use Project → Reload Current Project** or **restart the editor** to force a refresh and
-  guarantee correct content. **close/reopen the affected script tab _before_ switching branches next time.**
+- After a `Pull`, a branch `Switch`, a `Restore`, or a `Stash Pop`, Godot has no API to reload an open script tab. Gitot
+  recompiles the script's class and shows a toast, but the tab's visible text only updates on the next **editor focus change**
+  (click away from the editor window and back, which triggers Godot's own external-change check). In some cases Godot may
+  still fail to show the update, even after closing/reopening the file: a known engine limitation ([godot#104540](https://github.com/godotengine/godot/issues/104540)), ([godot#73808](https://github.com/godotengine/godot/issues/73808)).
+  Then use **Project → Reload Current Project** or **restart the editor**.
+  To avoid it altogether, close the affected script tab _before_ switching branches, pulling or popping.
 
 - Godot's `resource_saved` signal does not fire for all save paths (e.g. Run Project/Scene auto-saves).
   Use the **Refresh Diff Gutter** button to catch up manually in those cases. Or switch away from the Godot windows
@@ -202,6 +213,10 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 - **Stash** includes untracked files (`-u` flag). Popping after switching branches can reintroduce files that conflict with the
   new branch's content. Same underlying risk as any `switch` with pending changes.
 
+- **Stash Pop** refreshes only the files git reports for that stash, using `git stash show --include-untracked`. On a Git
+  version without that flag, or if the call fails, Gitot shows the "couldn't verify changed files" toast instead. After a pop
+  that fails on conflicts, nothing is refreshed: open files may be stale, so check for conflict markers.
+
 - **Commit history diff viewer:** merge commits are not handled specially (`git show` prints a combined diff, so the file list can
   be short or empty). Binary files are listed but their diff body is empty. File names Git quotes (non-ASCII characters) may fail
   to load their diff.
@@ -214,7 +229,7 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 
 Pushing/pulling relies on your system Git's own credential handling (SSH agent, Git Credential Manager, etc.). **Gitot does not
 manage credentials!** Gitot does not suppress OS-level credential prompts (e.g. Windows Git Credential Manager popups). If
-push/pull hangs waiting on such a prompt, it will be automatically killed after 30 seconds. Configure a working credential helper
+push/pull hangs waiting on such a prompt, it will be automatically killed after 120 seconds. Configure a working credential helper
 or SSH agent so `git push`/`git pull` succeed from a terminal before relying on Gitot for sync.
 
 #### GitHub Personal Access Token
@@ -229,17 +244,18 @@ Only needed to use the **GitHub Issues Tracker Board** feature.
 > **This is not encrypted.** Godot/GDScript cannot access your OS-level credential store (Windows Credential Manager, macOS
 > Keychain, etc.) without a native extension, which is outside this plugin's scope. **Anyone with access to your local user
 > account can read this file.** And the Godot hot-reload and `_exit_tree()` make it not possible to auto clear the PAT when
-> uninstalling/disabling Gitot. **You must click "Clear Token" before uninstalling/disabling**
+> uninstalling/disabling Gitot. **You must clear your token before uninstalling/disabling**
 
 > [!TIP]
 > 
 > **PAT Recommendations:**
 > 
 > - Use a **fine-grained token** scoped to Repo Access and with Issues Access read/write only. **Never an admin or org-wide
-> token!** - Use the **Clear Token** button in the Gitot Issues Panel toolbar **before uninstalling or disabling the plugin**, or
-> when working on a shared machine! - If you do not intend to use this feature, opt-out in settings to unload it completely! -
-> Read the GitHub Personal Access Token
-> [documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+> token!**
+> - Use the **Clear Token** button in the Gitot Issues Panel toolbar **before uninstalling or disabling the plugin**, or
+> when working on a shared machine!
+> - If you do not intend to use this feature, opt-out in settings to unload it completely!
+> - Check the GitHub Personal Access Token [documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
 
 ---
 
@@ -282,6 +298,7 @@ addons/gitot/
 │   ├── git_status_parser.gd                      	# Parses `git status --porcelain=v2`
 │   ├── git_diff_parser.gd                        	# Parses `git diff -U0/-U3` hunks + `--name-status` output
 │   ├── git_log_parser.gd                         	# Parses `git log` (custom \x1f-delimited) into commit entries
+│   ├── git_stash_parser.gd                       	# Parses `git stash list` (custom \x1f-delimited) into stash entries
 │   ├── github_auth.gd                            	# PAT storage (user://gitot_auth.cfg, plaintext)
 │   ├── github_api.gd                             	# Authenticated HTTPRequest wrapper for GitHub REST API
 │   ├── github_issue_parser.gd                    	# Normalizes raw GitHub issue JSON (type/priority/labels/branch-name slug)
@@ -289,9 +306,11 @@ addons/gitot/
 │   └── gitot_logger.gd                           	# GitotLogger; centralized print wrapper, capped history + UI listener
 └── ui/
     ├── gitot_dock.tscn / gitot_dock.gd           	# Local Git dock UI shell (wiring, commit/push/pull handlers)
-    ├── gitot_result_router.gd						# Routes command_completed results to domain handlers; emits head_moved
+    ├── gitot_result_router.gd						# Routes command_completed results to domain handlers; emits head_moved / stash_popped
     ├── gitot_status_tree.gd                      	# Staged/unstaged file trees: population, staging, bulk actions, size guard
     ├── git_log_panel.gd                          	# Commit history fold: Tree population, filters, commit_selected signal
+	├── gitot_stash_panel.gd                      	# Shelf fold: stash list Tree, Stash/Pop/Drop, cap, drop confirm
+    ├── gitot_icons.gd                            	# Shared editor-theme icon lookup (GitotIcons.get_icon)
     ├── gitot_commit_files_list.gd                	# Changed-files ItemList for one commit; pure UI
     ├── gitot_commit_log_diff.gd                  	# Commit-mode flow (history → file list → diff); latest-wins gate + size cap
     ├── gitot_branch_panel.gd                     	# Branch dropdown (switch) and new-branch dialog
@@ -315,13 +334,55 @@ addons/gitot/
 ## 🗃 Changelog
 
 <details>
+<summary>v0.13.0</summary>
+
+fix: network timeout. feat: Stash Manager (Shelf) - list, named stash, drop, refresh after pop
+
+Fix: network timeout: `_poll_process` killed the push at 30s. A large asset push on slow connection
+will be killed mid-transfer. Now configurable timeout in settings (default 120s - range: 30/900).
+
+feat: Shelf panel (replaces the toolbar Stash/Pop quick-actions)
+
+- `GitStashParser` (new, `core/`): static parser for `git stash list` (`GitEngine.STASH_LIST_FORMAT`: selector, SHA, relative
+  date, absolute date, subject). The subject splits into branch + name (`WIP on` = git default, `On` = custom `-m`); an
+  unmatched subject falls back to an empty branch and the raw subject.
+- `GitotStashPanel` (new, `RefCounted`): 3-column `Tree` (name/branch/date) in a `FoldableContainer`; Stash / Pop / Drop buttons in
+  the title bar, name `LineEdit`, drop `ConfirmationDialog`. Selection survives refreshes (by SHA); Drop re-resolves its SHA
+  to the current index before running.
+- `GitEngine`: `Command.STASH_LIST` (read-only), `Command.STASH_DROP` (in `WRITE_COMMANDS`); `list_stashes()`,
+  `stash_push(message)` (blank = no `-m`, git's default subject), `stash_pop(index)`, `stash_drop(index)`. The fixed
+  "Gitot quick-stash" message is gone.
+- New `max_stashes` setting (1-50, default 10) with a settings-panel SpinBox; Stash is blocked when the shelf is full. Changing
+  the value updates the shelf immediately (`stash_cap_changed`).
+- `STASH_DROP` added to `gitot.gd`'s `STATUS_TRIGGERING_COMMANDS`. The shelf refreshes with status on every trigger, on focus-in
+  and on manual refresh (`GitotDock.refresh_status()` is now the single refresh path; `refresh_log()` removed).
+
+feat: Precise editor refresh after Stash Pop
+
+- `stash_pop(index)` lists the stash's files first (`git stash show --name-only --include-untracked --no-renames`, one bounded
+  call), because the entry no longer exists afterwards. On success the router emits `stash_popped` and the dock refreshes only
+  those files. The blanket "close and reopen any open scripts/scenes" log line is gone.
+- `GitEngine._to_file_list()` (new) shared by `get_changed_files_since_switch()` and the pop path;
+  `GitotDock._notify_file_list()` shared by branch switch and pop.
+
+refactor: cleanup
+
+- `GitotIcons.get_icon()` (new): single source for editor-theme icon lookup, replacing the private `_icon()` copies in the
+  dock, router, and plugin entry point.
+- `GitotResultRouter` no longer holds the Fetch/Pull buttons (constructor 8 → 6 parameters); the dock owns busy state for
+  Fetch, Pull and Push through one `_set_busy()` helper.
+- `GitLogParser.FIELD_SEP` removed; `GitEngine.UNIT_SEP` is the single separator constant.
+<hr>
+</details>
+
+<details>
 <summary>v0.12.0</summary>
 
-feat: GitHub Issues Tracker Board — split list/detail refactor, base-branch picker, pagination
+feat: GitHub Issues Tracker Board - split list/detail refactor, base-branch picker, pagination
 
 feat: Split list/detail Issues panel (commit-history-style layout)
 
-- `GithubIssueParser` (new, `core/`): static, null-safe normalizer for raw REST issue JSON — casts float `number` to `int`,
+- `GithubIssueParser` (new, `core/`): static, null-safe normalizer for raw REST issue JSON. casts float `number` to `int`,
   reads native issue `type`, resolves the org `Priority` issue field (`issue_field_values`), computes a relative date, and
   builds the auto branch name (see below). `PRIORITY_ORDER` (Low/Medium/High/Urgent, project-specific) is the single source
   of truth for priority ranking.
@@ -338,13 +399,13 @@ feat: Create branch from an issue
 - Auto-generated branch name: `<type-prefix><number>-<title-slug>` (`feature/`, `bugfix/`, `task/` per issue type, no prefix
   if unset/unknown), editable before creating.
 - Base-branch picker (`OptionButton`, local branches only, defaults to the current branch); `GitEngine.create_branch()` gains
-  an optional `base` parameter (`switch -c <name> [<base>]`) — existing single-argument callers unaffected.
+  an optional `base` parameter (`switch -c <name> [<base>]`), existing single-argument callers unaffected.
 - Confirmation dialog before creating a branch with a dirty working tree (uncommitted changes move with the branch).
 
 feat: Paginated issue fetch
 
 - `GithubApi.fetch_issues()` now pages (`ISSUES_PER_PAGE = 50`); `github_panel.gd` chains requests automatically up to
-  `MAX_ISSUE_PAGES = 5` (250 issues), stopping at the first short page. Bounded scope by design (solo/small-team repos) rather
+  `MAX_ISSUE_PAGES = 8` (400 issues), stopping at the first short page. Bounded scope by design (solo/small-team repos) rather
   than a full paged UI.
 <hr>
 </details>

@@ -26,6 +26,7 @@ const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 	GitEngine.Command.CREATE_BRANCH,
 	GitEngine.Command.STASH,
 	GitEngine.Command.STASH_POP,
+	GitEngine.Command.STASH_DROP,
 	GitEngine.Command.RESTORE_FILE,
 ]
 
@@ -147,7 +148,7 @@ func _get_plugin_name() -> String:
 
 
 func _get_plugin_icon() -> Texture2D:
-	return EditorInterface.get_base_control().get_theme_icon("Debug", "EditorIcons")
+	return GitotIcons.get_icon("Debug")
 
 
 ## Called by the editor when the user switches to/away from the tab.
@@ -167,9 +168,7 @@ func _on_git_command_completed(
 	_output: Array[String],
 ) -> void:
 	if command in STATUS_TRIGGERING_COMMANDS:
-		_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
-		_git_engine.get_ahead_behind()
-		_dock.refresh_log() # exposed passthrough
+		_dock.refresh_status() # status + ahead/behind + history + shelf
 
 
 ## Triggers gutter refresh on script save

@@ -64,8 +64,8 @@ func populate(branches: Array[Dictionary], branch_scopes: Dictionary[String, Str
 
 	var filtered: Array[Dictionary] = _filter_redundant_remotes(branches)
 	var base_control: Control = EditorInterface.get_base_control()
-	var local_icon: Texture2D = base_control.get_theme_icon("VcsBranches", "EditorIcons")
-	var remote_icon: Texture2D = base_control.get_theme_icon("ReplicationDock", "EditorIcons")
+	var local_icon: Texture2D = GitotIcons.get_icon("VcsBranches")
+	var remote_icon: Texture2D = GitotIcons.get_icon("ReplicationDock")
 
 	var current_index: int = 0
 	for i in filtered.size():

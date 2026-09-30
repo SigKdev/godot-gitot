@@ -54,10 +54,6 @@ func populate(parsed: Dictionary) -> void:
 	_populate_tree(_unstaged_tree, parsed["unstaged"], _unstaged_fold, "Unstaged", true)
 
 
-func _icon(name: String) -> Texture2D:
-	return EditorInterface.get_base_control().get_theme_icon(name, &"EditorIcons")
-
-
 ## Clears and refills a Tree from parsed status entries {"path", "status"}.
 func _populate_tree(
 	tree: Tree,
@@ -77,37 +73,37 @@ func _populate_tree(
 		if STATUS_COLORS.has(status):
 			item.set_custom_color(0, STATUS_COLORS[status])
 		if status == GitStatusParser.FileStatus.MODIFIED:
-			item.set_icon(0, _icon("Edit"))
+			item.set_icon(0, GitotIcons.get_icon("Edit"))
 			item.set_icon_modulate(0, Color.ORANGE)
 			item.set_tooltip_text(0, "Modified File")
 		if status == GitStatusParser.FileStatus.DELETED:
-			item.set_icon(0, _icon("Close"))
+			item.set_icon(0, GitotIcons.get_icon("Close"))
 			item.set_icon_modulate(0, Color.INDIAN_RED)
 			item.set_tooltip_text(0, "Deleted File")
 		if status == GitStatusParser.FileStatus.NEW_FILE:
-			item.set_icon(0, _icon("Add"))
+			item.set_icon(0, GitotIcons.get_icon("Add"))
 			item.set_icon_modulate(0, Color.FOREST_GREEN)
 			item.set_tooltip_text(0, "Untracked File")
 		if status == GitStatusParser.FileStatus.CONFLICT:
-			item.set_icon(0, _icon("NodeWarning"))
+			item.set_icon(0, GitotIcons.get_icon("NodeWarning"))
 			item.set_icon_modulate(0, Color.RED)
 			item.set_tooltip_text(0, "⚠ Merge conflict — resolve before staging ⚠")
 		if (
 			check_size and status != GitStatusParser.FileStatus.CONFLICT
 			and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"]), max_bytes)
 		):
-			item.set_icon(0, _icon("StatusWarning"))
+			item.set_icon(0, GitotIcons.get_icon("StatusWarning"))
 			item.set_icon_modulate(0, Color.ORANGE)
 			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard — excluded from Staging ⚠")
 		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
-			item.add_button(0, _icon("ShaderDock"), BUTTON_OPEN_FILE, false, "Open file in editor")
+			item.add_button(0, GitotIcons.get_icon("ShaderDock"), BUTTON_OPEN_FILE, false, "Open file in editor")
 			item.set_button_color(0, item.get_button_by_id(0, BUTTON_OPEN_FILE), Color.DARK_GRAY)
 
 
 ## Creates and wires the Stage All / Unstage All buttons into each fold header.
 func _setup_bulk_buttons() -> void:
 	var stage_all: Button = Button.new()
-	stage_all.icon = _icon("ArrowDown")
+	stage_all.icon = GitotIcons.get_icon("ArrowDown")
 	stage_all.flat = true
 	stage_all.tooltip_text = "Stage All"
 	stage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -115,7 +111,7 @@ func _setup_bulk_buttons() -> void:
 	_unstaged_fold.add_title_bar_control(stage_all)
 
 	var unstage_all: Button = Button.new()
-	unstage_all.icon = _icon("ArrowUp")
+	unstage_all.icon = GitotIcons.get_icon("ArrowUp")
 	unstage_all.flat = true
 	unstage_all.tooltip_text = "Unstage All"
 	unstage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

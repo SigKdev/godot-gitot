@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://addons/gitot/core/github_api.gd" id="1_j8tw0"]
 [ext_resource type="Script" path="res://addons/gitot/ui/github_panel.gd" id="1_yhiux"]
-[ext_resource type="PackedScene" uid="uid://bt15e5ipc833c" path="res://addons/gitot/ui/issue_detail.tscn" id="3_4q41f"]
+[ext_resource type="PackedScene" path="res://addons/gitot/ui/issue_detail.tscn" id="3_4q41f"]
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_yhiux"]
 vertical = true

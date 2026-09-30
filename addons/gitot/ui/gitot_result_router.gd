@@ -11,13 +11,15 @@ signal head_moved
 ## Emitted after a successful file restore; dock refreshes EditorFileSystem/open tabs.
 signal file_restored(path: String)
 
+## Emitted after a successful stash pop; dock refreshes EditorFileSystem/open tabs.
+signal stash_popped
+
 var _git_engine: GitEngine
 var _status_panel: GitotStatusPanel
 var _status_tree: GitotStatusTree
-var _log_panel: GitLogPanel
 var _branch_panel: GitotBranchPanel
-var _fetch_button: Button
-var _pull_button: Button
+var _log_panel: GitLogPanel
+var _stash_panel: GitotStashPanel
 
 var _has_upstream: bool = false
 var _ahead_count: int = 0
@@ -50,26 +52,20 @@ static func _get_current_branch_from_list(branches: Array[Dictionary]) -> String
 	return ""
 
 
-static func _icon(icon_name: String) -> Texture2D:
-	return EditorInterface.get_base_control().get_theme_icon(icon_name, &"EditorIcons")
-
-
 func _init(
 	git_engine: GitEngine,
 	status_panel: GitotStatusPanel,
 	status_tree: GitotStatusTree,
-	log_panel: GitLogPanel,
 	branch_panel: GitotBranchPanel,
-	fetch_button: Button,
-	pull_button: Button,
+	log_panel: GitLogPanel,
+	stash_panel: GitotStashPanel,
 ) -> void:
 	_git_engine = git_engine
 	_status_panel = status_panel
 	_status_tree = status_tree
-	_log_panel = log_panel
 	_branch_panel = branch_panel
-	_fetch_button = fetch_button
-	_pull_button = pull_button
+	_log_panel = log_panel
+	_stash_panel = stash_panel
 
 
 ## Read by GitotDock's amend/push guards (HEAD == upstream check).
@@ -88,6 +84,10 @@ func route(command: GitEngine.Command, exit_code: int, output: Array[String]) ->
 			_handle_commit_result(exit_code, output)
 		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
 			_handle_stash_result(command, exit_code, output)
+		GitEngine.Command.STASH_LIST:
+			_handle_stash_list_result(exit_code, output)
+		GitEngine.Command.STASH_DROP:
+			_handle_stash_drop_result(exit_code, output)
 		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine \
 				.Command \
 				.PULL:
@@ -135,8 +135,7 @@ func _handle_stash_result(
 	# stash_pop
 	if exit_code == 0:
 		GitotLogger.s("Stash popped.")
-		# No HEAD@{1}..HEAD diff exists for a pop - unlike switch/pull, affected files aren't known.
-		GitotLogger.i("Close and reopen any open scripts/scenes to be safe.")
+		stash_popped.emit()
 	else:
 		GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
 		if not output.is_empty():
@@ -149,7 +148,7 @@ func _handle_restore_result(exit_code: int, output: Array[String]) -> void:
 	if exit_code == 0:
 		GitotLogger.s("Restored '%s'." % path)
 		GitotLogger.i(
-			"If it was open, unfocus/focus the editor window to refresh."
+			"If '%s' was open, unfocus/focus the editor window to refresh." % path
 		)
 		file_restored.emit(path)
 	else:
@@ -158,11 +157,31 @@ func _handle_restore_result(exit_code: int, output: Array[String]) -> void:
 			GitotLogger.g(output[0])
 
 
+## Populates the shelf. On failure the previous list is kept (stale beats blank).
+## Empty stdout (no stashes) must still repopulate, otherwise a dropped/popped
+## last entry would linger. Empty output array is handled too, since I haven't
+## verified whether OS.execute returns [""] or [] for empty stdout.
+func _handle_stash_list_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code != 0:
+		return
+	var raw: String = output[0] if not output.is_empty() else ""
+	_stash_panel.populate(GitStashParser.parse(raw))
+
+
+## Git's drop output contains the dropped SHA - logged raw so a mistaken drop
+## stays recoverable (`git stash store -m <msg> <sha>`).
+func _handle_stash_drop_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code == 0:
+		GitotLogger.s("Stash dropped.")
+	else:
+		GitotLogger.e("Drop failed.")
+	if not output.is_empty() and not output[0].is_empty():
+		GitotLogger.g(output[0])
+
+
 ## Fetch / ahead-behind / push / pull - everything touching remote sync status.
 func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	if command == GitEngine.Command.FETCH:
-		_fetch_button.disabled = false
-		_fetch_button.icon = _icon("AssetStore")
 		if exit_code == 0:
 			GitotLogger.s("Fetch finished.")
 			_git_engine.list_branches() # new remote branches only become visible after fetch
@@ -191,10 +210,6 @@ func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Arr
 		return
 
 	# push / pull
-	if command == GitEngine.Command.PULL:
-		_pull_button.disabled = false
-		_pull_button.icon = _icon("MoveDown")
-
 	var display_name: String = GitEngine.Command.keys()[command].capitalize()
 	if exit_code == 0:
 		GitotLogger.s("%s finished." % display_name)

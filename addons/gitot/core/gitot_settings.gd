@@ -9,6 +9,8 @@ const SECTION: String = "settings"
 
 const DEFAULTS: Dictionary = {
 	"large_file_mb": 50,
+	"network_timeout_sec": 120,
+	"max_stashes": 10,
 	"confirm_push": true,
 	"auto_refresh_on_focus": true,
 	"github_issues_enabled": true,

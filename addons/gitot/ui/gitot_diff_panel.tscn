@@ -92,7 +92,10 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Restore this file version.
 ⚠ Godot may not refresh scripts open
-in the editor, close it before or a restart may be needed ⚠"
+in the editor. Close scripts before! ⚠
+If not closed before, click away from
+the editor window and back to refresh.
+But a reload/restart may be needed. ⚠"
 mouse_default_cursor_shape = 2
 text = "Restore"
 

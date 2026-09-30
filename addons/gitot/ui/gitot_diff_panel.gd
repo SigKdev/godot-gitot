@@ -69,7 +69,7 @@ func _ready() -> void:
 	%RefreshDiffPanelButton.pressed.connect(_on_refresh_pressed)
 
 	%FoldButton.pressed.connect(_on_fold_pressed)
-	%FoldButton.icon = _icon("CollapseTree")
+	%FoldButton.icon = GitotIcons.get_icon("CollapseTree")
 	%FoldButton.tooltip_text = "Click to fold all header"
 
 	%RestoreFileButton.pressed.connect(
@@ -222,16 +222,16 @@ func _rebuild_view() -> void:
 			_hunk_header_lines[idx],
 			_fold_gutter_idx,
 			(
-				_icon("CodeFoldedRightArrow")
+				GitotIcons.get_icon("CodeFoldedRightArrow")
 				if _collapsed_hunks.has(idx)
-				else _icon("CodeFoldDownArrow")
+				else GitotIcons.get_icon("CodeFoldDownArrow")
 			),
 		)
 
 	%FoldButton.icon = (
-		_icon("ExpandTree")
+		GitotIcons.get_icon("ExpandTree")
 		if (not _current_hunks.is_empty() and _collapsed_hunks.size() == _current_hunks.size())
-		else _icon("CollapseTree")
+		else GitotIcons.get_icon("CollapseTree")
 	)
 	%FoldButton.tooltip_text = (
 		"Click to unfold all header"
@@ -316,10 +316,6 @@ func _on_gutter_clicked(line: int, gutter_idx: int) -> void:
 	else:
 		_collapsed_hunks[idx] = true
 	_rebuild_view()
-
-
-func _icon(name: String) -> Texture2D:
-	return EditorInterface.get_base_control().get_theme_icon(name, &"EditorIcons")
 
 
 func _on_commit_info_gui_input(event: InputEvent) -> void:

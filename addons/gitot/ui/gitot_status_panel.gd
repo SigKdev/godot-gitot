@@ -55,7 +55,7 @@ func _render() -> void:
 		_behind,
 	]
 
-	_label.text = "[font_size=11]%s  ·  [b]%s[/b]%s  ·  %s[/font_size]" % [
+	_label.text = "%s  ·  [b]%s[/b][font_size=10]%s[/font_size]  ·  %s" % [
 		_repo_name,
 		branch_display,
 		scope_display,
