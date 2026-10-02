@@ -5,6 +5,9 @@ extends RefCounted
 
 const MAX_BRANCH_CHARS: int = 24
 
+## Display-only shortening; unknown scopes fall through unchanged.
+const SCOPE_SHORT: Dictionary = { "(Local + Remote)": "(L+R)" }
+
 var _label: RichTextLabel
 var _repo_name: String = ""
 var _branch: String = ""
@@ -25,7 +28,7 @@ func update_repo(name: String) -> void:
 
 func update_branch(branch: String, scope: String = "") -> void:
 	_branch = branch
-	_branch_scope = scope
+	_branch_scope = SCOPE_SHORT.get(scope, scope) as String
 	_render()
 
 

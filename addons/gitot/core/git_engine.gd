@@ -1,7 +1,6 @@
 ## git_engine.gd
 ## Core git operations for Gitot.
-## All CLI calls are executed via OS.execute() and routed through this class.
-## Uses WorkerThreadPool for non-blocking execution.
+## Command API and signal. Process execution is delegated to GitRunner.
 class_name GitEngine
 extends RefCounted
 
@@ -9,7 +8,14 @@ extends RefCounted
 ## @param command: identifies which operation completed.
 ## @param exit_code: 0 on success.
 ## @param output: raw stdout lines.
-signal command_completed(command: Command, exit_code: int, output: Array[String])
+## @param context: data captured by the wrapper at call time, e.g. {"branch": "x"}.
+## Empty if the command needs none. It travels with its own call, so it can't be mixed up with another.
+signal command_completed(
+	command: Command,
+	exit_code: int,
+	output: Array[String],
+	context: Dictionary,
+)
 
 ## Identifies which git operation a command_completed signal refers to.
 ## Enum key names double as display strings via Command.keys()[cmd].capitalize()
@@ -35,6 +41,7 @@ enum Command {
 	BRANCHES,
 	SWITCH,
 	CREATE_BRANCH,
+	DELETE_BRANCH,
 	LOG,
 	TAG,
 	TAG_COLLISION_CHECK,
@@ -66,15 +73,21 @@ const LOG_FORMAT: String = "--pretty=format:%h" + UNIT_SEP + "%an" + UNIT_SEP + 
 ## relative date, absolute date (tooltip), subject. Unit Separator-delimited like LOG_FORMAT.
 const STASH_LIST_FORMAT: String = "--format=%gd" + UNIT_SEP + "%H" + UNIT_SEP + "%cr" + UNIT_SEP + "%ci" + UNIT_SEP + "%s"
 
+## Format string for `git branch -a`: refname, HEAD marker, upstream, trackshort, track,
+## commit date (unix = sort key, relative = display, exact = tooltip), short hash, subject.
+## Unit Separator-delimited like LOG_FORMAT - "|" is a valid ref-name character.
+## Column order must match GitBranchParser.Field.
+const BRANCH_LIST_FORMAT: String = (
+	"--format=%(refname)" + UNIT_SEP + "%(HEAD)" + UNIT_SEP + "%(upstream:short)" + UNIT_SEP
+	+ "%(upstream:trackshort)" + UNIT_SEP + "%(upstream:track)" + UNIT_SEP + "%(committerdate:unix)"
+	+ UNIT_SEP + "%(committerdate:relative)" + UNIT_SEP + "%(committerdate:format:%Y-%m-%d %H:%M)"
+	+ UNIT_SEP + "%(objectname:short)" + UNIT_SEP + "%(subject)"
+)
+
 ## Shell metacharacters valid in git ref names but unsafe once interpolated into
 ## the shell string run_network() builds (see push_tag()). Rejected in create_tag()
 ## since it gates every path that can lead there.
 const UNSAFE_TAG_CHARS: String = "$`;&"
-
-## Timeout for the bounded local reads below (get_remote_url, get_current_branch, etc.) —
-## short, since these are cheap plumbing commands; a hang past this means a stuck
-## lock/gc, not normal latency. Distinct from the user-set "network_timeout_sec" (push/pull).
-const LOCAL_TIMEOUT_SEC: float = 5.0
 
 ## Commands that mutate the index, working tree, or refs. Only these need
 ## mutual exclusion — read-only commands (STATUS, LOG, DIFF, BRANCHES, ...)
@@ -89,6 +102,7 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.STASH_DROP,
 	Command.SWITCH,
 	Command.CREATE_BRANCH,
+	Command.DELETE_BRANCH,
 	Command.TAG,
 	Command.RESTORE_FILE,
 ]
@@ -96,33 +110,8 @@ const WRITE_COMMANDS: Array[Command] = [
 ## Max reflog entries shown by the console's Reflog button.
 const REFLOG_COUNT: int = 20
 
-## PID → temp log path of currently running network operations (push/pull).
-## Tracks both so a mid-operation kill (timeout or teardown) can also remove
-## the orphaned log file, not just stop the process.
-var _active_pids: Dictionary[int, String] = { }
-
-## True while a WRITE_COMMANDS op is executing. Blocks any other run_fast()
-## call (write or read) from racing it on index.lock; reads never block
-## each other, and never block while no write is in flight.
-var _write_busy: bool = false
-
-## Branch name targeted by the most recent switch/create_branch call, for
-## the dock's success log — avoids a redundant git call to re-derive it.
-var _last_switch_target: String = ""
-
-## Path targeted by the most recent restore_file() call, for the dock's log
-## message — mirrors _last_switch_target (command_completed carries no path).
-var _last_restored_path: String = ""
-
-## Files the most recent stash_pop() will touch, gathered BEFORE the pop (the entry is
-## gone afterwards). Same {"reliable", "files"} shape as get_changed_files_since_switch().
-var _last_popped_files: Dictionary = { "reliable": false, "files": PackedStringArray() }
-
-
-## Checks if 'git' is callable from the OS PATH.
-static func is_git_available() -> bool:
-	var output: Array[String] = []
-	return OS.execute("git", ["--version"], output) == 0
+## Process execution layer (threads, timeouts, write lock). See GitRunner.
+var _runner: GitRunner = GitRunner.new()
 
 
 ## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
@@ -135,40 +124,38 @@ static func parse_owner_repo(url: String) -> Dictionary:
 	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
 
 
-## Returns the absolute path to the project root, used to anchor every
-## git call so it always targets this repo regardless of editor CWD.
-static func _project_root() -> String:
-	return ProjectSettings.globalize_path("res://")
+#region check version
+## Checks if 'git' is callable from the OS PATH.
+# static func is_git_available() -> bool:
+# 	var output: Array[String] = []
+# 	return OS.execute("git", ["--version"], output) == 0
+## Checks if 'git' is callable from the OS PATH.
+static func is_git_available() -> bool:
+	return not get_git_version().is_empty()
 
 
-## Builds the shell + args that redirect a git call's stdout/stderr to log_path and
-## append a trailing exit-status marker. Shared by run_network() (async, timeout-killed)
-## and _execute_bounded() (sync, timeout-killed) — single source for this shell contract.
-## SECURITY: only ever receives static, hardcoded args (see run_network()).
-static func _shell_invocation(args: PackedStringArray, log_path: String) -> Array:
-	var git_cmd: String = (
-		"git -C \"%s\" %s > \"%s\" 2>&1 && echo EXITCODE:0 >> \"%s\" || echo EXITCODE:1 >> \"%s\""
-		% [_project_root(), " ".join(args), log_path, log_path, log_path]
-	)
-	var shell: String = "cmd" if OS.get_name() == "Windows" else "sh"
-	var shell_args: PackedStringArray = (
-		["/C", git_cmd] if OS.get_name() == "Windows" else ["-c", git_cmd]
-	)
-	return [shell, shell_args]
+## "2.45.0.windows.1" from "git version 2.45.0.windows.1"; "" if git is missing.
+static func get_git_version() -> String:
+	return _first_line(["--version"]).trim_prefix("git version ")
 
 
-## Splits a redirected git-call log into (success, cleaned text) - shared by
-## _execute_bounded() and _poll_process(), the two consumers of _shell_invocation()'s output.
-static func _parse_log(log_content: String) -> Array:
-	var success: bool = log_content.contains("EXITCODE:0")
-	var clean: String = log_content \
-			.replace("EXITCODE:0", "") \
-			.replace("EXITCODE:1", "") \
-			.strip_edges()
-	return [success, clean]
+## "3.5.1" from "git-lfs/3.5.1 (GitHub; ...)"; "" if git-lfs is not installed.
+static func get_lfs_version() -> String:
+	return _first_line(["lfs", "version"]).get_slice(" ", 0).trim_prefix("git-lfs/")
 
 
-## Turns an _execute_bounded() name-list result into {"reliable": bool, "files": PackedStringArray}.
+## Runs `git <args>` synchronously (startup checks only) and returns the first stdout line.
+## stderr is merged (read_stderr=true) so a missing `git lfs` stays silent in the editor console.
+## @return: "" on a non-zero exit code or empty output.
+static func _first_line(args: PackedStringArray) -> String:
+	var output: Array[String] = []
+	if OS.execute("git", args, output, true) != 0 or output.is_empty():
+		return ""
+	return output[0].get_slice("\n", 0).strip_edges()
+#endregion
+
+
+## Turns an GitRunner.execute_bounded() name-list result into {"reliable": bool, "files": PackedStringArray}.
 ## reliable=false means git failed - NOT "nothing changed".
 static func _to_file_list(result: Array) -> Dictionary:
 	if result[0] != 0:
@@ -182,13 +169,14 @@ static func _to_file_list(result: Array) -> Dictionary:
 
 ## Runs a fast, local git command (read or write) off the main thread.
 ## Use for: status, diff, add, restore, commit. [b]NOT for push/pull[/b] [i](see run_network)[/i].
-func run_fast(command: Command, args: PackedStringArray) -> void:
-	if _write_busy:
-		GitotLogger.w("Git write in progress - ignoring %s." % Command.keys()[command])
-		return
-	if command in WRITE_COMMANDS:
-		_write_busy = true
-	WorkerThreadPool.add_task(_execute_and_report.bind(command, args))
+## @param context: optional per-call data, returned unchanged in command_completed
+func run_fast(command: Command, args: PackedStringArray, context: Dictionary = { }) -> void:
+	_runner.run_fast(
+		Command.keys()[command],
+		args,
+		command in WRITE_COMMANDS,
+		_relay.bind(command, context),
+	)
 
 
 ## Runs a network git command (push/pull) with a kill-on-timeout guard.
@@ -197,29 +185,7 @@ func run_fast(command: Command, args: PackedStringArray) -> void:
 ## @param command: identifies the operation (e.g. Command.PUSH).
 ## @param args: git subcommand arguments (e.g. ["push", "origin", "main"]).
 func run_network(command: Command, args: PackedStringArray) -> void:
-	# Time.get_ticks_usec() disambiguates concurrent same-named ops (e.g. two
-	# fetches in flight); the real PID isn't known until after
-	# OS.create_process() returns, too late to embed in this path.
-	var log_path: String = "user://gitot_%s_%d.log" % [
-		Command.keys()[command],
-		Time.get_ticks_usec(),
-	]
-	var abs_log_path: String = ProjectSettings.globalize_path(log_path)
-
-	# SECURITY: this shell string only ever receives static, hardcoded args
-	# (push/pull with no user-supplied values). Never interpolate user input
-	# (branch names, messages, paths) into this string without escaping.
-	var shell_invocation: Array = _shell_invocation(args, abs_log_path)
-
-	# Create the process and store the PID.
-	var pid: int = OS.create_process(shell_invocation[0], shell_invocation[1])
-	if pid == -1:
-		call_deferred("emit_signal", "command_completed", command, -1, ["Failed to start process."])
-		return
-
-	_active_pids[pid] = abs_log_path
-	# Poll the process for completion.
-	_poll_process.call_deferred(pid, command, abs_log_path, Time.get_ticks_msec())
+	_runner.run_network(Command.keys()[command], args, _relay.bind(command, { }))
 
 
 ## True if a plain push would be rejected (local HEAD diverged from its
@@ -227,15 +193,15 @@ func run_network(command: Command, args: PackedStringArray) -> void:
 ## (first push, nothing to diverge from). Bounded sync check, run right
 ## before a push.
 func needs_force_push() -> bool:
-	var upstream: Array = _execute_bounded(["rev-parse", "--abbrev-ref", "@{u}"])
+	var upstream: Array = _runner.execute_bounded(["rev-parse", "--abbrev-ref", "@{u}"])
 	if upstream[0] != 0:
 		return false # No upstream at all - nothing to diverge from.
-	return _execute_bounded(["merge-base", "--is-ancestor", "@{u}", "HEAD"])[0] == 1
+	return _runner.execute_bounded(["merge-base", "--is-ancestor", "@{u}", "HEAD"])[0] == 1
 
 
 ## Returns the "origin" remote URL, or an empty string on failure.
 func get_remote_url() -> String:
-	var result: Array = _execute_bounded(["remote", "get-url", "origin"])
+	var result: Array = _runner.execute_bounded(["remote", "get-url", "origin"])
 	if result[0] != 0:
 		return ""
 	return String(result[1]).strip_edges()
@@ -265,14 +231,14 @@ func get_reflog() -> void:
 ## @return: {"reliable": bool, "files": PackedStringArray}. reliable=false means
 ## HEAD@{1} doesn't exist yet (first switch) or git failed — NOT "nothing changed".
 func get_changed_files_since_switch() -> Dictionary:
-	return _to_file_list(_execute_bounded(["diff", "--name-only", "HEAD@{1}", "HEAD"]))
+	return _to_file_list(_runner.execute_bounded(["diff", "--name-only", "HEAD@{1}", "HEAD"]))
 
 
 #region Branches
 ## Lists branches. Fast/local op — routes through run_fast.
 ## Result output[0] is fed to GitBranchParser.parse().
 func list_branches() -> void:
-	run_fast(Command.BRANCHES, ["branch", "-a", "--format=%(refname)|%(HEAD)"])
+	run_fast(Command.BRANCHES, ["branch", "-a", BRANCH_LIST_FORMAT])
 
 
 ## Switches to an existing local branch. Uncommitted changes that don't
@@ -281,40 +247,44 @@ func list_branches() -> void:
 ## exit_code (see gitot.gd STATUS_TRIGGERING_COMMANDS).
 ## @param branch_name: existing local branch name.
 func switch_branch(branch_name: String) -> void:
-	_last_switch_target = branch_name
-	run_fast(Command.SWITCH, ["switch", branch_name])
+	run_fast(Command.SWITCH, ["switch", branch_name], { "branch": branch_name })
 
 
 ## Creates a new local branch and switches to it in one atomic op.
 ## @param branch_name: new branch name (git ref-name rules enforced by git itself).
 ## @param base: existing local branch to start from; empty = current HEAD (today's behavior).
 func create_branch(branch_name: String, base: String = "") -> void:
-	_last_switch_target = branch_name
 	var args: PackedStringArray = ["switch", "-c", branch_name]
 	if not base.is_empty():
 		args.append(base)
-	run_fast(Command.CREATE_BRANCH, args)
+	run_fast(Command.CREATE_BRANCH, args, { "branch": branch_name })
 
 
 ## Creates a local branch tracking a remote-only branch and switches to it.
 ## @param remote_name: full remote ref, e.g. "origin/feature-x".
 func track_remote_branch(remote_name: String) -> void:
 	var local_name: String = remote_name.trim_prefix("origin/")
-	_last_switch_target = local_name
-	run_fast(Command.CREATE_BRANCH, ["switch", "-c", local_name, "--track", remote_name])
+	run_fast(
+		Command.CREATE_BRANCH,
+		["switch", "-c", local_name, "--track", remote_name],
+		{ "branch": local_name },
+	)
+
+
+## Deletes a local branch, safe mode only: `-d` makes git refuse unmerged branches
+## (merged into its upstream, or into HEAD when it has none). Caller must confirm first.
+## Git's output contains the old tip SHA (recoverable via `git branch <name> <sha>`).
+## @param branch_name: existing local branch, not the checked-out one (git refuses that too).
+func delete_branch(branch_name: String) -> void:
+	run_fast(Command.DELETE_BRANCH, ["branch", "-d", branch_name])
 
 
 ## Returns the current branch name, or empty string on failure (e.g. detached HEAD).
 func get_current_branch() -> String:
-	var result: Array = _execute_bounded(["branch", "--show-current"])
+	var result: Array = _runner.execute_bounded(["branch", "--show-current"])
 	if result[0] != 0:
 		return ""
 	return String(result[1]).strip_edges()
-
-
-## Branch name targeted by the last switch/create_branch call — see _last_switch_target.
-func get_last_switch_target() -> String:
-	return _last_switch_target
 #endregion
 
 
@@ -350,19 +320,18 @@ func stash_push(message: String = "") -> void:
 func stash_pop(index: int = 0) -> void:
 	assert(index >= 0, "GitEngine.stash_pop: negative index")
 	var ref: String = "stash@{%d}" % index # int-built only; and no '^' (cmd.exe escape char).
-	# Skipped while a write is in flight: run_fast() ignores this pop, and gathering anyway
-	# would overwrite the list the in-flight pop's result handler still needs.
-	if not _write_busy:
+	# context = {"reliable", "files"} (see _to_file_list), gathered BEFORE the pop since the entry
+	# is gone afterwards. Skipped while a write is in flight: run_fast() would drop this pop anyway,
+	# so don't block up to LOCAL_TIMEOUT_SEC on a git call for nothing.
+	var context: Dictionary = { }
+	if not _runner.is_write_busy():
 		# --include-untracked (Git >= 2.32) lists stash -u files; --no-renames = D + A.
-		_last_popped_files = _to_file_list(_execute_bounded(
-			["stash", "show", "--name-only", "--include-untracked", "--no-renames", ref]
-		))
-	run_fast(Command.STASH_POP, ["stash", "pop", ref])
-
-
-## Files touched by the last stash_pop() call - see _last_popped_files.
-func get_last_popped_files() -> Dictionary:
-	return _last_popped_files
+		context = _to_file_list(
+			_runner.execute_bounded(
+				["stash", "show", "--name-only", "--include-untracked", "--no-renames", ref]
+			)
+		)
+	run_fast(Command.STASH_POP, ["stash", "pop", ref], context)
 
 
 ## Permanently removes stash entry `index`. Destructive - caller must confirm first.
@@ -423,13 +392,11 @@ func get_commit_file_diff(commit_hash: String, path: String) -> void:
 ## @param commit_hash: commit to restore the file's content from.
 ## @param path: repo-relative path, as returned by get_commit_files().
 func restore_file(commit_hash: String, path: String) -> void:
-	_last_restored_path = path
-	run_fast(Command.RESTORE_FILE, ["restore", "--source=" + commit_hash, "--", path])
-
-
-## Path targeted by the last restore_file() call — see _last_restored_path.
-func get_last_restored_path() -> String:
-	return _last_restored_path
+	run_fast(
+		Command.RESTORE_FILE,
+		["restore", "--source=" + commit_hash, "--", path],
+		{ "path": path },
+	)
 
 
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.
@@ -439,13 +406,9 @@ func get_last_restored_path() -> String:
 func create_tag(tag_name: String, message: String) -> void:
 	for c in UNSAFE_TAG_CHARS:
 		if tag_name.contains(c):
-			call_deferred(
-				"emit_signal",
-				"command_completed",
-				Command.TAG,
-				-1,
-				["Tag name contains unsafe character '%s'." % c],
-			)
+			# Typed var required: _relay() takes Array[String], an untyped literal would be rejected.
+			var failure: Array[String] = ["Tag name contains unsafe character '%s'." % c]
+			_relay.call_deferred(-1, failure, Command.TAG, { })
 			return
 	run_fast(Command.TAG, ["tag", "-a", tag_name, "-m", message])
 
@@ -464,91 +427,9 @@ func push_tag(tag_name: String) -> void:
 
 ## Kills any push/pull processes still running. Called by gitot.gd on exit.
 func teardown() -> void:
-	for pid: int in _active_pids:
-		if OS.is_process_running(pid):
-			OS.kill(pid)
-		var log_path: String = _active_pids[pid]
-		if FileAccess.file_exists(log_path):
-			DirAccess.remove_absolute(log_path)
-	_active_pids.clear()
+	_runner.teardown()
 
 
-## Runs a local git query synchronously, capped at LOCAL_TIMEOUT_SEC — blocks the
-## calling thread up to the cap, then kills the process. Only for the one-off reads
-## below; hot UI paths use run_fast()/run_network() instead (never blocking).
-## @return: [exit_code: int, output: String] — exit_code -1 on timeout/spawn failure.
-func _execute_bounded(args: PackedStringArray) -> Array:
-	var log_path: String = ProjectSettings.globalize_path(
-		"user://gitot_sync_%d.log" % Time.get_ticks_usec()
-	)
-	var shell_invocation: Array = _shell_invocation(args, log_path)
-	var pid: int = OS.create_process(shell_invocation[0], shell_invocation[1])
-	if pid == -1:
-		return [-1, ""]
-
-	var start_msec: int = Time.get_ticks_msec()
-	while OS.is_process_running(pid):
-		if (Time.get_ticks_msec() - start_msec) / 1000.0 > LOCAL_TIMEOUT_SEC:
-			OS.kill(pid)
-			if FileAccess.file_exists(log_path):
-				DirAccess.remove_absolute(log_path) # Orphaned log from the killed process.
-			return [-1, ""]
-		OS.delay_msec(10)
-
-	var log_content: String = ""
-	if FileAccess.file_exists(log_path):
-		log_content = FileAccess.get_file_as_string(log_path)
-		DirAccess.remove_absolute(log_path)
-
-	var parsed: Array = _parse_log(log_content)
-	return [0 if parsed[0] else 1, parsed[1]]
-
-
-## lock/gc, not normal latency. Distinct from the user-set "network_timeout_sec" (push/pull).
-## Reads the redirected log file once the process ends.
-func _poll_process(pid: int, command: Command, log_path: String, start_time_ms: int) -> void:
-	if OS.is_process_running(pid):
-		var elapsed_sec: float = (Time.get_ticks_msec() - start_time_ms) / 1000.0
-		# Read per poll (cached Dictionary lookup) so a settings change applies to in-flight ops.
-		var timeout_sec: int = GitotSettings.get_value("network_timeout_sec")
-		if elapsed_sec > timeout_sec:
-			OS.kill(pid)
-			_active_pids.erase(pid)
-			if FileAccess.file_exists(log_path):
-				DirAccess.remove_absolute(log_path) # Orphaned log from the killed process.
-			emit_signal("command_completed", command, -1, ["Timed out after %ds." % timeout_sec])
-			return
-		# Not done yet - poll again after a 0.5s deferred delay.
-		await Engine.get_main_loop().create_timer(0.5).timeout
-		_poll_process(pid, command, log_path, start_time_ms)
-		return
-
-	_active_pids.erase(pid)
-
-	# Process finished - read captured output and extract the real exit marker.
-	var output: Array[String] = []
-	var log_content: String = ""
-	if FileAccess.file_exists(log_path):
-		log_content = FileAccess.get_file_as_string(log_path)
-		DirAccess.remove_absolute(log_path) # Clean up temp file now that it's been read
-
-	# The marker is the actual exit status of the git command,
-	# not a guess based on stdout/stderr content. (see git_cmd above)
-	var parsed: Array = _parse_log(log_content)
-	output.append(parsed[1])
-	emit_signal("command_completed", command, 0 if parsed[0] else 1, output)
-
-
-## Runs on a WorkerThreadPool thread.
-func _execute_and_report(command: Command, args: PackedStringArray) -> void:
-	var output: Array[String] = []
-	var full_args: PackedStringArray = PackedStringArray(["-C", _project_root()]) + args
-	var exit_code: int = OS.execute("git", full_args, output, true)
-	call_deferred("_finish_fast", command, exit_code, output)
-
-
-## Main-thread: clears the write guard (if applicable) before emitting.
-func _finish_fast(command: Command, exit_code: int, output: Array[String]) -> void:
-	if command in WRITE_COMMANDS:
-		_write_busy = false
-	emit_signal("command_completed", command, exit_code, output)
+## Runner callback → public signal. bind() appends `command` and `context` after (exit_code, output).
+func _relay(exit_code: int, output: Array[String], command: Command, context: Dictionary) -> void:
+	command_completed.emit(command, exit_code, output, context)

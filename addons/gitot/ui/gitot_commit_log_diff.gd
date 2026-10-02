@@ -81,6 +81,7 @@ func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
+	_context: Dictionary,
 ) -> void:
 	if command != GitEngine.Command.COMMIT_FILES and command != GitEngine.Command.DIFF_COMMIT:
 		return

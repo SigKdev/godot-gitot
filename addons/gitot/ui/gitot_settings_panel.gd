@@ -15,6 +15,7 @@ func _ready() -> void:
 	%NetworkTimeoutSpinBox.value = GitotSettings.get_value("network_timeout_sec")
 	%MaxStashSpinBox.value = GitotSettings.get_value("max_stashes")
 	%ConfirmPushCheck.button_pressed = GitotSettings.get_value("confirm_push")
+	%ConfirmCreateBranchCheck.button_pressed = GitotSettings.get_value("confirm_create_branch")
 	%AutoRefreshCheck.button_pressed = GitotSettings.get_value("auto_refresh_on_focus")
 	%GithubEnabledCheck.button_pressed = GitotSettings.get_value("github_issues_enabled")
 
@@ -35,6 +36,10 @@ func _ready() -> void:
 	%ConfirmPushCheck.toggled.connect(
 		func(v: bool) -> void:
 			GitotSettings.set_value("confirm_push", v),
+	)
+	%ConfirmCreateBranchCheck.toggled.connect(
+		func(v: bool) -> void:
+			GitotSettings.set_value("confirm_create_branch", v),
 	)
 	%AutoRefreshCheck.toggled.connect(
 		func(v: bool) -> void:

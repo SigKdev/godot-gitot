@@ -12,6 +12,7 @@ const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 
 # Caps _ready()'s self-retry when _git_engine never arrives.
 const MAX_READY_RETRIES: int = 30
+
 var _ready_retry_count: int = 0
 
 var _git_engine: GitEngine
@@ -25,6 +26,8 @@ var _stash_panel: GitotStashPanel
 var _tag_panel: GitotTagPanel
 var _orchestrator: GitSyncOrchestrator
 var _branch_panel: GitotBranchPanel
+var _branch_creator: GitotBranchCreator
+var _branch_deleter: GitotBranchDeleter
 var _result_router: GitotResultRouter
 var _default_push_confirm_text: String = ""
 ## Computed once in _on_push_pressed(), reused by _do_push() -> orchestrator.start_push() -
@@ -57,23 +60,19 @@ func _ready() -> void:
 
 	#region Toolbar buttons
 	%RefreshStatButton.pressed.connect(refresh_status)
-	%RefreshStatButton.icon = GitotIcons.get_icon("Loop")
+	%RefreshStatButton.icon = GitotUi.get_icon("Loop")
 	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
-	%RefreshDiffButton.icon = GitotIcons.get_icon("Paint")
+	%RefreshDiffButton.icon = GitotUi.get_icon("Paint")
 	%CommitButton.pressed.connect(_on_commit_pressed)
 	%PushButton.pressed.connect(_on_push_pressed)
-	%PushButton.icon = GitotIcons.get_icon("MoveUp")
+	%PushButton.icon = GitotUi.get_icon("MoveUp")
 	%PullButton.pressed.connect(_on_pull_pressed)
-	%PullButton.icon = GitotIcons.get_icon("MoveDown")
-	%FetchButton.pressed.connect(_on_fetch_pressed)
-	%FetchButton.icon = GitotIcons.get_icon("AssetStore")
-	%KofiButton.icon = GitotIcons.get_icon("Heart")
+	%PullButton.icon = GitotUi.get_icon("MoveDown")
+	%KofiButton.icon = GitotUi.get_icon("Heart")
 	%KofiButton.pressed.connect(_on_kofibutton_pressed)
 	#endregion
 
 	#region Panel construction
-	# order matters: status_tree/status_panel/log_panel,
-	#must exist before _refresh_status() reads them below.
 	_status_tree = GitotStatusTree.new(
 		_git_engine,
 		%UnstagedTree,
@@ -107,16 +106,17 @@ func _ready() -> void:
 		%TagMessageEdit,
 	)
 
-	_branch_panel = GitotBranchPanel.new(
+	_branch_panel = GitotBranchPanel.new(_git_engine, %BranchFold, %BranchTree)
+	_branch_creator = GitotBranchCreator.new(
 		_git_engine,
-		%BranchDropdown,
+		%BranchFold,
+		%CreateBranchRow,
+		%BranchNameEdit,
 		%CreateBranchButton,
-		%NewBranchDialog,
-		%NewBranchNameInput,
+		%CreateBranchConfirmDialog,
 	)
-	%CreateBranchButton.icon = GitotIcons.get_icon("Add")
-	if _git_engine:
-		_git_engine.list_branches() # async result also sets the status panel's branch label
+	_branch_deleter = GitotBranchDeleter.new(_git_engine, %BranchFold, %DeleteBranchConfirmDialog)
+	_branch_panel.selection_changed.connect(_branch_deleter.on_selection_changed)
 
 	_result_router = GitotResultRouter.new(
 		_git_engine,
@@ -127,12 +127,12 @@ func _ready() -> void:
 		_stash_panel,
 	)
 	_result_router.head_moved.connect(_notify_changed_files)
-	_result_router.stash_popped.connect(_notify_popped_files)
+	_result_router.stash_popped.connect(_notify_file_list)
 	_result_router.file_restored.connect(_notify_single_file_changed)
 	#endregion
 
 	#region Settings & dialogs
-	%SettingsToggleButton.icon = GitotIcons.get_icon("GDScript")
+	%SettingsToggleButton.icon = GitotUi.get_icon("GDScript")
 	%SettingsToggleButton.pressed.connect(
 		func() -> void:
 			%SettingsPanel.visible = not %SettingsPanel.visible,
@@ -194,6 +194,7 @@ func refresh_status() -> void:
 		return
 	_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
 	_git_engine.get_ahead_behind()
+	_git_engine.list_branches()
 	_log_panel.refresh()
 	_stash_panel.refresh()
 
@@ -246,11 +247,6 @@ func _notify_changed_files() -> void:
 	_notify_file_list(_git_engine.get_changed_files_since_switch())
 
 
-## Notifies Godot about files touched by the last stash pop.
-func _notify_popped_files() -> void:
-	_notify_file_list(_git_engine.get_last_popped_files())
-
-
 ## Shared by switch/pull and pop: refreshes EditorFileSystem/open tabs per file,
 ## or warns once if git couldn't list them.
 func _notify_file_list(result: Dictionary) -> void:
@@ -286,10 +282,7 @@ func _notify_single_file_changed(relative_path: String) -> void:
 			% relative_path,
 			EditorToaster.SEVERITY_WARNING,
 		)
-		GitotLogger.i(
-			"'%s' restored, unfocus/focus the editor window to refresh."
-			% relative_path,
-		)
+		GitotLogger.i("'%s' restored, unfocus/focus the editor window to refresh." % relative_path)
 
 
 ## Triggers a diff gutter refresh.
@@ -299,16 +292,21 @@ func _on_refresh_diff_pressed() -> void:
 
 
 ## Routes a finished GitEngine command;
-func _on_status_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
+func _on_status_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+	context: Dictionary,
+) -> void:
 	if command == GitEngine.Command.LAST_COMMIT_MSG:
 		_handle_last_commit_message_result(exit_code, output)
 		return
 	match command:
 		GitEngine.Command.FETCH:
-			_set_busy(%FetchButton, false, "AssetStore")
+			_branch_panel.on_fetch_finished()
 		GitEngine.Command.PULL:
-			_set_busy(%PullButton, false, "MoveDown")
-	_result_router.route(command, exit_code, output)
+			GitotUi.set_busy(%PullButton, false, "MoveDown")
+	_result_router.route(command, exit_code, output, context)
 
 
 ## Commits currently staged files with the message from the input field.
@@ -348,7 +346,7 @@ func _do_amend() -> void:
 
 
 func _on_push_state_changed(pushing: bool) -> void:
-	_set_busy(%PushButton, pushing, "MoveUp")
+	GitotUi.set_busy(%PushButton, pushing, "MoveUp")
 
 
 func _on_tag_retry_needed(needed: bool) -> void:
@@ -406,22 +404,11 @@ func _do_push() -> void:
 		_start_push_with_tag_input("")
 
 
-## Busy state for long-running op buttons: disabled + "Time" icon while running, idle icon after.
-func _set_busy(button: Button, busy: bool, idle_icon: String) -> void:
-	button.disabled = busy
-	button.icon = GitotIcons.get_icon("Time" if busy else idle_icon)
-
-
-## Fetches remote refs (no working-tree changes).
-func _on_fetch_pressed() -> void:
-	_set_busy(%FetchButton, true, "AssetStore")
-	_git_engine.fetch()
-
-
 ## Pulls latest changes from the remote tracking branch.
 func _on_pull_pressed() -> void:
-	_set_busy(%PullButton, true, "MoveDown")
+	GitotUi.set_busy(%PullButton, true, "MoveDown")
 	_git_engine.pull()
+
 
 func _on_kofibutton_pressed():
 	OS.shell_open("https://ko-fi.com/sigkgames")

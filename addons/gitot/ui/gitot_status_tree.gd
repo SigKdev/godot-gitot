@@ -50,8 +50,13 @@ func _init(
 
 ## Clears and refills both trees from a parsed git-status result {"staged", "unstaged"}.
 func populate(parsed: Dictionary) -> void:
+	var was_empty: bool = _is_empty(_staged_tree) # Captured before clear() to detect the transition.
 	_populate_tree(_staged_tree, parsed["staged"], _staged_fold, "Staged")
 	_populate_tree(_unstaged_tree, parsed["unstaged"], _unstaged_fold, "Unstaged", true)
+	if parsed["staged"].is_empty():
+		_staged_fold.folded = true
+	elif was_empty:
+		_staged_fold.folded = false # Reopen only when files arrive, so manual folds survive refreshes.
 
 
 ## Clears and refills a Tree from parsed status entries {"path", "status"}.
@@ -73,37 +78,43 @@ func _populate_tree(
 		if STATUS_COLORS.has(status):
 			item.set_custom_color(0, STATUS_COLORS[status])
 		if status == GitStatusParser.FileStatus.MODIFIED:
-			item.set_icon(0, GitotIcons.get_icon("Edit"))
+			item.set_icon(0, GitotUi.get_icon("Edit"))
 			item.set_icon_modulate(0, Color.ORANGE)
 			item.set_tooltip_text(0, "Modified File")
 		if status == GitStatusParser.FileStatus.DELETED:
-			item.set_icon(0, GitotIcons.get_icon("Close"))
+			item.set_icon(0, GitotUi.get_icon("Close"))
 			item.set_icon_modulate(0, Color.INDIAN_RED)
 			item.set_tooltip_text(0, "Deleted File")
 		if status == GitStatusParser.FileStatus.NEW_FILE:
-			item.set_icon(0, GitotIcons.get_icon("Add"))
+			item.set_icon(0, GitotUi.get_icon("Add"))
 			item.set_icon_modulate(0, Color.FOREST_GREEN)
 			item.set_tooltip_text(0, "Untracked File")
 		if status == GitStatusParser.FileStatus.CONFLICT:
-			item.set_icon(0, GitotIcons.get_icon("NodeWarning"))
+			item.set_icon(0, GitotUi.get_icon("NodeWarning"))
 			item.set_icon_modulate(0, Color.RED)
 			item.set_tooltip_text(0, "⚠ Merge conflict — resolve before staging ⚠")
 		if (
 			check_size and status != GitStatusParser.FileStatus.CONFLICT
 			and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"]), max_bytes)
 		):
-			item.set_icon(0, GitotIcons.get_icon("StatusWarning"))
+			item.set_icon(0, GitotUi.get_icon("StatusWarning"))
 			item.set_icon_modulate(0, Color.ORANGE)
 			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard — excluded from Staging ⚠")
 		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
-			item.add_button(0, GitotIcons.get_icon("ShaderDock"), BUTTON_OPEN_FILE, false, "Open file in editor")
+			item.add_button(
+				0,
+				GitotUi.get_icon("ShaderDock"),
+				BUTTON_OPEN_FILE,
+				false,
+				"Open file in editor",
+			)
 			item.set_button_color(0, item.get_button_by_id(0, BUTTON_OPEN_FILE), Color.DARK_GRAY)
 
 
 ## Creates and wires the Stage All / Unstage All buttons into each fold header.
 func _setup_bulk_buttons() -> void:
 	var stage_all: Button = Button.new()
-	stage_all.icon = GitotIcons.get_icon("ArrowDown")
+	stage_all.icon = GitotUi.get_icon("ArrowDown")
 	stage_all.flat = true
 	stage_all.tooltip_text = "Stage All"
 	stage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -111,7 +122,7 @@ func _setup_bulk_buttons() -> void:
 	_unstaged_fold.add_title_bar_control(stage_all)
 
 	var unstage_all: Button = Button.new()
-	unstage_all.icon = GitotIcons.get_icon("ArrowUp")
+	unstage_all.icon = GitotUi.get_icon("ArrowUp")
 	unstage_all.flat = true
 	unstage_all.tooltip_text = "Unstage All"
 	unstage_all.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -185,15 +196,20 @@ func _on_stage_all_pressed() -> void:
 
 
 func _on_unstage_all_pressed() -> void:
-	if _staged_tree.get_root() == null or _staged_tree.get_root().get_child(0) == null:
+	if _is_empty(_staged_tree):
 		return
 	_git_engine.run_fast(GitEngine.Command.UNSTAGE, ["restore", "--staged", "."])
+
+
+## True if the tree has no file rows (root always exists after populate, so check its first child).
+func _is_empty(tree: Tree) -> bool:
+	return tree.get_root() == null or tree.get_root().get_first_child() == null
 
 
 ## Collects every file path currently listed under a tree's root (excludes the root itself).
 func _get_tree_paths(tree: Tree) -> Array[String]:
 	var paths: Array[String] = []
-	var item: TreeItem = tree.get_root().get_child(0) if tree.get_root() else null
+	var item: TreeItem = tree.get_root().get_first_child() if tree.get_root() else null
 	while item:
 		paths.append(item.get_text(0))
 		item = item.get_next()

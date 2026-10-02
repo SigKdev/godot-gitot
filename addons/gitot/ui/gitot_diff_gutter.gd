@@ -66,7 +66,12 @@ func _ensure_gutter(code_edit: CodeEdit) -> int:
 
 
 ## Applies parsed diff line states to the active CodeEdit's gutter.
-func _on_diff_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
+func _on_diff_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+	_context: Dictionary,
+) -> void:
 	if command != GitEngine.Command.DIFF or exit_code != 0 or output.is_empty():
 		return
 

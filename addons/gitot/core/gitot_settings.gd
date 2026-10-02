@@ -12,6 +12,7 @@ const DEFAULTS: Dictionary = {
 	"network_timeout_sec": 120,
 	"max_stashes": 10,
 	"confirm_push": true,
+	"confirm_create_branch": true,
 	"auto_refresh_on_focus": true,
 	"github_issues_enabled": true,
 }

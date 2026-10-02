@@ -25,11 +25,11 @@ var _pending_drop_sha: String = ""
 ## @param name_edit: optional stash name (empty = git's default "WIP on ..." subject).
 ## @param drop_dialog: confirmation before the destructive drop.
 func _init(
-		git_engine: GitEngine,
-		fold: FoldableContainer,
-		tree: Tree,
-		name_edit: LineEdit,
-		drop_dialog: ConfirmationDialog,
+	git_engine: GitEngine,
+	fold: FoldableContainer,
+	tree: Tree,
+	name_edit: LineEdit,
+	drop_dialog: ConfirmationDialog,
 ) -> void:
 	_git_engine = git_engine
 	_fold = fold
@@ -38,21 +38,25 @@ func _init(
 	_drop_dialog = drop_dialog
 
 	_setup_tree_columns()
-	_stash_button = _add_title_button("Bake", "Stash all changes (incl. untracked)", _on_stash_pressed)
+	_stash_button = _add_title_button(
+		"Bake",
+		"Stash all changes (incl. untracked)",
+		_on_stash_pressed,
+	)
 	_pop_button = _add_title_button(
 		"LightmapGIData",
 		(
-			"Pop selected stash.\n"
-			+ "⚠ Godot may not refresh scripts open\n"
-			+ "in the editor. Close scripts before! ⚠\n"
-			+ "If not closed before, click away from\n"
-			+ "the editor window and back to refresh.\n"
-			+ "But a reload/restart may be needed. ⚠"
+			"Pop selected stash.\n" + "⚠ Godot may not refresh scripts open\n"
+			+ "in the editor. Close scripts before! ⚠\n" + "If not closed before, click away from\n"
+			+ "the editor window and back to refresh.\n" + "But a reload/restart may be needed. ⚠"
 		),
 		_on_pop_pressed,
 	)
 	_drop_button = _add_title_button("Remove", "Drop selected stash", _on_drop_pressed)
-	_name_edit.text_submitted.connect(func(_text: String) -> void: _on_stash_pressed())
+	_name_edit.text_submitted.connect(
+		func(_text: String) -> void:
+			_on_stash_pressed(),
+	)
 	_drop_dialog.confirmed.connect(_do_drop)
 	_apply_count(0)
 
@@ -105,14 +109,18 @@ func _setup_tree_columns() -> void:
 	_tree.set_column_custom_minimum_width(2, 80)
 
 
+# func _add_title_button(icon_name: String, tooltip: String, callback: Callable) -> Button:
+# 	var button := Button.new()
+# 	button.flat = true
+# 	button.icon = GitotUi.get_icon(icon_name)
+# 	button.tooltip_text = tooltip
+# 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+# 	button.pressed.connect(callback)
+# 	_fold.add_title_bar_control(button)
+# 	return button
 func _add_title_button(icon_name: String, tooltip: String, callback: Callable) -> Button:
-	var button := Button.new()
-	button.flat = true
-	button.icon = GitotIcons.get_icon(icon_name)
-	button.tooltip_text = tooltip
-	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var button: Button = GitotUi.add_title_button(_fold, icon_name, tooltip)
 	button.pressed.connect(callback)
-	_fold.add_title_bar_control(button)
 	return button
 
 

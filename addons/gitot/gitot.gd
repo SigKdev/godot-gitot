@@ -51,7 +51,11 @@ func _enter_tree() -> void:
 	OS.set_environment("GIT_TERMINAL_PROMPT", "0")
 
 	# Binary failsafe: hard stop if git isn't on PATH.
-	if not GitEngine.is_git_available():
+	# if not GitEngine.is_git_available():
+	# 	GitotLogger.x("'git' binary not found in system PATH. Plugin DISABLED!")
+	# 	return
+	var git_version: String = GitEngine.get_git_version()
+	if git_version.is_empty():
 		GitotLogger.x("'git' binary not found in system PATH. Plugin DISABLED!")
 		return
 
@@ -86,7 +90,12 @@ func _enter_tree() -> void:
 	_commit_log_diff = GitotCommitLogDiff.new(_git_engine, _diff_panel)
 	_dock.commit_selected.connect(_on_commit_selected)
 
+	var lfs_version: String = GitEngine.get_lfs_version()
 	GitotLogger.s("'git' binary verified. Plugin ready!")
+	GitotLogger.i(
+		"git version: %s | LFS version: %s"
+		% [git_version, "not installed" if lfs_version.is_empty() else lfs_version],
+	)
 
 
 func _exit_tree() -> void:
@@ -148,7 +157,7 @@ func _get_plugin_name() -> String:
 
 
 func _get_plugin_icon() -> Texture2D:
-	return GitotIcons.get_icon("Debug")
+	return GitotUi.get_icon("Debug")
 
 
 ## Called by the editor when the user switches to/away from the tab.
@@ -166,6 +175,7 @@ func _on_git_command_completed(
 	command: GitEngine.Command,
 	_exit_code: int,
 	_output: Array[String],
+	_context: Dictionary,
 ) -> void:
 	if command in STATUS_TRIGGERING_COMMANDS:
 		_dock.refresh_status() # status + ahead/behind + history + shelf
@@ -208,6 +218,7 @@ func _on_diff_full_result(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
+	_context: Dictionary,
 ) -> void:
 	if command != GitEngine.Command.DIFF_FULL or exit_code != 0 or output.is_empty():
 		return

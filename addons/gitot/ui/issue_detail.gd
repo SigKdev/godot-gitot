@@ -13,6 +13,7 @@ const EMPTY_VALUE: String = "—"
 var _url: String = ""
 var _number: int = -1 # Issue currently shown; guards the branch name against overwrites.
 var _branch_names: PackedStringArray = [] # BaseBranchDropdown index -> branch name.
+var _current_branch: String = "" # HEAD at the last refresh; the selection follows it only when it moves.
 
 
 static func _esc(text: String) -> String:
@@ -79,7 +80,10 @@ func set_base_branches(branches: Array[Dictionary]) -> void:
 		%BaseBranchDropdown.add_item(branch["name"])
 		if branch["is_current"]:
 			current = branch["name"]
-	var target: String = previous if _branch_names.has(previous) else current
+	# Follow HEAD when it moved (switch/create/first fill); otherwise keep the user's manual pick.
+	var head_moved: bool = current != _current_branch
+	var target: String = current if head_moved or not _branch_names.has(previous) else previous
+	_current_branch = current
 	%BaseBranchDropdown.select(_branch_names.find(target))
 
 

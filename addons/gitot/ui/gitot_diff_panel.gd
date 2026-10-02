@@ -69,7 +69,7 @@ func _ready() -> void:
 	%RefreshDiffPanelButton.pressed.connect(_on_refresh_pressed)
 
 	%FoldButton.pressed.connect(_on_fold_pressed)
-	%FoldButton.icon = GitotIcons.get_icon("CollapseTree")
+	%FoldButton.icon = GitotUi.get_icon("CollapseTree")
 	%FoldButton.tooltip_text = "Click to fold all header"
 
 	%RestoreFileButton.pressed.connect(
@@ -222,16 +222,16 @@ func _rebuild_view() -> void:
 			_hunk_header_lines[idx],
 			_fold_gutter_idx,
 			(
-				GitotIcons.get_icon("CodeFoldedRightArrow")
+				GitotUi.get_icon("CodeFoldedRightArrow")
 				if _collapsed_hunks.has(idx)
-				else GitotIcons.get_icon("CodeFoldDownArrow")
+				else GitotUi.get_icon("CodeFoldDownArrow")
 			),
 		)
 
 	%FoldButton.icon = (
-		GitotIcons.get_icon("ExpandTree")
+		GitotUi.get_icon("ExpandTree")
 		if (not _current_hunks.is_empty() and _collapsed_hunks.size() == _current_hunks.size())
-		else GitotIcons.get_icon("CollapseTree")
+		else GitotUi.get_icon("CollapseTree")
 	)
 	%FoldButton.tooltip_text = (
 		"Click to unfold all header"

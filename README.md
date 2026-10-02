@@ -7,7 +7,7 @@
 SigKgames"></a> <a href="https://godotengine.org/"><img
 src="https://img.shields.io/badge/Godot-4.7+-478CBF?logo=godotengine&logoColor=478CBF" alt="Godot 4.7"></a> <a
 href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.3+-E44C30?logo=git&logoColor=E44C30" alt="Git"></a> <a
-href="https://store.godotengine.org/asset/sigk/gitot/"><img src="https://img.shields.io/badge/Gitot-0.13.0-B8195F"
+href="https://store.godotengine.org/asset/sigk/gitot/"><img src="https://img.shields.io/badge/Gitot-0.14.1-B8195F"
 alt="Gitot"></a> <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -54,10 +54,13 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 - **Stash Manager (Shelf):** Stash all changes (staged + unstaged + untracked) under an optional name, then pop or drop any
   entry from a capped, foldable list (limit is a setting, default 10). Pop refreshes only the files it touched in the editor.
 
-- **Local Branch Management:** Switch or create local branches. Open scenes refresh automatically on switch without a full project
-  rescan. A toast warns if an open script changed on disk, or if changed files couldn't be reliably detected (see [Limitations](#-known-limitations)).
+- **Local Branch Management:** Foldable branch list (name, ahead/behind, last update). Double-click to switch, `+` to create a
+  branch inline, trash button to delete a merged local branch. Open scenes refresh
+  automatically on switch without a full project rescan. A toast warns if an open script changed on disk, or if changed files
+  couldn't be reliably detected (see [Limitations](#-known-limitations)).
 
-- **Remote Branch Management:** Fetch remote updates, list remote-only branches, and check them out with automatic tracking.
+- **Remote Branch Management:** Fetch remote updates from the branch fold's title bar, list remote-only branches, and
+  double-click one to check it out with automatic tracking.
 
 - **Tag Versioning:** Push with or without an annotated tag. Auto-tagging settings - see _Details_ below.
 
@@ -93,7 +96,7 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
 <summary>Details</summary>
 
 - **Failsafe Startup:** verifies `git` is available before initializing; disables cleanly with a clear error if not.
-- **Async Execution:** local commands (status, diff) run via `WorkerThreadPool`; network commands (push, pull) run via a monitored
+- **Async Execution:** all process execution lives in `GitRunner`. Local commands (status, diff) run via a monitored
   background process with a 120-second timeout guard, so a slow or stalled connection never freezes the editor.
 - **Commit & Sync:** Staged/Unstaged file trees parsed from `git status --porcelain=v2`, with single and bulk stage/unstage.
   Status color & icon. Warning icon for conflicted file and large-file guard. Push targets `-u origin HEAD`. **Amend** checkbox
@@ -112,15 +115,19 @@ needed, nothing to configure there. Gitot talks to your system `git` directly.
   git's output (which contains the dropped SHA) is logged, so a mistake can be undone with `git stash store <sha>`. Before a pop,
   the touched files are listed with `git stash show --name-only --include-untracked --no-renames` and only those are refreshed
   (`update_file()`, open scene reload, stale-script toast). A failed pop (conflict) refreshes nothing and logs the raw output.
-- **Local Branch Management:** Branch dropdown, and a "new branch" button/dialogue. On switch/create, only files git actually
-  changed are refreshed. `EditorFileSystem.update_file()` for cache bookkeeping, plus `EditorInterface.reload_scene_from_path()`
-  for any of those files currently open in a tab, avoiding the full-project `scan()` noise that a refresh would trigger. Godot has
-  no API to reload or close an open script tab, so an editor toast flags any open script that changed on disk (close/reopen
-  manually), and a separate toast warns when changed-file detection itself is unreliable (first switch after clone, or rapid
-  successive switches). (read: [Limitation](#-known-limitations)).
-- **Remote Branch Management:** `git fetch origin` via button, refreshing the branch list on success. Remote-tracking branches
-  with no local counterpart appear in the dropdown, selecting one runs `switch -c <name> --track origin/<name>` in one atomic op.
-  Full name and branch scope on tooltip.
+- **Local Branch Management:** Foldable `Tree` (name, sync, updated) built from `git branch -a` (`GitEngine.BRANCH_LIST_FORMAT`,
+  `\x1f`-delimited, parsed by `GitBranchParser`). Sync uses `%(upstream:trackshort)` (`↑` ahead, `↓` behind, `↑↓` diverged, `✓` in
+  sync), which is locale-independent. Title-bar buttons: Fetch, `+`, Delete. Double-click switches. `+` toggles an inline name
+  row (Enter or Create button), guarded by a confirmation unless `confirm_create_branch` is off. Delete runs `git branch -d` on the
+  selected local, non-current branch, always after a confirmation. There is no Force, so git refuses unmerged branches.
+  On switch/create, only files git actually changed are refreshed. `EditorFileSystem.update_file()` for cache bookkeeping, plus
+  `EditorInterface.reload_scene_from_path()` for any of those files currently open in a tab, avoiding the full-project `scan()`
+  noise. Godot has no API to reload or close an open script tab, so an editor toast flags any open script that changed on disk
+  (close/reopen manually), and a separate toast warns when changed-file detection itself is unreliable (first switch after clone, or
+  rapid successive switches). (read: [Limitation](#-known-limitations)).
+- **Remote Branch Management:** `git fetch origin` via the fold's title-bar button, refreshing the branch list on success.
+  Remote-tracking branches with no local counterpart appear in the list, and double-clicking one runs
+  `switch -c <name> --track origin/<name>` in one atomic op.
 - **Tags Versioning:** Tag is push with commit. Settings to auto use Version _(from project settings)_ for the tag's name (with
   auto `v` prefix) and the commit message for the tag's message.
 - **Repo Status Panel:** Show `owner/repo · branch (local/remote) · ↑ahead ↓behind`. Updates live on every status-triggering
@@ -292,9 +299,10 @@ addons/gitot/
 ├── plugin.cfg                                    	# Plugin manifest (name, version, entry script)
 ├── gitot.gd                                      	# EditorPlugin entry point; lifecycle, wiring, main-screen tab registration
 ├── core/
-│   ├── git_engine.gd                             	# All git CLI execution (sync-fast/async-network)
+│   ├── git_engine.gd                             	# Command API + command_completed signal (per-call context); delegates execution to GitRunner
+│   ├── git_runner.gd                             	# Process execution: worker threads, timeouts, shell redirect, write lock (no git-domain knowledge)
 │   ├── git_sync_orchestrator.gd                  	# push → create-tag → push-tag state machine; picks --force-with-lease vs plain push
-│   ├── git_branch_parser.gd                      	# Parses `git branch --format=...` into local branch entries
+│   ├── git_branch_parser.gd   						# Parses `git branch -a --format=...` (BRANCH_LIST_FORMAT) into local/remote branch entries
 │   ├── git_status_parser.gd                      	# Parses `git status --porcelain=v2`
 │   ├── git_diff_parser.gd                        	# Parses `git diff -U0/-U3` hunks + `--name-status` output
 │   ├── git_log_parser.gd                         	# Parses `git log` (custom \x1f-delimited) into commit entries
@@ -306,14 +314,16 @@ addons/gitot/
 │   └── gitot_logger.gd                           	# GitotLogger; centralized print wrapper, capped history + UI listener
 └── ui/
     ├── gitot_dock.tscn / gitot_dock.gd           	# Local Git dock UI shell (wiring, commit/push/pull handlers)
-    ├── gitot_result_router.gd						# Routes command_completed results to domain handlers; emits head_moved / stash_popped
+    ├── gitot_result_router.gd						# Routes command_completed results to domain handlers; emits head_moved / stash_popped / file_restored
     ├── gitot_status_tree.gd                      	# Staged/unstaged file trees: population, staging, bulk actions, size guard
     ├── git_log_panel.gd                          	# Commit history fold: Tree population, filters, commit_selected signal
 	├── gitot_stash_panel.gd                      	# Shelf fold: stash list Tree, Stash/Pop/Drop, cap, drop confirm
-    ├── gitot_icons.gd                            	# Shared editor-theme icon lookup (GitotIcons.get_icon)
+    ├── gitot_ui.gd              					# Shared UI helpers: editor-theme icons, title-bar buttons, busy state
     ├── gitot_commit_files_list.gd                	# Changed-files ItemList for one commit; pure UI
     ├── gitot_commit_log_diff.gd                  	# Commit-mode flow (history → file list → diff); latest-wins gate + size cap
-    ├── gitot_branch_panel.gd                     	# Branch dropdown (switch) and new-branch dialog
+    ├── gitot_branch_panel.gd    					# Branch list fold: Tree, switch/track on double-click, Fetch button
+	├── gitot_branch_creator.gd  					# Inline create-branch row (+ toggle), confirmation gate
+	├── gitot_branch_deleter.gd  					# Delete-branch button and confirmation (git branch -d)
     ├── gitot_status_panel.gd                     	# Compact repo-state summary (owner/repo, branch, scope)
 	├── gitot_diff_gutter.gd                      	# Script editor gutter coloring + click-to-diff (hunk_clicked signal)
     ├── gitot_tag_panel.gd                        	# Tag-versioning UI: toggles, version-tag formatting, tag resolution
@@ -321,9 +331,9 @@ addons/gitot/
 	├── gitot_log_console.gd                      	# Live console view backfilling GitotLogger.log_history; owns Reflog button
     ├── github_issue_list.gd                        # Issue Tree: population, header-click sort, filter integration
     ├── github_issue_filter.gd                      # Type/Priority/Label dropdowns + AND-match rule
+	├── github_panel.tscn / github_panel.gd         # GitHub Issues Tracker Board, main-screen tab, owns GithubApi
     ├── issue_detail.tscn / issue_detail.gd         # Selected-issue detail: header, actions, branch creation, body
     ├── gitot_diff_panel.tscn / gitot_diff_panel.gd    	# Bottom-dock full diff viewer
-    ├── github_panel.tscn / github_panel.gd            	# GitHub Issues Tracker Board, main-screen tab, owns GithubApi
     └── github_auth_dialog.tscn / github_auth_dialog.gd # PAT entry modal, opened on first use or 401
 ```
 
@@ -332,6 +342,95 @@ addons/gitot/
 ---
 
 ## 🗃 Changelog
+
+<details>
+<summary>v0.14.1</summary>
+
+fix: per-call, Stage/Unstage empty list  + ref: git_engine>git_runner
+
+fix: per-call `context` replaces the `_last_*` side-channel state
+
+- `command_completed(command, exit_code, output, context)`: the new `context: Dictionary` carries data captured at call time:
+  `branch` (switch / create / track), `path` (restore), `{reliable, files}` (stash pop). `run_fast()` gains an optional
+  `context` parameter, so existing callers are unaffected.
+- `_last_switch_target`, `_last_restored_path`, `_last_popped_files` and their getters are removed. This fixes a log mix-up: a
+  switch ignored by the write guard still overwrote the target of the switch in flight, so the log could name the wrong branch.
+- `stash_popped` now carries the file list, and the dock connects it straight to `_notify_file_list()`
+  (`_notify_popped_files()` removed).
+- Every `command_completed` handler takes the extra `context` parameter.
+
+fix: Stage All / Unstage All on an empty list
+
+- `TreeItem.get_child(0)` on a childless root raised `Index p_index = 0 is out of bounds`. Replaced by `get_first_child()` in
+  `GitotStatusTree._get_tree_paths()`, plus a new `_is_empty()` helper used by the Unstage All guard.
+
+fix: Issues tab base-branch dropdown never followed HEAD
+
+- `IssueDetail.set_base_branches()` kept the previous selection whenever that branch still existed, so after a switch or create
+  the dropdown stayed on the old branch until a restart. It now selects the current branch when HEAD moved (and on first fill) and
+  keeps the user's manual pick across plain refreshes.
+
+refactor: GitRunner extraction - per-call context on `command_completed`
+
+- `GitRunner` (new, `core/`, `RefCounted`): all process execution moved out of `GitEngine` with no behavior change -
+  `run_fast()` (`WorkerThreadPool` + write lock), `run_network()` (kill-on-timeout), `execute_bounded()` (sync, capped at
+  `LOCAL_TIMEOUT_SEC`), `teardown()`. It is git-domain agnostic: it takes a label, an `is_write` flag and a `Callable`
+  instead of a `Command`, so it has no dependency on the engine.
+- `GitEngine` keeps the public API (`Command`, `WRITE_COMMANDS`, wrappers, `command_completed`). `run_fast()` / `run_network()`
+  keep their signatures and reach the runner through one `_relay()` callback. Early failures (spawn failure, unsafe tag name)
+  go through the same path.
+- The write-guard warning now reads `<Command> skipped: another git write was still running.`
+
+refactor: UI polish
+
+- The Staged fold closes itself when there is nothing staged and reopens when files arrive. A manual fold is not overridden by
+  plain refreshes.
+- Status panel shortens `(Local + Remote)` to `(L+R)`. Display-only mapping in `GitotStatusPanel`; the router's scope strings are
+  unchanged.
+- Startup message now includes the git and git LFS versions: `'git' binary verified. Plugin ready! (git x.y.z | LFS x.y.z)`.
+  Without git-lfs it shows `LFS not installed` and never blocks startup. New `GitEngine.get_git_version()` /
+  `get_lfs_version()`; `is_git_available()` now wraps `get_git_version()`, so startup spawns no extra `git --version`.
+- Amended commits are reported as such: `Commit amended.` / `Amend failed.` (`_handle_commit_result()` now receives the
+  `Command`).
+<hr>
+</details>
+
+<details>
+<summary>v0.14.0</summary>
+
+ref: Branch list, cleanup - feat: delete branch
+
+refactor: Branch panel rebuilt as a foldable list
+
+- `GitEngine.BRANCH_LIST_FORMAT` (new) and `GitBranchParser` rewritten: name, current/remote flags, upstream, sync
+  (`%(upstream:trackshort)`, locale-independent), commit date (unix/relative/exact), short hash, subject. Delimiter is
+  `UNIT_SEP`; the old `|` split could break on ref names containing it.
+- `GitotBranchPanel`: dropdown replaced by a 3-column `Tree` (name/sync/updated) in the `BranchFold` `FoldableContainer`. Double-click
+  switches, or tracks a remote-only branch. Selection survives refreshes (by name). Fetch moved from its own button
+  into the fold title bar (fetch / + / delete).
+- Push / Pull / Retry Tag stay in their own row.
+
+feat: Inline create branch
+
+- `GitotBranchCreator` (new, `RefCounted`): `+` title-bar toggle shows a name `LineEdit` + Create button under the header. Enter or
+  Create confirms through `%CreateBranchConfirmDialog` unless disabled. The `NewBranchDialog` window is removed.
+- New `confirm_create_branch` setting (default on) with a settings-panel checkbox.
+
+feat: Delete branch
+
+- `Command.DELETE_BRANCH` (in `WRITE_COMMANDS`), `GitEngine.delete_branch(name)` runs `git branch -d`.
+- `GitotBranchDeleter` (new, `RefCounted`): trash button enabled only for a selected local, non-current branch. Always asks
+  for confirmation, no Force: git refuses unmerged branches and its output is logged. The router refreshes the list on success.
+
+refactor: cleanup
+
+- `GitotUi` (new) replaces `GitotIcons`: `get_icon()`, `add_title_button()`, `set_busy()`. The dock's `_set_busy()` and the
+  stash panel's title-button code now use it.
+- `GitotDock.refresh_status()` now also requests `list_branches()`, so the list refreshes on every status-triggering command,
+  on focus-in and on manual refresh. The duplicate `list_branches()` / `get_current_branch()` calls in the router's switch/create
+  path are removed.
+<hr>
+</details>
 
 <details>
 <summary>v0.13.0</summary>

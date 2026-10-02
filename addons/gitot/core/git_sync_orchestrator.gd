@@ -45,7 +45,12 @@ func teardown() -> void:
 
 
 ## Reacts to GitEngine command completion events and issues the next command in the push->tag->push-tag chain.
-func _on_command_completed(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
+func _on_command_completed(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+	_context: Dictionary,
+) -> void:
 	match command:
 		GitEngine.Command.PUSH:
 			push_state_changed.emit(false)

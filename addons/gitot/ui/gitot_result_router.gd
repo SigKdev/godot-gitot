@@ -11,8 +11,9 @@ signal head_moved
 ## Emitted after a successful file restore; dock refreshes EditorFileSystem/open tabs.
 signal file_restored(path: String)
 
-## Emitted after a successful stash pop; dock refreshes EditorFileSystem/open tabs.
-signal stash_popped
+## Emitted after a successful stash pop with the files it touched ({"reliable", "files"});
+## dock refreshes EditorFileSystem/open tabs.
+signal stash_popped(result: Dictionary)
 
 var _git_engine: GitEngine
 var _status_panel: GitotStatusPanel
@@ -78,12 +79,17 @@ func ahead_count() -> int:
 
 
 ## Routes a finished GitEngine command to its domain handler.
-func route(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
+func route(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+	context: Dictionary,
+) -> void:
 	match command:
 		GitEngine.Command.COMMIT, GitEngine.Command.AMEND:
-			_handle_commit_result(exit_code, output)
+			_handle_commit_result(command, exit_code, output)
 		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
-			_handle_stash_result(command, exit_code, output)
+			_handle_stash_result(command, exit_code, output, context)
 		GitEngine.Command.STASH_LIST:
 			_handle_stash_list_result(exit_code, output)
 		GitEngine.Command.STASH_DROP:
@@ -93,7 +99,9 @@ func route(command: GitEngine.Command, exit_code: int, output: Array[String]) ->
 				.PULL:
 			_handle_sync_result(command, exit_code, output)
 		GitEngine.Command.BRANCHES, GitEngine.Command.SWITCH, GitEngine.Command.CREATE_BRANCH:
-			_handle_branch_result(command, exit_code, output)
+			_handle_branch_result(command, exit_code, output, context)
+		GitEngine.Command.DELETE_BRANCH:
+			_handle_delete_branch_result(exit_code, output)
 		GitEngine.Command.LOG:
 			_handle_log_result(output)
 		GitEngine.Command.STATUS:
@@ -101,14 +109,20 @@ func route(command: GitEngine.Command, exit_code: int, output: Array[String]) ->
 		GitEngine.Command.REFLOG:
 			_handle_reflog_result(exit_code, output)
 		GitEngine.Command.RESTORE_FILE:
-			_handle_restore_result(exit_code, output)
+			_handle_restore_result(exit_code, output, context)
 
 
-func _handle_commit_result(exit_code: int, output: Array[String]) -> void:
+## Shared by COMMIT and AMEND; wording tells the user which one ran.
+func _handle_commit_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+) -> void:
+	var is_amend: bool = command == GitEngine.Command.AMEND
 	if exit_code == 0:
-		GitotLogger.s("Commit successful.")
+		GitotLogger.s("Commit amended." if is_amend else "Commit successful.")
 	else:
-		GitotLogger.x("Commit failed.")
+		GitotLogger.w("Amend failed." if is_amend else "Commit failed.")
 		if not output.is_empty():
 			GitotLogger.g(output[0])
 
@@ -117,6 +131,7 @@ func _handle_stash_result(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
+	context: Dictionary,
 ) -> void:
 	if command == GitEngine.Command.STASH:
 		if exit_code == 0:
@@ -135,21 +150,31 @@ func _handle_stash_result(
 	# stash_pop
 	if exit_code == 0:
 		GitotLogger.s("Stash popped.")
-		stash_popped.emit()
+		stash_popped.emit(context)
 	else:
 		GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
 		if not output.is_empty():
 			GitotLogger.g(output[0])
 
 
+## Git's output ("Deleted branch x (was <sha>)") is logged raw so a mistaken delete
+## stays recoverable (`git branch <name> <sha>`); on refusal it carries git's reason.
+func _handle_delete_branch_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code == 0:
+		GitotLogger.s("Branch deleted.")
+		_git_engine.list_branches()
+	else:
+		GitotLogger.e("Delete branch failed.")
+	if not output.is_empty() and not output[0].is_empty():
+		GitotLogger.g(output[0])
+
+
 ## File restored to an older commit's content.
-func _handle_restore_result(exit_code: int, output: Array[String]) -> void:
-	var path: String = _git_engine.get_last_restored_path()
+func _handle_restore_result(exit_code: int, output: Array[String], context: Dictionary) -> void:
+	var path: String = context["path"]
 	if exit_code == 0:
 		GitotLogger.s("Restored '%s'." % path)
-		GitotLogger.i(
-			"If '%s' was open, unfocus/focus the editor window to refresh." % path
-		)
+		GitotLogger.i("If '%s' was open, unfocus/focus the editor window to refresh." % path)
 		file_restored.emit(path)
 	else:
 		GitotLogger.e("Restore failed for '%s'." % path)
@@ -226,6 +251,7 @@ func _handle_branch_result(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
+	context: Dictionary,
 ) -> void:
 	if command == GitEngine.Command.BRANCHES and exit_code == 0:
 		if not output.is_empty():
@@ -248,15 +274,13 @@ func _handle_branch_result(
 	var display_name: String = GitEngine.Command.keys()[command].capitalize()
 	if exit_code == 0:
 		GitotLogger.s(
-			"%s successful, now on '[color=gray]%s[/color]'"
-			% [display_name, _git_engine.get_last_switch_target()]
+			"%s successful, now on '[color=gray]%s[/color]'" % [display_name, context["branch"]]
 		)
 		head_moved.emit()
 	else:
 		GitotLogger.e("%s failed." % display_name)
 		if not output.is_empty():
 			GitotLogger.g(output[0])
-	_git_engine.list_branches() # also refreshes the status panel's branch label
 	_status_panel.update_branch(_git_engine.get_current_branch())
 
 

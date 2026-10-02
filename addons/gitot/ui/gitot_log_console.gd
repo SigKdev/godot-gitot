@@ -63,7 +63,7 @@ func _append_line(formatted: String) -> void:
 ## Adds the Reflog button to the fold's title bar (same pattern as the bulk buttons).
 func _setup_reflog_button(fold: FoldableContainer) -> void:
 	var button: Button = Button.new()
-	button.icon = GitotIcons.get_icon("NodeInfo")
+	button.icon = GitotUi.get_icon("NodeInfo")
 	button.flat = true
 	button.tooltip_text = "Reflog (last 20)"
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

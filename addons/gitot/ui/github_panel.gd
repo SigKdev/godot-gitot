@@ -39,6 +39,8 @@ func _ready() -> void:
 	_issue_list.issue_selected.connect(_detail.show_issue)
 	_issue_list.selection_cleared.connect(_detail.clear)
 
+	if not _git_engine:
+		return # editor-instantiated scene: no engine injected, nothing to wire
 	_git_engine.command_completed.connect(_on_command_completed)
 	%CreateBranchConfirmDialog.confirmed.connect(_on_create_branch_confirmed)
 	_detail.create_branch_requested.connect(_on_create_branch_requested)
@@ -83,6 +85,7 @@ func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
+	_context: Dictionary,
 ) -> void:
 	if command == GitEngine.Command.BRANCHES and exit_code == 0 and not output.is_empty():
 		_detail.set_base_branches(GitBranchParser.parse(output[0]))
