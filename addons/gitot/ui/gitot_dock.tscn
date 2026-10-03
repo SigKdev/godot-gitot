@@ -174,18 +174,19 @@ layout_mode = 2
 [node name="LargeFileLabel" type="Label" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/HBox" unique_id=996391763]
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Large file size guard in mb"
+tooltip_text = "Large file size guard in MB - Files stored by Git LFS
+(matching a tracked pattern, LFS ready) are exempt!"
 mouse_filter = 0
 text = "File Size Guard"
 
 [node name="LargeFileSpinBox" type="SpinBox" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/HBox" unique_id=1725731778]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "0 = disabled (default 50mb)"
+tooltip_text = "0 = disabled (default 50 MB)"
 max_value = 500.0
 value = 50.0
 rounded = true
-suffix = "mb"
+suffix = "MB"
 
 [node name="HBox2" type="HBoxContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=378038057]
 layout_mode = 2
@@ -194,7 +195,8 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Total time a push, pull, fetch may run before Gitot kills it.
-Raise it for large push or slow connection.
+Raise it for large push (like assets push/ LFS push)
+or on slow connection.
 (Waiting on a credential popup counts too.)"
 mouse_filter = 0
 text = "Network timeout"
@@ -206,7 +208,7 @@ tooltip_text = "Range: 30-900 s (default 120 s)"
 min_value = 30.0
 max_value = 900.0
 step = 5.0
-value = 120.0
+value = 60.0
 rounded = true
 suffix = "s"
 
@@ -234,7 +236,6 @@ rounded = true
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Confirmation dialogue before pushing"
-button_pressed = true
 text = "Confirm Push"
 
 [node name="ConfirmCreateBranchCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=450918464]
@@ -254,7 +255,8 @@ text = "Auto-refresh git status"
 [node name="GithubEnabledCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=365186010]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Opt-out (or in) of Gitot Issues Tracker (will clear your PAT) ⚠ Restart Required ⚠"
+tooltip_text = "Opt-out of Gitot Issues Tracker
+(will clear your PAT) ⚠ Restart Required ⚠"
 button_pressed = true
 text = "Gitot Issues Tracker"
 
@@ -394,7 +396,8 @@ tooltip_text = "Use version from \"project settings/version\" if set."
 [node name="TagNameEdit" type="LineEdit" parent="MainVBox/ScrollContainer/VBox/Commit&PushPanel/VBox/TagPanel/VBox" unique_id=1143936385]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "This input do not use the \"auto v prefix\"."
+tooltip_text = "This input do not use the \"auto v prefix\".
+(no spaces, ~ ^ : ? * [ \\ .. in tag name)"
 placeholder_text = "(e.g: v1.0.0 or stable)"
 emoji_menu_enabled = false
 drag_and_drop_selection_enabled = false
@@ -504,7 +507,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Git strictly forbids spaces
-in branch names"
+in branch name!"
 placeholder_text = "new-branch-name"
 emoji_menu_enabled = false
 drag_and_drop_selection_enabled = false

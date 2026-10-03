@@ -9,6 +9,10 @@ extends RefCounted
 ## Distinct from the user-set "network_timeout_sec" (push/pull).
 const LOCAL_TIMEOUT_SEC: float = 5.0
 
+## Max chars of path arguments per git call. Windows CreateProcess caps the WHOLE command
+## line at 32767; 24000 leaves headroom for "git -C <root> add --" and arg quoting.
+const MAX_ARGS_CHARS: int = 24000
+
 ## PID → temp log path of running network operations (push/pull). Tracks both so a
 ## mid-operation kill (timeout or teardown) can also remove the orphaned log file.
 var _active_pids: Dictionary[int, String] = { }
@@ -47,6 +51,41 @@ static func _parse_log(log_content: String) -> Array:
 			.replace("EXITCODE:1", "") \
 			.strip_edges()
 	return [success, clean]
+
+
+## Windows: OS.execute() decodes the pipe with the ANSI code page, so UTF-8 text comes back garbled
+## ("é" -> "Ã©"). Re-encoding with that same code page restores the raw bytes git wrote;
+## they are then decoded once, as UTF-8. No-op elsewhere (UTF-8 already) and on ASCII.
+static func _fix_encoding(text: String) -> String:
+	# ASCII-only text (and "") is identical in every encoding: skip the conversion. The OS call
+	# rejects empty input (error 87), and this keeps the common case cheap.
+	if OS.get_name() != "Windows" or text.to_utf8_buffer().size() == text.length():
+		return text
+	var bytes: PackedByteArray = text.to_multibyte_char_buffer() # Back to the raw bytes git wrote.
+	return bytes.get_string_from_utf8() if not bytes.is_empty() else text
+
+
+## Splits args after the "--" separator so each call's paths fit MAX_ARGS_CHARS.
+## No "--" or short list -> a single chunk, identical to the old behaviour.
+static func _chunk_args(args: PackedStringArray) -> Array[PackedStringArray]:
+	var chunks: Array[PackedStringArray] = []
+	var sep: int = args.find("--")
+	if sep == -1:
+		chunks.append(args)
+		return chunks
+	var head: PackedStringArray = args.slice(0, sep + 1) # e.g. ["add", "--"]
+	var current: PackedStringArray = head.duplicate()
+	var used: int = 0
+	for i: int in range(sep + 1, args.size()):
+		var cost: int = args[i].length() + 3 # separator + worst-case quotes
+		if used + cost > MAX_ARGS_CHARS and current.size() > head.size():
+			chunks.append(current)
+			current = head.duplicate()
+			used = 0
+		current.append(args[i])
+		used += cost
+	chunks.append(current)
+	return chunks
 
 
 ## True while a write op holds the lock (see _write_busy).
@@ -171,8 +210,14 @@ func _poll_process(pid: int, log_path: String, start_time_ms: int, on_done: Call
 ## Runs on a WorkerThreadPool thread.
 func _execute_and_report(args: PackedStringArray, is_write: bool, on_done: Callable) -> void:
 	var output: Array[String] = []
-	var full_args: PackedStringArray = PackedStringArray(["-C", _project_root()]) + args
-	var exit_code: int = OS.execute("git", full_args, output, true)
+	var exit_code: int = 0
+	for chunk: PackedStringArray in _chunk_args(args):
+		var full_args: PackedStringArray = PackedStringArray(["-C", _project_root()]) + chunk
+		exit_code = OS.execute("git", full_args, output, true) # Appends one entry per call.
+		if exit_code != 0:
+			break # Report the first failure; don't pile more calls onto it.
+	for i: int in output.size():
+		output[i] = _fix_encoding(output[i])
 	call_deferred("_finish_fast", exit_code, output, is_write, on_done)
 
 

@@ -49,7 +49,7 @@ func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
-	_context: Dictionary,
+	context: Dictionary,
 ) -> void:
 	match command:
 		GitEngine.Command.PUSH:
@@ -59,11 +59,10 @@ func _on_command_completed(
 		GitEngine.Command.TAG:
 			if exit_code == 0:
 				_git_engine.push_tag(_pending_tag["tag_name"])
-			elif not output.is_empty() and output[0].contains("already exists"):
-				_git_engine.check_tag_collision(_pending_tag["tag_name"])
 			else:
-				GitotLogger.e("Tag creation failed. Tag push aborted!")
-				_pending_tag = { }
+				# Never match git's error text (localized): let rev-parse decide if the tag exists.
+				var error: String = output[0] if not output.is_empty() else ""
+				_git_engine.check_tag_collision(_pending_tag["tag_name"], error)
 		GitEngine.Command.PUSH_TAG:
 			if exit_code == 0:
 				GitotLogger.s("Tag pushed")
@@ -76,15 +75,27 @@ func _on_command_completed(
 				)
 				tag_retry_needed.emit(true)
 		GitEngine.Command.TAG_COLLISION_CHECK:
-			_handle_tag_collision_result(exit_code, output)
+			_handle_tag_collision_result(exit_code, output, context)
 
 
 ## Resolves a "tag already exists" TAG failure using the two SHAs from
 ## check_tag_collision(). Only pushes if the existing local tag already
 ## points at HEAD (legitimate retry after a prior failed push) - never
-## pushes a same-named tag pointing at an unrelated commit. A failed/short
-## rev-parse (exit_code != 0, or fewer than 2 SHAs) is treated as a mismatch
-func _handle_tag_collision_result(exit_code: int, output: Array[String]) -> void:
+## pushes a same-named tag pointing at an unrelated commit.
+## A failed rev-parse means the tag doesn't exist, so the original creation error is reported
+func _handle_tag_collision_result(
+	exit_code: int,
+	output: Array[String],
+	context: Dictionary,
+) -> void:
+	if exit_code != 0:
+		# Tag doesn't exist: the creation failed for another reason (name, identity, signing...).
+		GitotLogger.e("Tag creation failed. Tag push aborted!")
+		var error: String = context.get("error", "")
+		if not error.is_empty():
+			GitotLogger.g(error) # git's real message, previously swallowed.
+		_pending_tag = { }
+		return
 	var tag_name: String = _pending_tag.get("tag_name", "")
 	var shas: PackedStringArray = (
 		String(output[0]).strip_edges().split("\n", false)

@@ -16,6 +16,7 @@ const MAX_READY_RETRIES: int = 30
 var _ready_retry_count: int = 0
 
 var _git_engine: GitEngine
+var _lfs: GitLfs
 var _ready_initialized: bool = false
 var _diff_gutter: GitotDiffGutter
 var _log_console: GitotLogConsole
@@ -79,6 +80,7 @@ func _ready() -> void:
 		%StagedTree,
 		%UnstagedFold,
 		%StagedFold,
+		_lfs,
 	)
 	_status_panel = GitotStatusPanel.new(%GitStatusLabel)
 
@@ -168,10 +170,17 @@ func _notification(what: int) -> void:
 			refresh_status()
 
 
+#region set instances
 ## Assigns the shared GitEngine instance.
 func set_git_engine(engine: GitEngine) -> void:
 	_git_engine = engine
 	_git_engine.command_completed.connect(_on_status_result)
+
+
+## Assigns the shared GitLfs instance (Size Guard exemption).
+func set_lfs(lfs: GitLfs) -> void:
+	_lfs = lfs
+	_lfs.pull_finished.connect(_on_lfs_pull_finished)
 
 
 ## Assigns the Push chain sync.
@@ -184,6 +193,7 @@ func set_sync_orchestrator(orchestrator: GitSyncOrchestrator) -> void:
 ## Assigns the shared GitotDiffGutter instance.
 func set_diff_gutter(gutter: GitotDiffGutter) -> void:
 	_diff_gutter = gutter
+#endregion
 
 
 ## Manual fallback Triggers a fresh git status query for unreliable save signal.
@@ -205,6 +215,12 @@ func teardown() -> void:
 		_git_engine.command_completed.disconnect(_on_status_result)
 	if _log_console:
 		_log_console.teardown()
+
+
+## LFS pull replaced pointer files with real binaries: ask EditorFileSystem to look for changes.
+func _on_lfs_pull_finished(success: bool) -> void:
+	if success:
+		EditorInterface.get_resource_filesystem().scan()
 
 
 func _read_plugin_version() -> String:
@@ -388,6 +404,12 @@ func _start_push_with_tag_input(last_commit_message: String) -> void:
 	if _tag_panel.is_enabled():
 		if tag_input["tag_name"].is_empty():
 			GitotLogger.w("Tag name is empty. Push aborted!")
+			return
+		if not GitEngine.is_valid_tag_name(tag_input["tag_name"]):
+			GitotLogger.w(
+				"'%s' is not a valid git tag name (no spaces, ~ ^ : ? * [ \\ ..). Push aborted!"
+				% tag_input["tag_name"]
+			)
 			return
 		if tag_input["tag_message"].is_empty():
 			GitotLogger.w("Tag message is empty. Push aborted!")

@@ -1,0 +1,184 @@
+[gd_scene format=3 uid="uid://bjffjg8few7s6"]
+
+[ext_resource type="Script" path="res://addons/gitot/ui/gitot_lfs_panel.gd" id="1_lfs"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1f6tb"]
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_1f6tb"]
+vertical = true
+
+[node name="GitotLfsPanel" type="Control" unique_id=520384113]
+custom_minimum_size = Vector2(0, 90)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lfs")
+
+[node name="VBox" type="VBoxContainer" parent="." unique_id=701224549]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Toolbar" type="HBoxContainer" parent="VBox" unique_id=355768491]
+layout_mode = 2
+
+[node name="StateLabel" type="Label" parent="VBox/Toolbar" unique_id=614566646]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text_overrun_behavior = 3
+
+[node name="LfsActions" type="HBoxContainer" parent="VBox/Toolbar" unique_id=1373493918]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="PullButton" type="Button" parent="VBox/Toolbar/LfsActions" unique_id=194700720]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Download missing LFS files (git lfs pull).
+A normal Pull or checkout already downloads them: use this when 
+files show 'Pointer' (e.g. after a timeout, or a clone made without LFS)."
+mouse_default_cursor_shape = 2
+
+[node name="PruneButton" type="Button" parent="VBox/Toolbar/LfsActions" unique_id=1568035295]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Free disk space: delete old local copies of LFS files (git lfs prune).
+Kept: files of your current checkout, stashes and recent commits,
+and files whose only copy is local (never pushed).
+Pruned files are downloaded again from the remote when needed."
+mouse_default_cursor_shape = 2
+
+[node name="----" type="VSeparator" parent="VBox/Toolbar/LfsActions" unique_id=802888322]
+layout_mode = 2
+
+[node name="RefreshButton" type="Button" parent="VBox/Toolbar" unique_id=1329645624]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Re-check the Git LFS state"
+mouse_default_cursor_shape = 2
+
+[node name="MissingView" type="HBoxContainer" parent="VBox" unique_id=185001092]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="GetLfsButton" type="Button" parent="VBox/MissingView" unique_id=755393303]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Open git-lfs.com in your browser, then click Refresh."
+mouse_default_cursor_shape = 2
+text = "Get Git LFS"
+
+[node name="InstallView" type="HBoxContainer" parent="VBox" unique_id=1850561496]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="InstallButton" type="Button" parent="VBox/InstallView" unique_id=962897158]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Runs 'git lfs install': sets up Git LFS in your global Git config (once per machine) and its hooks in this repo."
+mouse_default_cursor_shape = 2
+text = "Install LFS"
+
+[node name="space" type="HSeparator" parent="VBox" unique_id=1794477881]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxEmpty_1f6tb")
+
+[node name="ActiveView" type="HSplitContainer" parent="VBox" unique_id=589515389]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/split_bar_background = SubResource("StyleBoxLine_1f6tb")
+
+[node name="FilesTree" type="Tree" parent="VBox/ActiveView" unique_id=915133412]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 3
+column_titles_visible = true
+hide_root = true
+
+[node name="PatternsColumn" type="VBoxContainer" parent="VBox/ActiveView" unique_id=332591291]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+
+[node name="HeaderContainer" type="HBoxContainer" parent="VBox/ActiveView/PatternsColumn" unique_id=1321910181]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBox/ActiveView/PatternsColumn/HeaderContainer" unique_id=1113998447]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Applies to ALL matching files: existing ones become modified, history keeps old blobs."
+mouse_filter = 0
+text = "Tracked patterns"
+
+[node name="PresetsButton" type="MenuButton" parent="VBox/ActiveView/PatternsColumn/HeaderContainer" unique_id=1204354535]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Track a common asset pattern..
+Applies to ALL matching files in the whole-project."
+mouse_default_cursor_shape = 2
+text = "Patterns"
+flat = false
+
+[node name="TrackContainer" type="HBoxContainer" parent="VBox/ActiveView/PatternsColumn" unique_id=249654261]
+layout_mode = 2
+
+[node name="PatternEdit" type="LineEdit" parent="VBox/ActiveView/PatternsColumn/TrackContainer" unique_id=1551786517]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Type a pattern, then click Track (or press Enter).
+A path limits the scope: art/**/*.png tracks only PNGs under art/.
+Godot text formats (.tscn, .tres, .gd, .import...) are refused: keep them in regular Git."
+placeholder_text = "(e.g: art/**/*.png)"
+clear_button_enabled = true
+
+[node name="TrackButton" type="Button" parent="VBox/ActiveView/PatternsColumn/TrackContainer" unique_id=1214091168]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Track the pattern with Git LFS (writes .gitattributes)."
+mouse_default_cursor_shape = 2
+text = "Track"
+
+[node name="UntrackButton" type="Button" parent="VBox/ActiveView/PatternsColumn/TrackContainer" unique_id=113856787]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Untrack the selected pattern."
+mouse_default_cursor_shape = 2
+text = "Untrack"
+
+[node name="PatternList" type="ItemList" parent="VBox/ActiveView/PatternsColumn" unique_id=1028858142]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HintLabel" type="RichTextLabel" parent="VBox" unique_id=816711969]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/normal_font_size = 13
+theme_override_font_sizes/bold_font_size = 13
+theme_override_font_sizes/italics_font_size = 13
+bbcode_enabled = true
+text = "[b]Git LFS[/b] stores large binaries (textures, models, audio) outside Git history and keeps small pointers in the repo: smaller repo, faster clones, and it avoids GitHub's 100 MiB file limit.
+Uploads run inside git push and downloads inside Pull: both obey the network timeout setting [i](default 120s)[/i], [b]large assets may need a higher value[/b]. [font size=11]GitHub limits LFS storage and bandwidth: [url=https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-storage-and-bandwidth-usage]quota details[/url]. (GitHub Free: 10 GiB)[/font]"
+fit_content = true
+
+[node name="PruneConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1711788682]
+unique_name_in_owner = true
+oversampling_override = 1.0
+size = Vector2i(720, 132)
+dialog_text = "Delete old local copies of LFS files?
+Files of your current checkout are kept, and files whose only copy is local are never pruned.
+Pruned files can be downloaded again from the remote."

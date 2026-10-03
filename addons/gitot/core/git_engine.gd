@@ -49,6 +49,14 @@ enum Command {
 	LAST_COMMIT_MSG,
 	REFLOG,
 	RESTORE_FILE,
+	LFS_VERSION,
+	LFS_STATE,
+	LFS_LS_FILES,
+	LFS_TRACK,
+	LFS_UNTRACK,
+	LFS_INSTALL,
+	LFS_PULL,
+	LFS_PRUNE,
 }
 
 ## Canonical status args. --untracked-files=all forces recursion into
@@ -89,6 +97,11 @@ const BRANCH_LIST_FORMAT: String = (
 ## since it gates every path that can lead there.
 const UNSAFE_TAG_CHARS: String = "$`;&"
 
+## Git ref-name rules that make a tag name invalid (see `git check-ref-format`):
+## whitespace/control chars and ~ ^ : ? * [ \ | ".." | "@{" | lone "@" | leading "-" or "/"
+## | trailing "/" or "." | "//" | ".lock" component | component starting with ".".
+const INVALID_TAG_PATTERN: String = r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|^@$|^[-/]|[/.]$|//|\.lock(/|$)|(^|/)\."
+
 ## Commands that mutate the index, working tree, or refs. Only these need
 ## mutual exclusion — read-only commands (STATUS, LOG, DIFF, BRANCHES, ...)
 ## are safe to run concurrently with each other on WorkerThreadPool.
@@ -105,6 +118,10 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.DELETE_BRANCH,
 	Command.TAG,
 	Command.RESTORE_FILE,
+	Command.LFS_TRACK,
+	Command.LFS_UNTRACK,
+	Command.LFS_INSTALL,
+	Command.LFS_PRUNE,
 ]
 
 ## Max reflog entries shown by the console's Reflog button.
@@ -114,21 +131,7 @@ const REFLOG_COUNT: int = 20
 var _runner: GitRunner = GitRunner.new()
 
 
-## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
-## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
-static func parse_owner_repo(url: String) -> Dictionary:
-	var cleaned: String = url.trim_suffix(".git")
-	var parts: PackedStringArray = cleaned.split("/")
-	if parts.size() < 2:
-		return { }
-	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
-
-
 #region check version
-## Checks if 'git' is callable from the OS PATH.
-# static func is_git_available() -> bool:
-# 	var output: Array[String] = []
-# 	return OS.execute("git", ["--version"], output) == 0
 ## Checks if 'git' is callable from the OS PATH.
 static func is_git_available() -> bool:
 	return not get_git_version().is_empty()
@@ -142,6 +145,25 @@ static func get_git_version() -> String:
 ## "3.5.1" from "git-lfs/3.5.1 (GitHub; ...)"; "" if git-lfs is not installed.
 static func get_lfs_version() -> String:
 	return _first_line(["lfs", "version"]).get_slice(" ", 0).trim_prefix("git-lfs/")
+#endregion
+
+
+## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
+## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
+static func parse_owner_repo(url: String) -> Dictionary:
+	var cleaned: String = url.trim_suffix(".git")
+	var parts: PackedStringArray = cleaned.split("/")
+	if parts.size() < 2:
+		return { }
+	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
+
+
+## True if git would accept tag_name. Checked BEFORE the push so a bad name can't leave
+## a pushed commit without its tag.
+static func is_valid_tag_name(tag_name: String) -> bool:
+	return not tag_name.is_empty() and RegEx.create_from_string(INVALID_TAG_PATTERN).search(
+			tag_name
+		) == null
 
 
 ## Runs `git <args>` synchronously (startup checks only) and returns the first stdout line.
@@ -152,7 +174,6 @@ static func _first_line(args: PackedStringArray) -> String:
 	if OS.execute("git", args, output, true) != 0 or output.is_empty():
 		return ""
 	return output[0].get_slice("\n", 0).strip_edges()
-#endregion
 
 
 ## Turns an GitRunner.execute_bounded() name-list result into {"reliable": bool, "files": PackedStringArray}.
@@ -161,9 +182,9 @@ static func _to_file_list(result: Array) -> Dictionary:
 	if result[0] != 0:
 		return { "reliable": false, "files": PackedStringArray() }
 	var stdout: String = String(result[1]).strip_edges()
-	var files: PackedStringArray = (
-		PackedStringArray() if stdout.is_empty() else PackedStringArray(stdout.split("\n", false))
-	)
+	var files: PackedStringArray = PackedStringArray()
+	for line: String in stdout.split("\n", false): # Empty stdout -> no lines.
+		files.append(GitPath.unquote(line))
 	return { "reliable": true, "files": files }
 
 
@@ -288,12 +309,16 @@ func get_current_branch() -> String:
 #endregion
 
 
-## Checks whether tag_name already points at HEAD, to resolve a "tag already
-## exists" collision. One rev-parse call for both SHAs (one per output line)
-## instead of two round trips. Result via command_completed(TAG_COLLISION_CHECK, ...).
-## @param tag_name: existing local tag to compare against HEAD.
-func check_tag_collision(tag_name: String) -> void:
-	run_fast(Command.TAG_COLLISION_CHECK, ["rev-parse", tag_name, "HEAD"])
+## Checks whether tag_name already points at HEAD, to resolve a failed create_tag().
+## "~0" peels an annotated tag to its commit (plain rev-parse gives the tag object's SHA, never == HEAD).
+## Exit != 0 means the tag doesn't exist, so create_tag failed for another reason.
+## @param create_error: git's output from the failed create_tag, returned in the context.
+func check_tag_collision(tag_name: String, create_error: String = "") -> void:
+	run_fast(
+		Command.TAG_COLLISION_CHECK,
+		["rev-parse", tag_name + "~0", "HEAD"],
+		{ "error": create_error },
+	)
 
 
 #region Stash

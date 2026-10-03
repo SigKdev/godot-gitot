@@ -28,11 +28,15 @@ const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 	GitEngine.Command.STASH_POP,
 	GitEngine.Command.STASH_DROP,
 	GitEngine.Command.RESTORE_FILE,
+	GitEngine.Command.LFS_TRACK,
+	GitEngine.Command.LFS_UNTRACK,
 ]
 
 const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
 
 const GitotDiffPanelScene: PackedScene = preload("res://addons/gitot/ui/gitot_diff_panel.tscn")
+
+const GitotLfsPanelScene: PackedScene = preload("res://addons/gitot/ui/gitot_lfs_panel.tscn")
 
 var _git_engine: GitEngine
 var _dock: GitotDock
@@ -43,6 +47,9 @@ var _diff_panel: GitotDiffPanel
 var _pending_diff_path: String = ""
 var _pending_diff_line: int = -1
 var _commit_log_diff: GitotCommitLogDiff
+
+var _lfs: GitLfs
+var _lfs_panel: GitotLfsPanel
 
 
 #region Plugin Initialisation
@@ -61,6 +68,8 @@ func _enter_tree() -> void:
 
 	_git_engine = GitEngine.new()
 	_git_engine.command_completed.connect(_on_git_command_completed)
+	_lfs = GitLfs.new(_git_engine) # Before the dock: the Size Guard needs it.
+	_lfs.ready_changed.connect(_on_lfs_ready_changed)
 
 	_diff_gutter = GitotDiffGutter.new(_git_engine)
 	_diff_gutter.hunk_clicked.connect(_on_hunk_clicked)
@@ -76,6 +85,7 @@ func _enter_tree() -> void:
 	_dock.set_git_engine(_git_engine)
 	_dock.set_diff_gutter(_diff_gutter)
 	_dock.set_sync_orchestrator(_sync_orchestrator)
+	_dock.set_lfs(_lfs)
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, _dock)
 
 	if GitotSettings.get_value("github_issues_enabled"):
@@ -84,18 +94,25 @@ func _enter_tree() -> void:
 		EditorInterface.get_editor_main_screen().add_child(_github_panel)
 		_github_panel.hide() # Godot calls _make_visible(true) when tab is selected
 
+	var lfs_version: String = GitEngine.get_lfs_version()
+	GitotLogger.s("'git' binary verified. Plugin ready!")
+	GitotLogger.i(
+		"git v%s | LFS v%s"
+		% [git_version, "not installed" if lfs_version.is_empty() else lfs_version],
+	)
+
+	_lfs_panel = GitotLfsPanelScene.instantiate()
+	_lfs_panel.set_lfs(_lfs) # Before entering the tree: _ready() needs it.
+	add_control_to_bottom_panel(_lfs_panel, "Gitot LFS")
+	# The Size Guard exemption and the Track-with-LFS button need the LFS state: detect at startup
+	# (async, two quick git calls). The panel's own refresh is lazy.
+	_lfs.detect_state()
+
 	_diff_panel = GitotDiffPanelScene.instantiate()
 	add_control_to_bottom_panel(_diff_panel, "Gitot Diff")
 	_diff_panel.refresh_requested.connect(_on_diff_refresh_requested)
 	_commit_log_diff = GitotCommitLogDiff.new(_git_engine, _diff_panel)
 	_dock.commit_selected.connect(_on_commit_selected)
-
-	var lfs_version: String = GitEngine.get_lfs_version()
-	GitotLogger.s("'git' binary verified. Plugin ready!")
-	GitotLogger.i(
-		"git version: %s | LFS version: %s"
-		% [git_version, "not installed" if lfs_version.is_empty() else lfs_version],
-	)
 
 
 func _exit_tree() -> void:
@@ -127,6 +144,10 @@ func _exit_tree() -> void:
 	if _diff_panel and _diff_panel.refresh_requested.is_connected(_on_diff_refresh_requested):
 		_diff_panel.refresh_requested.disconnect(_on_diff_refresh_requested)
 
+	if _lfs:
+		_lfs.teardown()
+		_lfs = null
+
 	if _git_engine:
 		_git_engine.teardown()
 		_git_engine = null
@@ -143,6 +164,11 @@ func _exit_tree() -> void:
 		remove_control_from_bottom_panel(_diff_panel)
 		_diff_panel.queue_free()
 		_diff_panel = null
+
+	if _lfs_panel:
+		remove_control_from_bottom_panel(_lfs_panel)
+		_lfs_panel.queue_free()
+		_lfs_panel = null
 #endregion
 
 
@@ -173,12 +199,25 @@ func _make_visible(visible: bool) -> void:
 ## Decides which finished commands should trigger an automatic status refresh.
 func _on_git_command_completed(
 	command: GitEngine.Command,
-	_exit_code: int,
-	_output: Array[String],
+	exit_code: int,
+	output: Array[String],
 	_context: Dictionary,
 ) -> void:
+	# A failed stage/unstage aborts the WHOLE batch (git add is all-or-nothing): never fail silently.
+	if exit_code != 0 and command in [GitEngine.Command.STAGE, GitEngine.Command.UNSTAGE]:
+		GitotLogger.e("%s failed." % GitEngine.Command.keys()[command].capitalize())
+		if not output.is_empty():
+			GitotLogger.g(output[0])
 	if command in STATUS_TRIGGERING_COMMANDS:
 		_dock.refresh_status() # status + ahead/behind + history + shelf
+		if _lfs_panel:
+			_lfs_panel.refresh_files() # LFS file list follows stage/commit/switch/pull
+
+
+## The Size Guard exemption depends on LFS being READY: re-evaluate the trees when that flips.
+func _on_lfs_ready_changed() -> void:
+	if _dock:
+		_dock.refresh_status()
 
 
 ## Triggers gutter refresh on script save

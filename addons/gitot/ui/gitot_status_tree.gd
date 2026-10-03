@@ -18,6 +18,9 @@ const BUTTON_OPEN_FILE: int = 0
 ## Excludes scenes, .uid, imported binaries (audio/video/textures).
 const OPENABLE_EXTENSIONS: PackedStringArray = ["gd", "cs", "gdshader", "gdshaderinc"]
 
+## TreeItem button id for the "track this file type with LFS" action (Size Guard rows only).
+const BUTTON_TRACK_LFS: int = 1
+
 ## Assigned by gitot_dock.gd right after construction.
 var _git_engine: GitEngine
 
@@ -25,6 +28,8 @@ var _unstaged_tree: Tree
 var _staged_tree: Tree
 var _unstaged_fold: FoldableContainer
 var _staged_fold: FoldableContainer
+## Optional: files LFS stores as pointers are exempt from the Size Guard.
+var _lfs: GitLfs
 
 
 func _init(
@@ -33,8 +38,10 @@ func _init(
 	staged_tree: Tree,
 	unstaged_fold: FoldableContainer,
 	staged_fold: FoldableContainer,
+	lfs: GitLfs,
 ) -> void:
 	_git_engine = git_engine
+	_lfs = lfs
 	_unstaged_tree = unstaged_tree
 	_staged_tree = staged_tree
 	_unstaged_fold = unstaged_fold
@@ -92,14 +99,24 @@ func _populate_tree(
 		if status == GitStatusParser.FileStatus.CONFLICT:
 			item.set_icon(0, GitotUi.get_icon("NodeWarning"))
 			item.set_icon_modulate(0, Color.RED)
-			item.set_tooltip_text(0, "⚠ Merge conflict — resolve before staging ⚠")
+			item.set_tooltip_text(0, "⚠ Merge conflict - resolve before staging ⚠")
 		if (
 			check_size and status != GitStatusParser.FileStatus.CONFLICT
-			and _is_oversized(ProjectSettings.globalize_path("res://" + entry["path"]), max_bytes)
+			and _violates_guard(entry["path"], max_bytes)
 		):
 			item.set_icon(0, GitotUi.get_icon("StatusWarning"))
 			item.set_icon_modulate(0, Color.ORANGE)
-			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard — excluded from Staging ⚠")
+			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard - excluded from Staging ⚠")
+			if _lfs != null and _lfs.is_ready():
+				var pattern: String = _lfs_pattern(entry["path"])
+				item.add_button(
+					0,
+					GitotUi.get_icon("Pin"),
+					BUTTON_TRACK_LFS,
+					false,
+					"Track '%s' with Git LFS and allow staging.\nApplies to ALL matching files."
+					% pattern,
+				)
 		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
 			item.add_button(
 				0,
@@ -130,25 +147,18 @@ func _setup_bulk_buttons() -> void:
 	_staged_fold.add_title_bar_control(unstage_all)
 
 
-## Double-click on an unstaged/untracked item stages it, unless it exceeds the size guard.
+## Enter/double-click on unstaged rows stages every selected row (Size Guard applies).
 func _on_unstaged_item_activated() -> void:
-	var selected: TreeItem = _unstaged_tree.get_selected()
-	if not selected or selected == _unstaged_tree.get_root():
-		return
-	var path: String = selected.get_text(0)
-	var abs_path: String = ProjectSettings.globalize_path("res://" + path)
-	if _is_oversized(abs_path, _max_file_size_bytes()):
-		GitotLogger.e("'%s' exceeds Size Guard and was not staged." % path)
-		return
-	_git_engine.run_fast(GitEngine.Command.STAGE, ["add", "--", path])
+	_stage_paths(_get_selected_paths(_unstaged_tree))
 
 
-## Double-click on a staged item unstages it.
+## Enter/double-click on staged rows unstages every selected row.
+## "--" ends option parsing (safe for odd names) and enables chunking in GitRunner.
 func _on_staged_item_activated() -> void:
-	var selected: TreeItem = _staged_tree.get_selected()
-	if not selected: # Guards the fast-double-click null crash (was open FIXME in gitot_dock.gd)
+	var paths: Array[String] = _get_selected_paths(_staged_tree)
+	if paths.is_empty():
 		return
-	_git_engine.run_fast(GitEngine.Command.UNSTAGE, ["restore", "--staged", selected.get_text(0)])
+	_git_engine.run_fast(GitEngine.Command.UNSTAGE, ["restore", "--staged", "--"] + paths)
 
 
 ## Swaps to a pointing-hand cursor only while hovering a row's button (e.g. "open file").
@@ -169,6 +179,9 @@ func _on_tree_button_clicked(
 	id: int,
 	_mouse_button_index: int,
 ) -> void:
+	if id == BUTTON_TRACK_LFS:
+		_lfs.track(_lfs_pattern(item.get_text(0))) # Result: GitLfs logs, status refresh re-evaluates the row.
+		return
 	if id != BUTTON_OPEN_FILE:
 		return
 	var res_path: String = "res://" + item.get_text(0)
@@ -179,19 +192,26 @@ func _on_tree_button_clicked(
 
 
 func _on_stage_all_pressed() -> void:
-	var paths: Array[String] = _get_tree_paths(_unstaged_tree)
+	_stage_paths(_get_tree_paths(_unstaged_tree))
+
+
+## Stages repo-relative paths, skipping (and logging) Size Guard violators.
+func _stage_paths(paths: Array[String]) -> void:
 	if paths.is_empty():
 		return
 	var to_stage: Array[String] = []
 	var max_bytes: int = _max_file_size_bytes()
 	for path: String in paths:
-		var abs_path: String = ProjectSettings.globalize_path("res://" + path)
-		if _is_oversized(abs_path, max_bytes):
+		if _violates_guard(path, max_bytes):
 			GitotLogger.w("Staging skipped '%s' - exceeds Size Guard." % path)
 		else:
-			to_stage.append(path)
+			to_stage.append(path) # Good files must still go through.
 	if to_stage.is_empty():
 		return
+	if to_stage.size() < paths.size():
+		GitotLogger.i(
+			"Staged %d/%d files; the rest exceed the Size Guard." % [to_stage.size(), paths.size()]
+		)
 	_git_engine.run_fast(GitEngine.Command.STAGE, ["add", "--"] + to_stage)
 
 
@@ -216,6 +236,16 @@ func _get_tree_paths(tree: Tree) -> Array[String]:
 	return paths
 
 
+## Paths of ALL selected rows. get_selected() would only return the focused one in multi-select.
+func _get_selected_paths(tree: Tree) -> Array[String]:
+	var paths: Array[String] = []
+	var item: TreeItem = tree.get_next_selected(null) # null = start from the top.
+	while item:
+		paths.append(item.get_text(0))
+		item = tree.get_next_selected(item)
+	return paths
+
+
 func _max_file_size_bytes() -> int:
 	return int(GitotSettings.get_value("large_file_mb")) * 1024 * 1024
 
@@ -228,3 +258,17 @@ func _is_oversized(abs_path: String, max_bytes: int) -> bool:
 	if not file:
 		return false # Unreadable/missing - let git report the real error, not gitot.
 	return file.get_length() >= max_bytes
+
+
+## Size Guard verdict for a repo-relative path: oversized AND not stored by LFS.
+## The cheap size check runs first, so LFS patterns are only read for oversized files.
+func _violates_guard(path: String, max_bytes: int) -> bool:
+	if not _is_oversized(ProjectSettings.globalize_path("res://" + path), max_bytes):
+		return false
+	return _lfs == null or not _lfs.covers(path)
+
+
+## "*.ext" for the file's extension, or the bare file name when it has none.
+func _lfs_pattern(path: String) -> String:
+	var extension: String = path.get_extension()
+	return "*." + extension if not extension.is_empty() else path.get_file()
