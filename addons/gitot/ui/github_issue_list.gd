@@ -1,6 +1,6 @@
 ## github_issue_list.gd
 ## Issue list: 6-column Tree with header-click sorting.
-## RefCounted, constructor-injected — matches the GitLogPanel pattern.
+## RefCounted, constructor-injected — matches the GitotLogPanel pattern.
 class_name GithubIssueList
 extends RefCounted
 
@@ -11,7 +11,14 @@ signal issue_selected(entry: Dictionary)
 ## Emitted after a refresh when the previously selected issue is gone.
 signal selection_cleared
 
-enum Col { NUMBER, TITLE, DATE, TYPE, PRIORITY, LABELS }
+enum Col {
+	NUMBER,
+	TITLE,
+	DATE,
+	TYPE,
+	PRIORITY,
+	LABELS,
+}
 
 const COLUMN_TITLES: PackedStringArray = ["#", "Title", "Date", "Type", "Priority", "Labels"]
 const COLUMN_MIN_WIDTHS: PackedInt32Array = [45, 80, 90, 70, 70, 100]

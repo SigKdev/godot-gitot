@@ -1,12 +1,13 @@
 ## gitot_branch_panel.gd
-## Branches section: list (name / sync / last commit) +
-## Fetch button in the fold title bar.
+## Branches section: list (name / sync / last commit), Fetch button (toolbar row of the scene) and a
+## right-aligned sync status of the current branch in the fold title bar.
 ## Double-click switches branch. UI-only — no OS.execute() calls.
 class_name GitotBranchPanel
 extends RefCounted
 
 ## Emitted when the selected row changes, and after every populate().
-## @param branch: the selected entry (see GitBranchParser), {} if nothing is selected.
+## @param branch: the selected entry (see GitBranchParser) plus "remote_ref" / "remote_hash"
+## (its copy on origin, "" if none; see _annotate_remote), {} if nothing is selected.
 signal selection_changed(branch: Dictionary)
 
 const FOLD_TITLE: String = "Branches"
@@ -15,14 +16,20 @@ const COL_SYNC: int = 1
 const COL_DATE: int = 2
 const FETCH_ICON: String = "AssetStore"
 
-## GitBranchParser "sync" (upstream:trackshort) -> cell text. Symbols, not git's
-## localized "track" text, so the cell never depends on the user's git language.
-const SYNC_SYMBOLS: Dictionary[String, String] = { ">": "↑", "<": "↓", "<>": "↑↓", "=": "✓" }
+## Longest branch name shown in the fold title (the full name stays in the list).
+const TITLE_BRANCH_CHARS: int = 24
 
 var _git_engine: GitEngine
 var _fold: FoldableContainer
 var _tree: Tree
 var _fetch_button: Button
+## Title-bar status of the current branch (symbol, colored), sticks to the right of the bar.
+var _status_label: Label
+## Current local branch row ({} = none), for the title-bar status.
+var _current: Dictionary = { }
+## Ahead/behind of HEAD vs its upstream, pushed by the router (rev-list: no localized text involved).
+var _ahead: int = 0
+var _behind: int = 0
 
 
 ## Hides remote entries that already have a local counterpart
@@ -41,6 +48,16 @@ static func _filter_redundant_remotes(branches: Array[Dictionary]) -> Array[Dict
 	return result
 
 
+## Adds "remote_ref" ("origin/<name>" or "") and "remote_hash" (that ref's tip) to an entry, so the
+## delete buttons know which remote copy exists. Only "origin" is supported, like the list filter.
+## @param remote_hashes: remote ref name -> tip hash, from the unfiltered list.
+static func _annotate_remote(branch: Dictionary, remote_hashes: Dictionary[String, String]) -> void:
+	var ref: String = branch["name"] if branch["is_remote"] else "origin/" + branch["name"]
+	var exists: bool = ref.begins_with("origin/") and remote_hashes.has(ref)
+	branch["remote_ref"] = ref if exists else ""
+	branch["remote_hash"] = remote_hashes[ref] if exists else ""
+
+
 ## Display order: current branch, other local branches, remote-only;
 ## newest commit first inside each group.
 static func _is_before(a: Dictionary, b: Dictionary) -> bool:
@@ -54,10 +71,25 @@ static func _is_before(a: Dictionary, b: Dictionary) -> bool:
 static func _sync_text(branch: Dictionary) -> String:
 	if branch["is_remote"]:
 		return ""
-	if branch["upstream"].is_empty():
-		return "—" # never pushed / no upstream
-	# Upstream configured but no trackshort symbol -> the remote branch is gone.
-	return SYNC_SYMBOLS.get(branch["sync"], "gone")
+	# "—" never pushed, "gone" upstream configured but remote branch deleted (see GitotUi).
+	return GitotUi.sync_symbol(not branch["upstream"].is_empty(), branch["sync"])
+
+
+## Fold title: "Branches (4)  ·  on main". Plain text only (FoldableContainer has no icon/BBCode);
+## the sync status lives in its own label, see _update_status().
+static func _title(shown: Array[Dictionary]) -> String:
+	var title: String = "%s (%d)" % [FOLD_TITLE, shown.size()]
+	for branch: Dictionary in shown:
+		if branch["is_current"]:
+			return "%s  ·  on %s" % [title, GitotUi.ellipsize(branch["name"], TITLE_BRANCH_CHARS)]
+	return title
+
+
+## Hover text of a sync cell / the title status: what the state means and what to do about it.
+static func _sync_tooltip(branch: Dictionary) -> String:
+	if branch["is_remote"]:
+		return "Only on the remote.\nDouble-click to create a local branch that tracks it."
+	return GitotUi.sync_tooltip(branch["upstream"], branch["sync"])
 
 
 static func _tooltip(branch: Dictionary, scope: String) -> String:
@@ -71,15 +103,28 @@ static func _tooltip(branch: Dictionary, scope: String) -> String:
 	return "\n".join(lines)
 
 
-## @param fold: hosts the section; its title shows the branch count.
+## @param fold: hosts the section; its title shows the count and current branch, a label added to
+## its title bar shows that branch's sync status.
 ## @param tree: 3-column Tree (set up here).
-func _init(git_engine: GitEngine, fold: FoldableContainer, tree: Tree) -> void:
+## @param fetch_button: scene button (toolbar row); icon and signal are wired here.
+func _init(
+	git_engine: GitEngine,
+	fold: FoldableContainer,
+	tree: Tree,
+	fetch_button: Button,
+) -> void:
 	_git_engine = git_engine
 	_fold = fold
 	_tree = tree
+	_fetch_button = fetch_button
+	_fold.title_text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS # Title shares the bar with the status.
 	_setup_tree()
-	_fetch_button = GitotUi.add_title_button(_fold, FETCH_ICON, "Fetch remote updates")
+	_fetch_button.icon = GitotUi.get_icon(FETCH_ICON)
 	_fetch_button.pressed.connect(_on_fetch_pressed)
+	_status_label = Label.new()
+	_status_label.mouse_filter = Control.MOUSE_FILTER_STOP # Needed for the tooltip.
+	_status_label.mouse_default_cursor_shape = Control.CURSOR_HELP
+	_fold.add_title_bar_control(_status_label)
 
 
 ## Rebuilds the list from a fresh branch list. Called by the router on the "branches" result.
@@ -87,7 +132,13 @@ func _init(git_engine: GitEngine, fold: FoldableContainer, tree: Tree) -> void:
 ## @param branch_scopes: branch name -> scope text (tooltip only).
 func populate(branches: Array[Dictionary], branch_scopes: Dictionary[String, String]) -> void:
 	var selected_name: String = _selected_branch().get("name", "")
+	var remote_hashes: Dictionary[String, String] = { }
+	for branch: Dictionary in branches:
+		if branch["is_remote"]:
+			remote_hashes[branch["name"]] = branch["hash"]
 	var shown: Array[Dictionary] = _filter_redundant_remotes(branches)
+	for branch: Dictionary in shown:
+		_annotate_remote(branch, remote_hashes)
 	shown.sort_custom(_is_before)
 
 	_tree.clear()
@@ -100,8 +151,45 @@ func populate(branches: Array[Dictionary], branch_scopes: Dictionary[String, Str
 		target = root.get_first_child()
 	if target:
 		target.select(COL_NAME)
-	_fold.title = "%s (%d)" % [FOLD_TITLE, shown.size()]
+	_fold.title = _title(shown)
+	_update_status(shown)
 	selection_changed.emit(_selected_branch())
+
+
+## Remembers the current local branch (none = status hidden), then redraws the status.
+func _update_status(shown: Array[Dictionary]) -> void:
+	_current = { }
+	for branch: Dictionary in shown:
+		if branch["is_current"] and not branch["is_remote"]:
+			_current = branch
+			break
+	_render_status()
+
+
+## Called by the router with each ahead/behind result: adds the commit counts to the status.
+func update_counts(ahead: int, behind: int) -> void:
+	_ahead = ahead
+	_behind = behind
+	_render_status()
+
+
+func _render_status() -> void:
+	_status_label.visible = not _current.is_empty()
+	if _current.is_empty():
+		return
+	var has_upstream: bool = not _current["upstream"].is_empty()
+	_status_label.text = _status_text(_current, _ahead, _behind)
+	_status_label.add_theme_color_override("font_color", GitotUi.sync_color(has_upstream, _current["sync"]))
+	_status_label.tooltip_text = "Current branch '%s'\n%s" % [_current["name"], _sync_tooltip(_current)]
+
+
+## Symbol + counts ("↑ 2"). The counts come from a separate git call, so they are only shown when
+## they agree with this branch's own sync state (they can be briefly stale after a switch).
+static func _status_text(branch: Dictionary, ahead: int, behind: int) -> String:
+	var text: String = _sync_text(branch)
+	if not branch["upstream"].is_empty() and GitotUi.sync_key(ahead, behind) == branch["sync"]:
+		text += GitotUi.sync_counts(branch["sync"], ahead, behind)
+	return text
 
 
 ## Called by the dock when the fetch result arrives (success or failure).
@@ -138,6 +226,7 @@ func _add_row(root: TreeItem, branch: Dictionary, scope: String) -> void:
 	item.set_tooltip_text(COL_NAME, _tooltip(branch, scope))
 	item.set_text(COL_SYNC, _sync_text(branch))
 	item.set_text_alignment(COL_SYNC, HORIZONTAL_ALIGNMENT_CENTER)
+	item.set_tooltip_text(COL_SYNC, _sync_tooltip(branch))
 	item.set_text(COL_DATE, branch["date_relative"])
 	item.set_tooltip_text(COL_DATE, branch["date_exact"])
 	if branch["is_current"]:

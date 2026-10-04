@@ -174,18 +174,19 @@ layout_mode = 2
 [node name="LargeFileLabel" type="Label" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/HBox" unique_id=996391763]
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Large file size guard in mb"
+tooltip_text = "Large file size guard in MB - Files stored by Git LFS
+(matching a tracked pattern, LFS ready) are exempt!"
 mouse_filter = 0
 text = "File Size Guard"
 
 [node name="LargeFileSpinBox" type="SpinBox" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/HBox" unique_id=1725731778]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "0 = disabled (default 50mb)"
+tooltip_text = "0 = disabled (default 50 MB)"
 max_value = 500.0
 value = 50.0
 rounded = true
-suffix = "mb"
+suffix = "MB"
 
 [node name="HBox2" type="HBoxContainer" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=378038057]
 layout_mode = 2
@@ -194,7 +195,8 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Total time a push, pull, fetch may run before Gitot kills it.
-Raise it for large push or slow connection.
+Raise it for large push (like assets push/ LFS push)
+or on slow connection.
 (Waiting on a credential popup counts too.)"
 mouse_filter = 0
 text = "Network timeout"
@@ -206,7 +208,7 @@ tooltip_text = "Range: 30-900 s (default 120 s)"
 min_value = 30.0
 max_value = 900.0
 step = 5.0
-value = 120.0
+value = 60.0
 rounded = true
 suffix = "s"
 
@@ -234,7 +236,6 @@ rounded = true
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Confirmation dialogue before pushing"
-button_pressed = true
 text = "Confirm Push"
 
 [node name="ConfirmCreateBranchCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=450918464]
@@ -254,7 +255,8 @@ text = "Auto-refresh git status"
 [node name="GithubEnabledCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=365186010]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Opt-out (or in) of Gitot Issues Tracker (will clear your PAT) ⚠ Restart Required ⚠"
+tooltip_text = "Opt-out of Gitot Issues Tracker
+(will clear your PAT) ⚠ Restart Required ⚠"
 button_pressed = true
 text = "Gitot Issues Tracker"
 
@@ -270,17 +272,23 @@ title = "Support & Feedback"
 visible = false
 layout_mode = 2
 
-[node name="IssueButton" type="LinkButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=406571396]
+[node name="IssueButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=406571396]
+unique_name_in_owner = true
 layout_mode = 2
+mouse_default_cursor_shape = 2
 text = "Report any issue on GitHub"
-underline = 1
-uri = "https://github.com/SigKdev/godot-gitot/issues"
+flat = true
+alignment = 0
+icon_alignment = 2
 
-[node name="FeedbackButton" type="LinkButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=837527421]
+[node name="FeedbackButton" type="Button" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=837527421]
+unique_name_in_owner = true
 layout_mode = 2
+mouse_default_cursor_shape = 2
 text = "Feedback & idea"
-underline = 1
-uri = "https://github.com/SigKdev/godot-gitot/discussions"
+flat = true
+alignment = 0
+icon_alignment = 2
 
 [node name="----" type="HSeparator" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox/Support/VBox" unique_id=782805906]
 layout_mode = 2
@@ -394,7 +402,8 @@ tooltip_text = "Use version from \"project settings/version\" if set."
 [node name="TagNameEdit" type="LineEdit" parent="MainVBox/ScrollContainer/VBox/Commit&PushPanel/VBox/TagPanel/VBox" unique_id=1143936385]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "This input do not use the \"auto v prefix\"."
+tooltip_text = "This input do not use the \"auto v prefix\".
+(no spaces, ~ ^ : ? * [ \\ .. in tag name)"
 placeholder_text = "(e.g: v1.0.0 or stable)"
 emoji_menu_enabled = false
 drag_and_drop_selection_enabled = false
@@ -424,12 +433,15 @@ layout_mode = 2
 [node name="HBox" type="HBoxContainer" parent="MainVBox/ScrollContainer/VBox/Commit&PushPanel/VBox" unique_id=414286567]
 layout_mode = 2
 
-[node name="AmendCheckbox" type="CheckBox" parent="MainVBox/ScrollContainer/VBox/Commit&PushPanel/VBox/HBox" unique_id=412795298]
+[node name="AmendCheckButton" type="CheckButton" parent="MainVBox/ScrollContainer/VBox/Commit&PushPanel/VBox/HBox" unique_id=412795298]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Amend last commit
-(blocked/confirmed if already pushed)"
+tooltip_text = "Amend: replace your last commit instead of adding a new one.
+Staged files are added to it; leave the message empty to keep the old one.
+If it was already pushed, you will be asked to confirm
+and must force-push afterwards."
 mouse_default_cursor_shape = 2
+text = "Amend"
 
 [node name="CommitButton" type="Button" parent="MainVBox/ScrollContainer/VBox/Commit&PushPanel/VBox/HBox" unique_id=19649693]
 unique_name_in_owner = true
@@ -494,6 +506,42 @@ title = "Branches"
 visible = false
 layout_mode = 2
 
+[node name="BranchToolbar" type="HBoxContainer" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox" unique_id=1710000001]
+layout_mode = 2
+
+[node name="FetchBranchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox/BranchToolbar" unique_id=1710000002]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Fetch: download origin's latest branches and commits.
+Your files are not changed."
+mouse_default_cursor_shape = 2
+
+[node name="AddBranchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox/BranchToolbar" unique_id=1710000003]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "New local branch
+(from the current branch)"
+mouse_default_cursor_shape = 2
+toggle_mode = true
+
+[node name="Spacer" type="Control" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox/BranchToolbar" unique_id=1710000004]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="DeleteBranchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox/BranchToolbar" unique_id=1710000005]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Delete the selected local branch.
+Git refuses if it has unmerged commits."
+mouse_default_cursor_shape = 2
+
+[node name="DeleteRemoteBranchButton" type="Button" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox/BranchToolbar" unique_id=1710000006]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Delete the selected branch on origin (GitHub), for everyone.
+Your local branch is not touched."
+mouse_default_cursor_shape = 2
+
 [node name="CreateBranchRow" type="HBoxContainer" parent="MainVBox/ScrollContainer/VBox/BranchPanel/BranchFold/VBox" unique_id=600462773]
 unique_name_in_owner = true
 visible = false
@@ -504,7 +552,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Git strictly forbids spaces
-in branch names"
+in branch name!"
 placeholder_text = "new-branch-name"
 emoji_menu_enabled = false
 drag_and_drop_selection_enabled = false
@@ -528,6 +576,7 @@ layout_mode = 2
 [node name="GitlogFold" type="FoldableContainer" parent="MainVBox/ScrollContainer/VBox" unique_id=1393744662]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Curent branch commit history"
 folded = true
 title = "Commit History"
 

@@ -81,6 +81,8 @@ static func parse_full(raw_diff: String) -> Array[Dictionary]:
 				"lines": [],
 			}
 		elif not current_hunk.is_empty():
+			if line.begins_with("\\"):
+				continue # "\ No newline at end of file": git metadata, not a content line.
 			if line.begins_with("+"):
 				current_hunk["lines"].append({ "type": "add", "text": line.substr(1) })
 			elif line.begins_with("-"):
@@ -101,7 +103,7 @@ static func parse_name_status(raw: String) -> Array[Dictionary]:
 	for line: String in raw.split("\n", false):
 		var parts: PackedStringArray = line.strip_edges().split("\t", false, 1)
 		if parts.size() == 2:
-			result.append({ "status": parts[0], "path": parts[1] })
+			result.append({ "status": parts[0], "path": GitPath.unquote(parts[1]) })
 	return result
 
 

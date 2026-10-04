@@ -1,7 +1,7 @@
 ## github_issue_filter.gd
 ## Type / Priority / Label dropdowns + the matching rule (AND across filters).
 ## Options come from the fetched data, so no vocabulary is hardcoded.
-## RefCounted, constructor-injected — matches the GitLogPanel pattern.
+## RefCounted, constructor-injected — matches the GitotLogPanel pattern.
 class_name GithubIssueFilter
 extends RefCounted
 
@@ -11,6 +11,24 @@ signal changed
 var _type_dropdown: OptionButton
 var _priority_dropdown: OptionButton
 var _label_dropdown: OptionButton
+
+
+static func _sorted_keys(set: Dictionary) -> Array:
+	var keys: Array = set.keys()
+	keys.sort()
+	return keys
+
+
+## Low -> Urgent per GithubIssueParser.PRIORITY_ORDER; unknown options last, A-Z.
+static func _priority_before(a: String, b: String) -> bool:
+	var rank_a: int = _priority_rank(a)
+	var rank_b: int = _priority_rank(b)
+	return rank_a < rank_b if rank_a != rank_b else a < b
+
+
+static func _priority_rank(priority: String) -> int:
+	var rank: int = GithubIssueParser.PRIORITY_ORDER.find(priority)
+	return rank if rank >= 0 else GithubIssueParser.PRIORITY_ORDER.size()
 
 
 func _init(type_dd: OptionButton, priority_dd: OptionButton, label_dd: OptionButton) -> void:
@@ -67,24 +85,6 @@ func _fill(dropdown: OptionButton, all_text: String, values: Array) -> void:
 ## Selected value, "" for the "All ..." item.
 func _selected(dropdown: OptionButton) -> String:
 	return "" if dropdown.selected <= 0 else dropdown.get_item_text(dropdown.selected)
-
-
-static func _sorted_keys(set: Dictionary) -> Array:
-	var keys: Array = set.keys()
-	keys.sort()
-	return keys
-
-
-## Low -> Urgent per GithubIssueParser.PRIORITY_ORDER; unknown options last, A-Z.
-static func _priority_before(a: String, b: String) -> bool:
-	var rank_a: int = _priority_rank(a)
-	var rank_b: int = _priority_rank(b)
-	return rank_a < rank_b if rank_a != rank_b else a < b
-
-
-static func _priority_rank(priority: String) -> int:
-	var rank: int = GithubIssueParser.PRIORITY_ORDER.find(priority)
-	return rank if rank >= 0 else GithubIssueParser.PRIORITY_ORDER.size()
 
 
 func _on_item_selected(_index: int) -> void:

@@ -20,10 +20,15 @@ const USER_AGENT: String = "Gitot-Godot-Plugin"
 ## Page size for fetch_issues(); kept low deliberately (solo/small-repo scope).
 const ISSUES_PER_PAGE: int = 50
 
+## Without a timeout an unreachable GitHub would leave the request pending forever
+## (and "request already in progress" would block every later one).
+const REQUEST_TIMEOUT_SEC: float = 20.0
+
 var _http: HTTPRequest = HTTPRequest.new()
 
 
 func _ready() -> void:
+	_http.timeout = REQUEST_TIMEOUT_SEC
 	add_child(_http)
 	_http.request_completed.connect(_on_request_completed)
 

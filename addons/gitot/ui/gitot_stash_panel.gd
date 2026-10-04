@@ -1,6 +1,6 @@
 ## gitot_stash_panel.gd
 ## Shelf section: stash list (name/branch/date) + Stash/Pop/Drop actions.
-## RefCounted, constructor-injected - matches GitLogPanel/GitotBranchPanel pattern.
+## RefCounted, constructor-injected - matches GitotLogPanel/GitotBranchPanel pattern.
 class_name GitotStashPanel
 extends RefCounted
 

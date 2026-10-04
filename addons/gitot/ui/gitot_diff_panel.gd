@@ -17,7 +17,7 @@ signal restore_file_requested(commit_hash: String, path: String)
 
 const COLOR_ADDED: Color = Color(0.133, 0.545, 0.133, 0.25)
 const COLOR_DELETED: Color = Color(0.3, 0.13, 0.13, 0.6)
-const COLOR_HEADER: Color = Color(0.337, 0.478, 0.436, 0.5)
+const COLOR_HEADER: Color = Color(0.22, 0.545, 0.992, 0.11)
 const SIGN_GUTTER_NAME: String = "diff_sign"
 const LINE_NUM_GUTTER_NAME: String = "diff_line_no"
 const FOLD_GUTTER_NAME: String = "diff_fold"

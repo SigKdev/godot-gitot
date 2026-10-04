@@ -10,8 +10,26 @@ signal push_state_changed(pushing: bool)
 ## Emitted when a tag was created but its push failed (true), or on success/reset (false).
 signal tag_retry_needed(needed: bool)
 
+## What a Push click must do, decided from the branch's sync state (see plan_push()).
+enum PushPlan {
+	NORMAL, ## Plain push (nothing to protect).
+	FORCE_CONFIRM, ## Diverged: ask first, then push with --force-with-lease.
+	BLOCKED_BEHIND, ## Only behind origin: a push could only rewind it. Refuse, tell to pull.
+}
+
 var _git_engine: GitEngine
 var _pending_tag: Dictionary = { }
+
+
+## Pure decision from the ahead/behind counts of HEAD vs its upstream (no git call).
+## Why counts and not "is upstream an ancestor of HEAD": that check is also false when HEAD is
+## merely BEHIND, and a --force-with-lease push from there rewinds origin and drops its newer commits.
+## Behind-only has nothing of ours to publish, so it is never forced.
+## @param has_upstream: false = first push of a branch (nothing to diverge from).
+static func plan_push(has_upstream: bool, ahead: int, behind: int) -> PushPlan:
+	if not has_upstream or behind == 0:
+		return PushPlan.NORMAL
+	return PushPlan.BLOCKED_BEHIND if ahead == 0 else PushPlan.FORCE_CONFIRM
 
 
 func _init(git_engine: GitEngine) -> void:
@@ -49,7 +67,7 @@ func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
-	_context: Dictionary,
+	context: Dictionary,
 ) -> void:
 	match command:
 		GitEngine.Command.PUSH:
@@ -59,11 +77,10 @@ func _on_command_completed(
 		GitEngine.Command.TAG:
 			if exit_code == 0:
 				_git_engine.push_tag(_pending_tag["tag_name"])
-			elif not output.is_empty() and output[0].contains("already exists"):
-				_git_engine.check_tag_collision(_pending_tag["tag_name"])
 			else:
-				GitotLogger.e("Tag creation failed. Tag push aborted!")
-				_pending_tag = { }
+				# Never match git's error text (localized): let rev-parse decide if the tag exists.
+				var error: String = output[0] if not output.is_empty() else ""
+				_git_engine.check_tag_collision(_pending_tag["tag_name"], error)
 		GitEngine.Command.PUSH_TAG:
 			if exit_code == 0:
 				GitotLogger.s("Tag pushed")
@@ -76,15 +93,27 @@ func _on_command_completed(
 				)
 				tag_retry_needed.emit(true)
 		GitEngine.Command.TAG_COLLISION_CHECK:
-			_handle_tag_collision_result(exit_code, output)
+			_handle_tag_collision_result(exit_code, output, context)
 
 
 ## Resolves a "tag already exists" TAG failure using the two SHAs from
 ## check_tag_collision(). Only pushes if the existing local tag already
 ## points at HEAD (legitimate retry after a prior failed push) - never
-## pushes a same-named tag pointing at an unrelated commit. A failed/short
-## rev-parse (exit_code != 0, or fewer than 2 SHAs) is treated as a mismatch
-func _handle_tag_collision_result(exit_code: int, output: Array[String]) -> void:
+## pushes a same-named tag pointing at an unrelated commit.
+## A failed rev-parse means the tag doesn't exist, so the original creation error is reported
+func _handle_tag_collision_result(
+	exit_code: int,
+	output: Array[String],
+	context: Dictionary,
+) -> void:
+	if exit_code != 0:
+		# Tag doesn't exist: the creation failed for another reason (name, identity, signing...).
+		GitotLogger.e("Tag creation failed. Tag push aborted!")
+		var error: String = context.get("error", "")
+		if not error.is_empty():
+			GitotLogger.g(error) # git's real message, previously swallowed.
+		_pending_tag = { }
+		return
 	var tag_name: String = _pending_tag.get("tag_name", "")
 	var shas: PackedStringArray = (
 		String(output[0]).strip_edges().split("\n", false)

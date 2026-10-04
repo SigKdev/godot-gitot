@@ -1,5 +1,5 @@
 ## gitot_branch_creator.gd
-## Inline "new branch" row of the Branches section: "+" toggle in the fold title bar,
+## Inline "new branch" row of the Branches section: "+" toggle (scene toolbar row),
 ## name field + Create button, optional confirmation ("confirm_create_branch" setting).
 ## RefCounted, constructor-injected - same pattern as GitotStashPanel.
 class_name GitotBranchCreator
@@ -15,11 +15,13 @@ var _add_button: Button
 var _pending_name: String = ""
 
 
-## @param fold: hosts the row; the "+" toggle is added to its title bar.
+## @param fold: hosts the row (unfolded when the "+" is toggled on).
+## @param add_button: scene toggle button; icon and signal are wired here.
 ## @param row: container of name_edit + create_button, hidden until "+" is toggled on.
 func _init(
 	git_engine: GitEngine,
 	fold: FoldableContainer,
+	add_button: Button,
 	row: Control,
 	name_edit: LineEdit,
 	create_button: Button,
@@ -31,12 +33,8 @@ func _init(
 	_name_edit = name_edit
 	_confirm_dialog = confirm_dialog
 
-	_add_button = GitotUi.add_title_button(
-		_fold,
-		"Add",
-		"New local branch\n(from the current branch)",
-		true,
-	)
+	_add_button = add_button
+	_add_button.icon = GitotUi.get_icon("Add")
 	_add_button.toggled.connect(_on_add_toggled)
 	create_button.pressed.connect(_on_create_pressed)
 	_name_edit.text_submitted.connect(_on_create_pressed) # Enter key.

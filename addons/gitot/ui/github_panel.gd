@@ -29,6 +29,7 @@ var _issues_accumulated: Array = [] # Raw JSON items across pages, parsed once c
 
 @onready var _api: GithubApi = %GithubApi
 @onready var _detail: IssueDetail = %IssueDetail
+@onready var _repo_label: Label = %RepoLabel
 
 
 func _ready() -> void:
@@ -53,8 +54,13 @@ func _ready() -> void:
 	_api.request_failed.connect(_on_request_failed)
 
 
-func set_plugin_version(plugin_version: String) -> void:
-	%GitotVersion2.text = "[b][font_size=24]Gitot[/font_size][/b] [font_size=11]v%s[/font_size]" % plugin_version
+## Header text: "owner/repo" while the count is unknown (negative), else "owner/repo  ·  3 open".
+## The list only holds open issues (state=open) without pull requests, so the count is exact.
+static func _header_text(owner: String, repo: String, open_count: int) -> String:
+	if owner.is_empty():
+		return "Open issues"
+	var text: String = "%s/%s" % [owner, repo]
+	return text if open_count < 0 else "%s  ·  %d open" % [text, open_count]
 
 
 func set_git_engine(engine: GitEngine) -> void:
@@ -74,6 +80,7 @@ func fetch_current_repo_issues() -> void:
 	_issues_repo = owner_repo["repo"]
 	_issues_page = 1
 	_issues_accumulated.clear()
+	_repo_label.text = _header_text(_issues_owner, _issues_repo, -1)
 	_api.fetch_issues(_issues_owner, _issues_repo, _issues_page)
 	_set_refresh_state(RefreshButtonState.LOADING)
 	%StatusLabel.visible = false
@@ -145,6 +152,7 @@ func _on_request_succeeded(data: Variant) -> void:
 	%StatusLabel.visible = false
 	var entries: Array[Dictionary] = GithubIssueParser.parse(_issues_accumulated)
 	_issue_list.populate(entries)
+	_repo_label.text = _header_text(_issues_owner, _issues_repo, entries.size())
 	if entries.is_empty():
 		_set_refresh_state(RefreshButtonState.IDLE, "No issues (Refresh)")
 
@@ -154,6 +162,7 @@ func _on_clear_token_pressed() -> void:
 	GithubAuth.clear_token()
 	has_fetched = false
 	_set_refresh_state(RefreshButtonState.NEEDS_AUTH)
+	_repo_label.text = _header_text(_issues_owner, _issues_repo, -1)
 	_issue_list.populate([])
 
 

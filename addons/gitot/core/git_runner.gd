@@ -4,10 +4,23 @@
 class_name GitRunner
 extends RefCounted
 
+## Emitted when the write lock is taken (true) or released (false). UI shows a busy state from it,
+## so any write (commit, stage, stash...) is covered without per-button wiring.
+signal write_busy_changed(busy: bool)
+
 ## Timeout for bounded local reads (execute_bounded). Short: these are cheap plumbing
 ## commands, a hang past this means a stuck lock/gc, not normal latency.
 ## Distinct from the user-set "network_timeout_sec" (push/pull).
 const LOCAL_TIMEOUT_SEC: float = 5.0
+
+## Max chars of path arguments per git call. Windows CreateProcess caps the WHOLE command
+## line at 32767; 24000 leaves headroom for "git -C <root> add --" and arg quoting.
+const MAX_ARGS_CHARS: int = 24000
+
+## Whitelist for every argument interpolated into run_network()'s shell string: letters, digits
+## and . _ / - @ + : only. Space, quotes and & | < > ^ % ! ; $ ` ( ) { } # ~ * ? [ \ all have a
+## meaning in cmd.exe or sh, yet are legal in git ref names, so a blacklist can never be complete.
+const SHELL_SAFE_PATTERN: String = "^[A-Za-z0-9._/@+:-]+$"
 
 ## PID → temp log path of running network operations (push/pull). Tracks both so a
 ## mid-operation kill (timeout or teardown) can also remove the orphaned log file.
@@ -26,7 +39,7 @@ static func _project_root() -> String:
 ## Builds the shell + args that redirect a git call's stdout/stderr to log_path and
 ## append a trailing exit-status marker. Shared by run_network() and execute_bounded()
 ## — single source for this shell contract.
-## SECURITY: only ever receives static, hardcoded args (see run_network()).
+## SECURITY: args are static (execute_bounded) or whitelisted by run_network() (is_shell_safe).
 static func _shell_invocation(args: PackedStringArray, log_path: String) -> Array:
 	var git_cmd: String = (
 		"git -C \"%s\" %s > \"%s\" 2>&1 && echo EXITCODE:0 >> \"%s\" || echo EXITCODE:1 >> \"%s\""
@@ -39,6 +52,12 @@ static func _shell_invocation(args: PackedStringArray, log_path: String) -> Arra
 	return [shell, shell_args]
 
 
+## True if arg can be placed in the shell string of run_network() without being interpreted.
+## Single source of truth for that rule; also used to validate names BEFORE they are created.
+static func is_shell_safe(arg: String) -> bool:
+	return RegEx.create_from_string(SHELL_SAFE_PATTERN).search(arg) != null
+
+
 ## Splits a redirected git-call log into [success: bool, cleaned text: String].
 static func _parse_log(log_content: String) -> Array:
 	var success: bool = log_content.contains("EXITCODE:0")
@@ -47,6 +66,41 @@ static func _parse_log(log_content: String) -> Array:
 			.replace("EXITCODE:1", "") \
 			.strip_edges()
 	return [success, clean]
+
+
+## Windows: OS.execute() decodes the pipe with the ANSI code page, so UTF-8 text comes back garbled
+## ("é" -> "Ã©"). Re-encoding with that same code page restores the raw bytes git wrote;
+## they are then decoded once, as UTF-8. No-op elsewhere (UTF-8 already) and on ASCII.
+static func _fix_encoding(text: String) -> String:
+	# ASCII-only text (and "") is identical in every encoding: skip the conversion. The OS call
+	# rejects empty input (error 87), and this keeps the common case cheap.
+	if OS.get_name() != "Windows" or text.to_utf8_buffer().size() == text.length():
+		return text
+	var bytes: PackedByteArray = text.to_multibyte_char_buffer() # Back to the raw bytes git wrote.
+	return bytes.get_string_from_utf8() if not bytes.is_empty() else text
+
+
+## Splits args after the "--" separator so each call's paths fit MAX_ARGS_CHARS.
+## No "--" or short list -> a single chunk, identical to the old behaviour.
+static func _chunk_args(args: PackedStringArray) -> Array[PackedStringArray]:
+	var chunks: Array[PackedStringArray] = []
+	var sep: int = args.find("--")
+	if sep == -1:
+		chunks.append(args)
+		return chunks
+	var head: PackedStringArray = args.slice(0, sep + 1) # e.g. ["add", "--"]
+	var current: PackedStringArray = head.duplicate()
+	var used: int = 0
+	for i: int in range(sep + 1, args.size()):
+		var cost: int = args[i].length() + 3 # separator + worst-case quotes
+		if used + cost > MAX_ARGS_CHARS and current.size() > head.size():
+			chunks.append(current)
+			current = head.duplicate()
+			used = 0
+		current.append(args[i])
+		used += cost
+	chunks.append(current)
+	return chunks
 
 
 ## True while a write op holds the lock (see _write_busy).
@@ -60,10 +114,11 @@ func is_write_busy() -> bool:
 ## @param on_done: Callable(exit_code: int, output: Array[String]), called on the main thread.
 func run_fast(label: String, args: PackedStringArray, is_write: bool, on_done: Callable) -> void:
 	if _write_busy:
-		GitotLogger.w("%s skipped: another git write was still running." % label.capitalize())
+		GitotLogger.i("%s skipped: Git is still finishing the previous change. Try again." % label.capitalize())
 		return
 	if is_write:
 		_write_busy = true
+		write_busy_changed.emit(true)
 	WorkerThreadPool.add_task(_execute_and_report.bind(args, is_write, on_done))
 
 
@@ -79,9 +134,14 @@ func run_network(label: String, args: PackedStringArray, on_done: Callable) -> v
 		"user://gitot_%s_%d.log" % [label, Time.get_ticks_usec()]
 	)
 
-	# SECURITY: this shell string only ever receives static, hardcoded args
-	# (push/pull with no user-supplied values). Never interpolate user input
-	# (branch names, messages, paths) into it without escaping.
+	# SECURITY: args are joined into a shell string. Refuse anything outside the whitelist
+	# (see SHELL_SAFE_PATTERN) instead of trying to escape it for two different shells.
+	for arg: String in args:
+		if not is_shell_safe(arg):
+			var refused: Array[String] = ["Refused: '%s' has characters that are unsafe for the shell." % arg]
+			on_done.call_deferred(-1, refused)
+			return
+
 	var shell_invocation: Array = _shell_invocation(args, log_path)
 	var pid: int = OS.create_process(shell_invocation[0], shell_invocation[1])
 	if pid == -1:
@@ -171,8 +231,14 @@ func _poll_process(pid: int, log_path: String, start_time_ms: int, on_done: Call
 ## Runs on a WorkerThreadPool thread.
 func _execute_and_report(args: PackedStringArray, is_write: bool, on_done: Callable) -> void:
 	var output: Array[String] = []
-	var full_args: PackedStringArray = PackedStringArray(["-C", _project_root()]) + args
-	var exit_code: int = OS.execute("git", full_args, output, true)
+	var exit_code: int = 0
+	for chunk: PackedStringArray in _chunk_args(args):
+		var full_args: PackedStringArray = PackedStringArray(["-C", _project_root()]) + chunk
+		exit_code = OS.execute("git", full_args, output, true) # Appends one entry per call.
+		if exit_code != 0:
+			break # Report the first failure; don't pile more calls onto it.
+	for i: int in output.size():
+		output[i] = _fix_encoding(output[i])
 	call_deferred("_finish_fast", exit_code, output, is_write, on_done)
 
 
@@ -180,4 +246,5 @@ func _execute_and_report(args: PackedStringArray, is_write: bool, on_done: Calla
 func _finish_fast(exit_code: int, output: Array[String], is_write: bool, on_done: Callable) -> void:
 	if is_write:
 		_write_busy = false
+		write_busy_changed.emit(false)
 	on_done.call(exit_code, output)

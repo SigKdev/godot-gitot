@@ -17,6 +17,9 @@ signal command_completed(
 	context: Dictionary,
 )
 
+## Re-emitted from GitRunner: a write op started (true) / finished (false). Drives UI busy states.
+signal write_busy_changed(busy: bool)
+
 ## Identifies which git operation a command_completed signal refers to.
 ## Enum key names double as display strings via Command.keys()[cmd].capitalize()
 ## (e.g. STASH_POP -> "Stash Pop") — keep key names matching that pattern.
@@ -42,6 +45,7 @@ enum Command {
 	SWITCH,
 	CREATE_BRANCH,
 	DELETE_BRANCH,
+	DELETE_REMOTE_BRANCH,
 	LOG,
 	TAG,
 	TAG_COLLISION_CHECK,
@@ -49,6 +53,15 @@ enum Command {
 	LAST_COMMIT_MSG,
 	REFLOG,
 	RESTORE_FILE,
+	LFS_VERSION,
+	LFS_STATE,
+	LFS_LS_FILES,
+	LFS_TRACK,
+	LFS_UNTRACK,
+	LFS_INSTALL,
+	LFS_PULL,
+	LFS_PRUNE,
+	COUNT_OBJECTS,
 }
 
 ## Canonical status args. --untracked-files=all forces recursion into
@@ -84,10 +97,14 @@ const BRANCH_LIST_FORMAT: String = (
 	+ UNIT_SEP + "%(objectname:short)" + UNIT_SEP + "%(subject)"
 )
 
-## Shell metacharacters valid in git ref names but unsafe once interpolated into
-## the shell string run_network() builds (see push_tag()). Rejected in create_tag()
-## since it gates every path that can lead there.
-const UNSAFE_TAG_CHARS: String = "$`;&"
+## Branch names this plugin may send to origin (strict subset of git's rules, see delete_remote_branch()):
+## starts with a letter/digit, then letters, digits and . _ / - only. Also excludes every shell metacharacter.
+const SAFE_BRANCH_PATTERN: String = "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+
+## Git ref-name rules that make a tag name invalid (see `git check-ref-format`):
+## whitespace/control chars and ~ ^ : ? * [ \ | ".." | "@{" | lone "@" | leading "-" or "/"
+## | trailing "/" or "." | "//" | ".lock" component | component starting with ".".
+const INVALID_TAG_PATTERN: String = r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|^@$|^[-/]|[/.]$|//|\.lock(/|$)|(^|/)\."
 
 ## Commands that mutate the index, working tree, or refs. Only these need
 ## mutual exclusion — read-only commands (STATUS, LOG, DIFF, BRANCHES, ...)
@@ -105,6 +122,10 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.DELETE_BRANCH,
 	Command.TAG,
 	Command.RESTORE_FILE,
+	Command.LFS_TRACK,
+	Command.LFS_UNTRACK,
+	Command.LFS_INSTALL,
+	Command.LFS_PRUNE,
 ]
 
 ## Max reflog entries shown by the console's Reflog button.
@@ -114,21 +135,11 @@ const REFLOG_COUNT: int = 20
 var _runner: GitRunner = GitRunner.new()
 
 
-## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
-## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
-static func parse_owner_repo(url: String) -> Dictionary:
-	var cleaned: String = url.trim_suffix(".git")
-	var parts: PackedStringArray = cleaned.split("/")
-	if parts.size() < 2:
-		return { }
-	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
+func _init() -> void:
+	_runner.write_busy_changed.connect(write_busy_changed.emit)
 
 
 #region check version
-## Checks if 'git' is callable from the OS PATH.
-# static func is_git_available() -> bool:
-# 	var output: Array[String] = []
-# 	return OS.execute("git", ["--version"], output) == 0
 ## Checks if 'git' is callable from the OS PATH.
 static func is_git_available() -> bool:
 	return not get_git_version().is_empty()
@@ -142,6 +153,25 @@ static func get_git_version() -> String:
 ## "3.5.1" from "git-lfs/3.5.1 (GitHub; ...)"; "" if git-lfs is not installed.
 static func get_lfs_version() -> String:
 	return _first_line(["lfs", "version"]).get_slice(" ", 0).trim_prefix("git-lfs/")
+#endregion
+
+
+## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
+## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
+static func parse_owner_repo(url: String) -> Dictionary:
+	var cleaned: String = url.trim_suffix(".git")
+	var parts: PackedStringArray = cleaned.split("/")
+	if parts.size() < 2:
+		return { }
+	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
+
+
+## True if git would accept tag_name. Checked BEFORE the push so a bad name can't leave
+## a pushed commit without its tag.
+static func is_valid_tag_name(tag_name: String) -> bool:
+	return not tag_name.is_empty() and RegEx.create_from_string(INVALID_TAG_PATTERN).search(
+			tag_name
+		) == null
 
 
 ## Runs `git <args>` synchronously (startup checks only) and returns the first stdout line.
@@ -152,7 +182,6 @@ static func _first_line(args: PackedStringArray) -> String:
 	if OS.execute("git", args, output, true) != 0 or output.is_empty():
 		return ""
 	return output[0].get_slice("\n", 0).strip_edges()
-#endregion
 
 
 ## Turns an GitRunner.execute_bounded() name-list result into {"reliable": bool, "files": PackedStringArray}.
@@ -161,9 +190,9 @@ static func _to_file_list(result: Array) -> Dictionary:
 	if result[0] != 0:
 		return { "reliable": false, "files": PackedStringArray() }
 	var stdout: String = String(result[1]).strip_edges()
-	var files: PackedStringArray = (
-		PackedStringArray() if stdout.is_empty() else PackedStringArray(stdout.split("\n", false))
-	)
+	var files: PackedStringArray = PackedStringArray()
+	for line: String in stdout.split("\n", false): # Empty stdout -> no lines.
+		files.append(GitPath.unquote(line))
 	return { "reliable": true, "files": files }
 
 
@@ -183,20 +212,11 @@ func run_fast(command: Command, args: PackedStringArray, context: Dictionary = {
 ## Output is captured via shell redirection to a temp file, since
 ## OS.create_process() alone does not expose stdout/stderr.
 ## @param command: identifies the operation (e.g. Command.PUSH).
-## @param args: git subcommand arguments (e.g. ["push", "origin", "main"]).
-func run_network(command: Command, args: PackedStringArray) -> void:
-	_runner.run_network(Command.keys()[command], args, _relay.bind(command, { }))
-
-
-## True if a plain push would be rejected (local HEAD diverged from its
-## upstream - e.g. after an amend/rebase). No upstream at all -> false
-## (first push, nothing to diverge from). Bounded sync check, run right
-## before a push.
-func needs_force_push() -> bool:
-	var upstream: Array = _runner.execute_bounded(["rev-parse", "--abbrev-ref", "@{u}"])
-	if upstream[0] != 0:
-		return false # No upstream at all - nothing to diverge from.
-	return _runner.execute_bounded(["merge-base", "--is-ancestor", "@{u}", "HEAD"])[0] == 1
+## @param args: git subcommand arguments (e.g. ["push", "origin", "main"]). Every argument must pass
+## GitRunner.is_shell_safe(), otherwise nothing runs and the command completes with exit code -1.
+## @param context: optional per-call data, returned unchanged in command_completed.
+func run_network(command: Command, args: PackedStringArray, context: Dictionary = { }) -> void:
+	_runner.run_network(Command.keys()[command], args, _relay.bind(command, context))
 
 
 ## Returns the "origin" remote URL, or an empty string on failure.
@@ -218,6 +238,12 @@ func request_last_commit_message() -> void:
 ## @param count: max number of commits to fetch (dropdown-controlled: 10/20/30).
 func get_log(count: int) -> void:
 	run_fast(Command.LOG, ["log", "-n", str(count), LOG_FORMAT, "--date=format:%Y-%m-%d %H:%M"])
+
+
+## Requests the repository's object-store size (`git count-objects -vH`, human-readable units).
+## Read-only/local. Result arrives via command_completed(COUNT_OBJECTS, ...).
+func get_repo_size() -> void:
+	run_fast(Command.COUNT_OBJECTS, ["count-objects", "-vH"])
 
 
 ## Requests the most recent reflog entries. Read-only/local, so it runs via run_fast
@@ -275,25 +301,54 @@ func track_remote_branch(remote_name: String) -> void:
 ## (merged into its upstream, or into HEAD when it has none). Caller must confirm first.
 ## Git's output contains the old tip SHA (recoverable via `git branch <name> <sha>`).
 ## @param branch_name: existing local branch, not the checked-out one (git refuses that too).
-func delete_branch(branch_name: String) -> void:
-	run_fast(Command.DELETE_BRANCH, ["branch", "-d", branch_name])
+## @param on_remote: a copy exists on origin; only travels in the context so the result can remind the user.
+func delete_branch(branch_name: String, on_remote: bool = false) -> void:
+	run_fast(
+		Command.DELETE_BRANCH,
+		["branch", "-d", branch_name],
+		{ "branch": branch_name, "on_remote": on_remote },
+	)
 
 
-## Returns the current branch name, or empty string on failure (e.g. detached HEAD).
-func get_current_branch() -> String:
-	var result: Array = _runner.execute_bounded(["branch", "--show-current"])
-	if result[0] != 0:
-		return ""
-	return String(result[1]).strip_edges()
+## True if name is a branch name this plugin will send to origin (see SAFE_BRANCH_PATTERN).
+static func is_safe_branch_name(branch_name: String) -> bool:
+	return RegEx.create_from_string(SAFE_BRANCH_PATTERN).search(branch_name) != null
+
+
+## Deletes a branch on origin: `git push origin --delete refs/heads/<name>`. Network op, caller
+## must confirm first. Safe by construction: only the named ref is touched, never a force push,
+## "refs/heads/" avoids a tag of the same name being hit, and the name must pass is_safe_branch_name()
+## (it ends up in a shell string). The server may still refuse (default/protected branch): its message
+## is shown. Restore after a mistake: `git push origin <old tip sha>:refs/heads/<name>` (caller logs the sha).
+## Completes with exit code -1 and no git call when the name is unsafe.
+## @param branch_name: name WITHOUT the "origin/" prefix.
+func delete_remote_branch(branch_name: String) -> void:
+	var context: Dictionary = { "branch": branch_name }
+	if not is_safe_branch_name(branch_name):
+		var failure: Array[String] = [
+			"Branch name '%s' has unsupported characters: delete it from a terminal or on GitHub." % branch_name,
+		]
+		_relay.call_deferred(-1, failure, Command.DELETE_REMOTE_BRANCH, context)
+		return
+	run_network(
+		Command.DELETE_REMOTE_BRANCH,
+		["push", "origin", "--delete", "refs/heads/" + branch_name],
+		context,
+	)
+
 #endregion
 
 
-## Checks whether tag_name already points at HEAD, to resolve a "tag already
-## exists" collision. One rev-parse call for both SHAs (one per output line)
-## instead of two round trips. Result via command_completed(TAG_COLLISION_CHECK, ...).
-## @param tag_name: existing local tag to compare against HEAD.
-func check_tag_collision(tag_name: String) -> void:
-	run_fast(Command.TAG_COLLISION_CHECK, ["rev-parse", tag_name, "HEAD"])
+## Checks whether tag_name already points at HEAD, to resolve a failed create_tag().
+## "~0" peels an annotated tag to its commit (plain rev-parse gives the tag object's SHA, never == HEAD).
+## Exit != 0 means the tag doesn't exist, so create_tag failed for another reason.
+## @param create_error: git's output from the failed create_tag, returned in the context.
+func check_tag_collision(tag_name: String, create_error: String = "") -> void:
+	run_fast(
+		Command.TAG_COLLISION_CHECK,
+		["rev-parse", tag_name + "~0", "HEAD"],
+		{ "error": create_error },
+	)
 
 
 #region Stash
@@ -401,25 +456,23 @@ func restore_file(commit_hash: String, path: String) -> void:
 
 ## Creates an annotated tag on HEAD. Local/fast op, no network involved.
 ## @param tag_name: tag identifier (e.g. "v0.3.0"). Rejects shell-unsafe characters
-## ($, `, ;, &) even though git's own ref-name rules allow them — see push_tag().
+## (GitRunner.is_shell_safe) even though git's own ref-name rules allow them — see push_tag().
 ## @param message: annotation message (commit message or custom, from caller).
 func create_tag(tag_name: String, message: String) -> void:
-	for c in UNSAFE_TAG_CHARS:
-		if tag_name.contains(c):
-			# Typed var required: _relay() takes Array[String], an untyped literal would be rejected.
-			var failure: Array[String] = ["Tag name contains unsafe character '%s'." % c]
-			_relay.call_deferred(-1, failure, Command.TAG, { })
-			return
+	if not GitRunner.is_shell_safe(tag_name):
+		# Typed var required: _relay() takes Array[String], an untyped literal would be rejected.
+		var failure: Array[String] = [
+			"Tag name '%s' has unsupported characters. Use letters, digits and . _ - / + @ : only." % tag_name,
+		]
+		_relay.call_deferred(-1, failure, Command.TAG, { })
+		return
 	run_fast(Command.TAG, ["tag", "-a", tag_name, "-m", message])
 
 
 ## Pushes a tag to origin. Network op — reuses run_network's kill-on-timeout guard.
-## SECURITY: tag_name is interpolated into a shell string (see run_network).
-## Git's ref-name validation (enforced during create_tag) rejects most
-## shell-breaking characters, but create_tag()'s UNSAFE_TAG_CHARS check is what
-## actually closes the gap for the rest ($, `, ;, &).
-## Only call this after create_tag() succeeded on the same tag_name,
-## never with a raw, unvalidated user string.
+## SECURITY: tag_name is interpolated into a shell string (see run_network), which refuses
+## anything outside GitRunner.SHELL_SAFE_PATTERN; create_tag() applies the same rule up front so a
+## tag is never created that cannot be pushed.
 ## @param tag_name: tag identifier to push (already validated by create_tag).
 func push_tag(tag_name: String) -> void:
 	run_network(Command.PUSH_TAG, ["push", "origin", tag_name])

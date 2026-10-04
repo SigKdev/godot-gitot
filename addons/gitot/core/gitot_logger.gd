@@ -50,8 +50,9 @@ static func x(message: String) -> void:
 	_print(message, Level.EXTREME)
 
 
+## Raw git output: "[" is escaped so text like "[main abc1234] msg" can never be read as a BBCode tag.
 static func g(message: String) -> void:
-	_print(message, Level.GIT)
+	_print(message.replace("[", "[lb]"), Level.GIT)
 
 
 static func _print(message: String, level: Level) -> void:

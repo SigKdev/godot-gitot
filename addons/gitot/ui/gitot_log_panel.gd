@@ -1,7 +1,7 @@
 ## git_log_panel.gd
 ## Commit history section: count-filtered Tree list (message/author/date).
 ## RefCounted, constructor-injected — matches GitotBranchPanel/GitotTagPanel pattern.
-class_name GitLogPanel
+class_name GitotLogPanel
 extends RefCounted
 
 ## Emitted when a history row is selected (click or arrow keys).

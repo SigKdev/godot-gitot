@@ -33,25 +33,20 @@ grow_vertical = 2
 [node name="PanelToolbar" type="HBoxContainer" parent="VBoxContainer" unique_id=583012369]
 layout_mode = 2
 
-[node name="GitotVersion2" type="RichTextLabel" parent="VBoxContainer/PanelToolbar" unique_id=1610675493]
+[node name="RepoLabel" type="Label" parent="VBoxContainer/PanelToolbar" unique_id=1610675493]
 unique_name_in_owner = true
 layout_mode = 2
-bbcode_enabled = true
-text = "[b][font_size=24]Gitot[/font_size][/b] [font_size=11]v0.11.0[/font_size]"
-fit_content = true
-autowrap_mode = 0
-
-[node name="--" type="VSeparator" parent="VBoxContainer/PanelToolbar" unique_id=1167319272]
-layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Repository whose open issues are listed (read from the 'origin' remote)."
+mouse_filter = 0
+text = "Open issues"
+text_overrun_behavior = 3
 
 [node name="RefreshButton" type="Button" parent="VBoxContainer/PanelToolbar" unique_id=1959625265]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_default_cursor_shape = 2
 text = "Refresh Issues"
-
-[node name="---" type="VSeparator" parent="VBoxContainer/PanelToolbar" unique_id=621326735]
-layout_mode = 2
 
 [node name="ClearTokenButton" type="Button" parent="VBoxContainer/PanelToolbar" unique_id=298087169]
 unique_name_in_owner = true
