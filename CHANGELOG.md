@@ -2,6 +2,38 @@
 
 All notable changes to Gitot. Latest first.
 
+## v0.15.2
+fix: console leak, UI freezes while a write runs, hot-reload null regex - refactor: dock split, typed branch entries, one sync state
+
+Tested with GdUnit4 (18 suites, 146 tests, 0 failures) and by hand in the editor.
+
+fix: stability
+
+- Console label cap: `queue_free()` keeps a node counted until frame end, so a burst of lines removed only one label. The oldest label is now detached first (`remove_child`).
+- Write lock: `GitRunner.run_fast()` blocks only writes while a write runs; reads always run. Before, a read dropped during a write never completed: the commit diff viewer could stay stuck for the session, and the push-time commit-message lookup and the LFS state check could hang.
+- `git status` runs with `--no-optional-locks`: a background refresh can no longer take `index.lock` from a commit or stage.
+- `stash pop`, `remote get-url` and the changed-files lookup after a switch/pull are async. `GitRunner.execute_bounded()` (a busy-wait that could block the UI up to 5 s) is removed. Pop lists the touched files first, then pops with that list as context (`GitEngine.to_file_list()`, `remote_url_of()`).
+- Diff gutter: the "already connected" guard tested the unbound callable and was never true. The bound callable is now built once, tested and connected (no duplicate `hunk_clicked`).
+- Static regexes (tag name, branch name, shell whitelist, hunk headers, issue slug) are compiled on first use. A `static var` initializer is not re-run on editor hot-reload and left them `null` ("Cannot call method 'search' on a null value" on save).
+- `GitRunner._poll_process` ignores a pid after `teardown()` (hot-reload).
+- Diff parser: an added line starting with `++ b/` is no longer read as a file header (checked only outside a hunk).
+- `create_tag` / `push_tag` reject a leading `-`. `network_timeout_sec` is clamped to 30 s minimum (a hand-edited `0` killed every network op).
+- `GithubApi` creates its `HTTPRequest` in `_ready()` (no node leak if never in the tree).
+- A tag name that already exists on another commit now raises an editor toast (it was only logged).
+- Stage / unstage and the LFS "ready" event refresh only the file lists (one `git status`) instead of the full 5-command refresh.
+- First open of the LFS tab shows "Loading LFS files..." until the list arrives.
+- Startup check `git rev-parse --show-prefix`: warns once if the Godot project is not the repository root.
+
+refactor: structure
+
+- `GitotDock` 538 -> ~390 lines: `_ready()` is split into setup steps, and three modules are extracted: `GitotEditorSync` (editor refresh after git changed files), `GitotPushFlow` (push use case, tag input validation), `GitotWorkingDiff` (working-tree diff mode, mirrors `GitotCommitLogDiff`).
+- `GitotRepoState` (new, `core/`): single source for upstream / ahead / behind with a `changed` signal. The router writes it, the status panel, branch panel and push flow read it. The router's 60-line sync handler is split (fetch, ahead/behind, push/pull). `stash_popped` is replaced by `files_changed`.
+- `GitBranchEntry` (new, `core/`): typed branch row replaces the Dictionary (`GitBranchParser.parse()` returns `Array[GitBranchEntry]`; `hash` is now `commit_hash`).
+- `GitSyncOrchestrator` no longer touches `EditorInterface` (emits `tag_conflict`; the dock shows the toast).
+- `GitotLogger`: history is private (`get_history()`, `clear_history()`); EXTREME prints `[Gitot Fatal]`.
+- `MAX_DIFF_CHARS` moved to `GitotDiffPanel`. Typed `for` loops, plan/history comments and dead code removed.
+<hr>
+
 ## v0.15.1
 fix: shell injection surface - safer push and remote delete - clearer messages - feat: LFS dashboard
 

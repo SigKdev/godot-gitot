@@ -13,10 +13,10 @@ static func parse(raw: String) -> Array[Dictionary]:
 	if raw.strip_edges().is_empty():
 		return entries
 
-	for line in raw.strip_edges().split("\n", false):
+	for line: String in raw.strip_edges().split("\n", false):
 		var fields: PackedStringArray = line.split(GitEngine.UNIT_SEP)
 		if fields.size() != 5:
-			continue # Malformed line safeguard - skip rather than crash the UI.
+			continue # Malformed line: skip it.
 		entries.append(
 			{
 				"hash": fields[0],

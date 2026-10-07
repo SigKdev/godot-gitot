@@ -4,39 +4,36 @@
 class_name GitotResultRouter
 extends RefCounted
 
-## Emitted after HEAD moves (switch/create/pull); dock notifies
-## EditorFileSystem/script editor of files changed on disk.
+## Emitted after HEAD moves (switch/create/pull); dock requests the changed-file listing
+## (answered by files_changed).
 signal head_moved
 
 ## Emitted after a successful file restore; dock refreshes EditorFileSystem/open tabs.
 signal file_restored(path: String)
 
-## Emitted after a successful stash pop with the files it touched ({"reliable", "files"});
-## dock refreshes EditorFileSystem/open tabs.
-signal stash_popped(result: Dictionary)
+## Emitted with the files git changed on disk ({"reliable", "files"}): after a successful stash pop,
+## and once the post-HEAD-move listing (CHANGED_FILES) arrives. Dock refreshes EditorFileSystem/open tabs.
+signal files_changed(result: Dictionary)
 
 var _git_engine: GitEngine
+var _repo_state: GitotRepoState
 var _status_panel: GitotStatusPanel
 var _status_tree: GitotStatusTree
 var _branch_panel: GitotBranchPanel
 var _log_panel: GitotLogPanel
 var _stash_panel: GitotStashPanel
 
-var _has_upstream: bool = false
-var _ahead_count: int = 0
-var _behind_count: int = 0
-
 
 ## Determines whether a branch exists locally, remotely, or both.
-static func _get_branch_scope(branch_name: String, branches: Array[Dictionary]) -> String:
+static func _get_branch_scope(branch_name: String, branches: Array[GitBranchEntry]) -> String:
 	var local_exists: bool = false
 	var remote_exists: bool = false
 
-	for branch: Dictionary in branches:
-		if branch["is_remote"]:
-			if branch["name"] == "origin/" + branch_name:
+	for branch: GitBranchEntry in branches:
+		if branch.is_remote:
+			if branch.name == "origin/" + branch_name:
 				remote_exists = true
-		elif branch["name"] == branch_name:
+		elif branch.name == branch_name:
 			local_exists = true
 
 	var label: String = GitotUi.scope_label(local_exists, remote_exists)
@@ -57,15 +54,16 @@ static func _commit_summary(raw: String) -> String:
 
 
 ## Finds the current branch's name from an already-parsed branch list.
-static func _get_current_branch_from_list(branches: Array[Dictionary]) -> String:
-	for branch: Dictionary in branches:
-		if branch["is_current"]:
-			return branch["name"]
+static func _get_current_branch_from_list(branches: Array[GitBranchEntry]) -> String:
+	for branch: GitBranchEntry in branches:
+		if branch.is_current:
+			return branch.name
 	return ""
 
 
 func _init(
 	git_engine: GitEngine,
+	repo_state: GitotRepoState,
 	status_panel: GitotStatusPanel,
 	status_tree: GitotStatusTree,
 	branch_panel: GitotBranchPanel,
@@ -73,25 +71,12 @@ func _init(
 	stash_panel: GitotStashPanel,
 ) -> void:
 	_git_engine = git_engine
+	_repo_state = repo_state
 	_status_panel = status_panel
 	_status_tree = status_tree
 	_branch_panel = branch_panel
 	_log_panel = log_panel
 	_stash_panel = stash_panel
-
-
-## Read by GitotDock's amend/push guards (HEAD == upstream check).
-func has_upstream() -> bool:
-	return _has_upstream
-
-
-func ahead_count() -> int:
-	return _ahead_count
-
-
-## Commits on the upstream that HEAD lacks (read by the dock's push guard).
-func behind_count() -> int:
-	return _behind_count
 
 
 ## Routes a finished GitEngine command to its domain handler.
@@ -112,10 +97,12 @@ func route(
 			_handle_stash_list_result(exit_code, output)
 		GitEngine.Command.STASH_DROP:
 			_handle_stash_drop_result(exit_code, output)
-		GitEngine.Command.FETCH, GitEngine.Command.AHEAD_BEHIND, GitEngine.Command.PUSH, GitEngine \
-				.Command \
-				.PULL:
-			_handle_sync_result(command, exit_code, output)
+		GitEngine.Command.FETCH:
+			_handle_fetch_result(exit_code, output)
+		GitEngine.Command.AHEAD_BEHIND:
+			_handle_ahead_behind_result(exit_code, output)
+		GitEngine.Command.PUSH, GitEngine.Command.PULL:
+			_handle_push_pull_result(command, exit_code, output)
 		GitEngine.Command.BRANCHES, GitEngine.Command.SWITCH, GitEngine.Command.CREATE_BRANCH:
 			_handle_branch_result(command, exit_code, output, context)
 		GitEngine.Command.DELETE_BRANCH:
@@ -132,6 +119,12 @@ func route(
 			_handle_repo_size_result(exit_code, output)
 		GitEngine.Command.RESTORE_FILE:
 			_handle_restore_result(exit_code, output, context)
+		GitEngine.Command.CHANGED_FILES:
+			files_changed.emit(GitEngine.to_file_list(exit_code, output))
+		GitEngine.Command.REMOTE_URL:
+			_handle_remote_url_result(exit_code, output)
+		GitEngine.Command.SHOW_PREFIX:
+			_handle_show_prefix_result(exit_code, output)
 
 
 ## Shared by COMMIT and AMEND;
@@ -216,7 +209,7 @@ func _handle_stash_result(
 	# stash_pop
 	if exit_code == 0:
 		GitotLogger.s("Popped entry applied and removed from the Shelf.")
-		stash_popped.emit(context)
+		files_changed.emit(context)
 	else:
 		GitotLogger.e("Pop failed (conflict or empty stack). Check files for conflict markers.")
 		if not output.is_empty():
@@ -298,40 +291,32 @@ func _handle_stash_drop_result(exit_code: int, output: Array[String]) -> void:
 		GitotLogger.g(output[0])
 
 
-## Fetch / ahead-behind / push / pull - everything touching remote sync status.
-func _handle_sync_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
-	if command == GitEngine.Command.FETCH:
-		if exit_code != 0:
-			_log_failure("Fetch failed - nothing was downloaded.", output, _network_hint(exit_code))
-			return
-		GitotLogger.s("Fetched: origin's latest branches are downloaded.")
-		_log_git_output(output)
-		_git_engine.list_branches() # new remote branches only become visible after fetch
-		_git_engine.get_ahead_behind() # keep sync status current with new remote refs
+## Fetch: new remote branches only become visible after it, so refresh both lists.
+func _handle_fetch_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code != 0:
+		_log_failure("Fetch failed - nothing was downloaded.", output, _network_hint(exit_code))
 		return
+	GitotLogger.s("Fetched: origin's latest branches are downloaded.")
+	_log_git_output(output)
+	_git_engine.list_branches()
+	_git_engine.get_ahead_behind() # keep sync status current with new remote refs
 
-	if command == GitEngine.Command.AHEAD_BEHIND:
-		if exit_code != 0 or output.is_empty():
-			_has_upstream = false
-			_ahead_count = 0
-			_behind_count = 0
-			_status_panel.update_sync(false, 0, 0)
-			_branch_panel.update_counts(0, 0)
-			return
-		var parts: PackedStringArray = output[0].strip_edges().split("\t")
-		if parts.size() != 2:
-			return
-		var behind: int = int(parts[0])
-		var ahead: int = int(parts[1])
-		_has_upstream = true
-		_ahead_count = ahead
-		_behind_count = behind
-		_branch_panel.update_counts(ahead, behind)
-		if _status_panel.update_sync(true, ahead, behind) and (ahead > 0 or behind > 0):
-			GitotLogger.i("Current branch is %d ahead, %d behind origin." % [ahead, behind])
+
+## Ahead/behind of HEAD vs its upstream: stored once in the repo state, panels redraw from it.
+func _handle_ahead_behind_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code != 0 or output.is_empty():
+		_repo_state.set_sync(false, 0, 0) # No upstream (or git failed): counts are meaningless.
 		return
+	var parts: PackedStringArray = output[0].strip_edges().split("\t")
+	if parts.size() != 2:
+		return
+	var behind: int = int(parts[0])
+	var ahead: int = int(parts[1])
+	if _repo_state.set_sync(true, ahead, behind) and (ahead > 0 or behind > 0):
+		GitotLogger.i("Current branch is %d ahead, %d behind origin." % [ahead, behind])
 
-	# push / pull
+
+func _handle_push_pull_result(command: GitEngine.Command, exit_code: int, output: Array[String]) -> void:
 	var is_pull: bool = command == GitEngine.Command.PULL
 	if exit_code == 0:
 		GitotLogger.s(
@@ -367,14 +352,14 @@ func _handle_branch_result(
 ) -> void:
 	if command == GitEngine.Command.BRANCHES and exit_code == 0:
 		if not output.is_empty():
-			var branches: Array[Dictionary] = GitBranchParser.parse(output[0])
+			var branches: Array[GitBranchEntry] = GitBranchParser.parse(output[0])
 			var branch_scopes: Dictionary[String, String] = { }
 
-			for branch: Dictionary in branches:
-				if branch["is_remote"]:
-					branch_scopes[branch["name"]] = "Remote"
+			for branch: GitBranchEntry in branches:
+				if branch.is_remote:
+					branch_scopes[branch.name] = "Remote"
 				else:
-					branch_scopes[branch["name"]] = _get_branch_scope(branch["name"], branches)
+					branch_scopes[branch.name] = _get_branch_scope(branch.name, branches)
 
 			_branch_panel.populate(branches, branch_scopes)
 
@@ -420,6 +405,22 @@ func _handle_repo_size_result(exit_code: int, output: Array[String]) -> void:
 		GitotLogger.i("Repository size (loose objects + packs):")
 	if not output.is_empty() and not output[0].strip_edges().is_empty():
 		GitotLogger.g(output[0].strip_edges())
+
+
+## "owner/repo" in the status header, or blank when origin is missing/unparsable.
+func _handle_remote_url_result(exit_code: int, output: Array[String]) -> void:
+	var owner_repo: Dictionary = GitEngine.parse_owner_repo(GitEngine.remote_url_of(exit_code, output))
+	_status_panel.update_repo("%s/%s" % [owner_repo["owner"], owner_repo["repo"]] if not owner_repo.is_empty() else "")
+
+
+## Gitot turns git's repo-relative paths into "res://" paths, which only holds when the Godot project
+## folder IS the repository root. Warns once at startup otherwise (not a repo at all: stays silent).
+func _handle_show_prefix_result(exit_code: int, output: Array[String]) -> void:
+	var prefix: String = output[0].strip_edges() if exit_code == 0 and not output.is_empty() else ""
+	if not prefix.is_empty():
+		GitotLogger.w(
+			"This Godot project is the folder '%s' of its git repository, but Gitot expects it to be the repository root. File lists, open-file buttons and editor refresh may point at the wrong files." % prefix
+		)
 
 
 ## Refreshes the status tree.

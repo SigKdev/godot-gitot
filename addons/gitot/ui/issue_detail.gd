@@ -1,6 +1,6 @@
 ## issue_detail.gd
 ## Right pane of the Issues tab: metadata header, actions, Markdown body.
-## Display only: never touches git (branch creation is emitted up in step 6).
+## Display only: never touches git (branch creation is emitted up).
 @tool
 class_name IssueDetail
 extends PanelContainer
@@ -67,19 +67,19 @@ func _ready() -> void:
 
 ## Refreshes the base-branch choices. Keeps the current selection if that
 ## branch still exists, otherwise falls back to the current branch.
-## @param branches: Array[Dictionary] from GitBranchParser.parse() (local only).
-func set_base_branches(branches: Array[Dictionary]) -> void:
+## @param branches: from GitBranchParser.parse(); remote entries are skipped.
+func set_base_branches(branches: Array[GitBranchEntry]) -> void:
 	var previous: String = _selected_base()
 	var current: String = ""
 	_branch_names.clear()
 	%BaseBranchDropdown.clear()
-	for branch: Dictionary in branches:
-		if branch["is_remote"]:
+	for branch: GitBranchEntry in branches:
+		if branch.is_remote:
 			continue
-		_branch_names.append(branch["name"])
-		%BaseBranchDropdown.add_item(branch["name"])
-		if branch["is_current"]:
-			current = branch["name"]
+		_branch_names.append(branch.name)
+		%BaseBranchDropdown.add_item(branch.name)
+		if branch.is_current:
+			current = branch.name
 	# Follow HEAD when it moved (switch/create/first fill); otherwise keep the user's manual pick.
 	var head_moved: bool = current != _current_branch
 	var target: String = current if head_moved or not _branch_names.has(previous) else previous

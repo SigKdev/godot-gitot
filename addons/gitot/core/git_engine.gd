@@ -62,11 +62,17 @@ enum Command {
 	LFS_PULL,
 	LFS_PRUNE,
 	COUNT_OBJECTS,
+	REMOTE_URL,
+	CHANGED_FILES,
+	SHOW_PREFIX,
 }
 
 ## Canonical status args. --untracked-files=all forces recursion into
 ## untracked directories instead of collapsing them to one folder entry.
+## --no-optional-locks: status only reads, so it must never take index.lock to refresh the index
+## (that would race a concurrent stage/commit, and reads run during writes).
 const STATUS_ARGS: PackedStringArray = [
+	"--no-optional-locks",
 	"status",
 	"--porcelain=v2",
 	"--untracked-files=all",
@@ -79,7 +85,6 @@ const UNIT_SEP: String = char(0x1F)
 ## Format string for `git log`: hash, author, relative date, subject - separated
 ## by Unit Separator since commit subjects can contain any printable char.
 ## GDScript doesn't support \x escapes - only \uXXXX (4-digit unicode)
-# const LOG_FORMAT: String = "--pretty=format:%h\u001f%an\u001f%ar\u001f%ad\u001f%s"
 const LOG_FORMAT: String = "--pretty=format:%h" + UNIT_SEP + "%an" + UNIT_SEP + "%ar" + UNIT_SEP + "%ad" + UNIT_SEP + "%s"
 
 ## Format string for `git stash list`: selector, full hash (stable preview key),
@@ -128,6 +133,11 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.LFS_PRUNE,
 ]
 
+## Compiled once on first use: these run on every keystroke/validation. Lazy because a static
+## initializer is not reliably re-run on editor hot-reload (the var stays null).
+static var _invalid_tag_regex: RegEx
+static var _safe_branch_regex: RegEx
+
 ## Max reflog entries shown by the console's Reflog button.
 const REFLOG_COUNT: int = 20
 
@@ -166,12 +176,31 @@ static func parse_owner_repo(url: String) -> Dictionary:
 	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
 
 
+## The origin URL from a finished Command.REMOTE_URL; "" when it failed (no origin).
+static func remote_url_of(exit_code: int, output: Array[String]) -> String:
+	if exit_code != 0 or output.is_empty():
+		return ""
+	return output[0].strip_edges()
+
+
+## Turns a finished name-list command (Command.CHANGED_FILES, the stash pre-read) into
+## {"reliable": bool, "files": PackedStringArray}. reliable=false means git failed - NOT "nothing changed".
+static func to_file_list(exit_code: int, output: Array[String]) -> Dictionary:
+	if exit_code != 0:
+		return { "reliable": false, "files": PackedStringArray() }
+	var stdout: String = output[0].strip_edges() if not output.is_empty() else ""
+	var files: PackedStringArray = PackedStringArray()
+	for line: String in stdout.split("\n", false): # Empty stdout -> no lines.
+		files.append(GitPath.unquote(line))
+	return { "reliable": true, "files": files }
+
+
 ## True if git would accept tag_name. Checked BEFORE the push so a bad name can't leave
 ## a pushed commit without its tag.
 static func is_valid_tag_name(tag_name: String) -> bool:
-	return not tag_name.is_empty() and RegEx.create_from_string(INVALID_TAG_PATTERN).search(
-			tag_name
-		) == null
+	if _invalid_tag_regex == null:
+		_invalid_tag_regex = RegEx.create_from_string(INVALID_TAG_PATTERN)
+	return not tag_name.is_empty() and _invalid_tag_regex.search(tag_name) == null
 
 
 ## Runs `git <args>` synchronously (startup checks only) and returns the first stdout line.
@@ -182,18 +211,6 @@ static func _first_line(args: PackedStringArray) -> String:
 	if OS.execute("git", args, output, true) != 0 or output.is_empty():
 		return ""
 	return output[0].get_slice("\n", 0).strip_edges()
-
-
-## Turns an GitRunner.execute_bounded() name-list result into {"reliable": bool, "files": PackedStringArray}.
-## reliable=false means git failed - NOT "nothing changed".
-static func _to_file_list(result: Array) -> Dictionary:
-	if result[0] != 0:
-		return { "reliable": false, "files": PackedStringArray() }
-	var stdout: String = String(result[1]).strip_edges()
-	var files: PackedStringArray = PackedStringArray()
-	for line: String in stdout.split("\n", false): # Empty stdout -> no lines.
-		files.append(GitPath.unquote(line))
-	return { "reliable": true, "files": files }
 
 
 ## Runs a fast, local git command (read or write) off the main thread.
@@ -219,12 +236,11 @@ func run_network(command: Command, args: PackedStringArray, context: Dictionary 
 	_runner.run_network(Command.keys()[command], args, _relay.bind(command, context))
 
 
-## Returns the "origin" remote URL, or an empty string on failure.
-func get_remote_url() -> String:
-	var result: Array = _runner.execute_bounded(["remote", "get-url", "origin"])
-	if result[0] != 0:
-		return ""
-	return String(result[1]).strip_edges()
+## Requests the "origin" remote URL. Async: result arrives via command_completed(REMOTE_URL, ...),
+## decode it with remote_url_of().
+## @param context: optional, returned unchanged so a caller can recognise its own request.
+func request_remote_url(context: Dictionary = { }) -> void:
+	run_fast(Command.REMOTE_URL, ["remote", "get-url", "origin"], context)
 
 
 ## Requests HEAD's full commit message (subject + body), for tag-message prefill.
@@ -252,12 +268,18 @@ func get_reflog() -> void:
 	run_fast(Command.REFLOG, ["reflog", "-n", str(REFLOG_COUNT)])
 
 
-## Returns files changed by the most recent `switch`/`create_branch` (reflog diff).
+## Requests the project folder's path inside its repository ("" = the project IS the repo root).
+## Async: result arrives via command_completed(SHOW_PREFIX, ...).
+func request_repo_prefix() -> void:
+	run_fast(Command.SHOW_PREFIX, ["rev-parse", "--show-prefix"])
+
+
+## Requests the files changed by the most recent HEAD move (`switch`/`create_branch`/pull: reflog diff).
 ## Used to call EditorFileSystem.update_file() precisely instead of a full scan().
-## @return: {"reliable": bool, "files": PackedStringArray}. reliable=false means
-## HEAD@{1} doesn't exist yet (first switch) or git failed — NOT "nothing changed".
-func get_changed_files_since_switch() -> Dictionary:
-	return _to_file_list(_runner.execute_bounded(["diff", "--name-only", "HEAD@{1}", "HEAD"]))
+## Async: result arrives via command_completed(CHANGED_FILES, ...), decode it with to_file_list().
+## reliable=false means HEAD@{1} doesn't exist yet (first switch) or git failed - NOT "nothing changed".
+func request_changed_files_since_switch() -> void:
+	run_fast(Command.CHANGED_FILES, ["diff", "--name-only", "HEAD@{1}", "HEAD"])
 
 
 #region Branches
@@ -278,7 +300,7 @@ func switch_branch(branch_name: String) -> void:
 
 ## Creates a new local branch and switches to it in one atomic op.
 ## @param branch_name: new branch name (git ref-name rules enforced by git itself).
-## @param base: existing local branch to start from; empty = current HEAD (today's behavior).
+## @param base: existing local branch to start from; empty = current HEAD.
 func create_branch(branch_name: String, base: String = "") -> void:
 	var args: PackedStringArray = ["switch", "-c", branch_name]
 	if not base.is_empty():
@@ -312,7 +334,9 @@ func delete_branch(branch_name: String, on_remote: bool = false) -> void:
 
 ## True if name is a branch name this plugin will send to origin (see SAFE_BRANCH_PATTERN).
 static func is_safe_branch_name(branch_name: String) -> bool:
-	return RegEx.create_from_string(SAFE_BRANCH_PATTERN).search(branch_name) != null
+	if _safe_branch_regex == null:
+		_safe_branch_regex = RegEx.create_from_string(SAFE_BRANCH_PATTERN)
+	return _safe_branch_regex.search(branch_name) != null
 
 
 ## Deletes a branch on origin: `git push origin --delete refs/heads/<name>`. Network op, caller
@@ -371,22 +395,25 @@ func stash_push(message: String = "") -> void:
 
 ## Reapplies stash entry `index` and removes it from the stack.
 ## On conflict, git writes conflict markers and keeps the entry.
-## The touched-file list is gathered first so the dock can refresh precisely afterwards.
+## The touched-file list is read first (async, read-only) so the dock can refresh precisely afterwards.
 func stash_pop(index: int = 0) -> void:
 	assert(index >= 0, "GitEngine.stash_pop: negative index")
 	var ref: String = "stash@{%d}" % index # int-built only; and no '^' (cmd.exe escape char).
-	# context = {"reliable", "files"} (see _to_file_list), gathered BEFORE the pop since the entry
-	# is gone afterwards. Skipped while a write is in flight: run_fast() would drop this pop anyway,
-	# so don't block up to LOCAL_TIMEOUT_SEC on a git call for nothing.
-	var context: Dictionary = { }
-	if not _runner.is_write_busy():
-		# --include-untracked (Git >= 2.32) lists stash -u files; --no-renames = D + A.
-		context = _to_file_list(
-			_runner.execute_bounded(
-				["stash", "show", "--name-only", "--include-untracked", "--no-renames", ref]
-			)
-		)
-	run_fast(Command.STASH_POP, ["stash", "pop", ref], context)
+	# The entry is gone after the pop, so list its files BEFORE. Chained on the runner callback (no
+	# signal): the pre-read is an internal step, not a result any panel should see.
+	# --include-untracked (Git >= 2.32) lists stash -u files; --no-renames = D + A.
+	_runner.run_fast(
+		"stash_show",
+		["stash", "show", "--name-only", "--include-untracked", "--no-renames", ref],
+		false,
+		_pop_after_listing.bind(ref),
+	)
+
+
+## Second half of stash_pop(): the pop carries the listed files as its context ({"reliable", "files"}).
+## If another write took the lock meanwhile, the runner drops the pop and logs it (user retries).
+func _pop_after_listing(exit_code: int, output: Array[String], ref: String) -> void:
+	run_fast(Command.STASH_POP, ["stash", "pop", ref], to_file_list(exit_code, output))
 
 
 ## Permanently removes stash entry `index`. Destructive - caller must confirm first.
@@ -459,7 +486,7 @@ func restore_file(commit_hash: String, path: String) -> void:
 ## (GitRunner.is_shell_safe) even though git's own ref-name rules allow them — see push_tag().
 ## @param message: annotation message (commit message or custom, from caller).
 func create_tag(tag_name: String, message: String) -> void:
-	if not GitRunner.is_shell_safe(tag_name):
+	if not GitRunner.is_shell_safe(tag_name) or tag_name.begins_with("-"): # "-x" would be read as an option.
 		# Typed var required: _relay() takes Array[String], an untyped literal would be rejected.
 		var failure: Array[String] = [
 			"Tag name '%s' has unsupported characters. Use letters, digits and . _ - / + @ : only." % tag_name,
@@ -475,6 +502,10 @@ func create_tag(tag_name: String, message: String) -> void:
 ## tag is never created that cannot be pushed.
 ## @param tag_name: tag identifier to push (already validated by create_tag).
 func push_tag(tag_name: String) -> void:
+	if tag_name.begins_with("-"): # Would be read as a git option (the shell whitelist allows "-").
+		var failure: Array[String] = ["Tag name '%s' must not start with '-'." % tag_name]
+		_relay.call_deferred(-1, failure, Command.PUSH_TAG, { })
+		return
 	run_network(Command.PUSH_TAG, ["push", "origin", tag_name])
 
 

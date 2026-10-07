@@ -47,19 +47,18 @@ func _init(
 		func() -> void:
 			GitotLogger.w("Branch deletion cancelled."),
 	)
-	on_selection_changed({ })
+	on_selection_changed(null)
 
 
-## Connected to GitotBranchPanel.selection_changed (entry incl. "remote_ref"/"remote_hash").
+## Connected to GitotBranchPanel.selection_changed (entry incl. remote_ref/remote_hash).
 ## Local delete: a local, non-current branch (git refuses the checked-out one).
 ## Origin delete: any row that has an origin copy.
-func on_selection_changed(branch: Dictionary) -> void:
-	var has_row: bool = not branch.is_empty()
-	var local_ok: bool = has_row and not branch["is_remote"] and not branch["is_current"]
-	_local_name = branch["name"] if local_ok else ""
-	var remote_ref: String = branch["remote_ref"] if has_row else ""
-	_remote_name = remote_ref.trim_prefix("origin/")
-	_remote_hash = branch["remote_hash"] if has_row else ""
+## @param branch: the selected entry, null = nothing selected.
+func on_selection_changed(branch: GitBranchEntry) -> void:
+	var local_ok: bool = branch != null and not branch.is_remote and not branch.is_current
+	_local_name = branch.name if local_ok else ""
+	_remote_name = branch.remote_ref.trim_prefix("origin/") if branch != null else ""
+	_remote_hash = branch.remote_hash if branch != null else ""
 	_refresh_buttons()
 
 

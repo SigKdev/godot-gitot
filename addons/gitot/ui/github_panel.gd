@@ -15,7 +15,10 @@ const AuthDialogScene: PackedScene = preload("res://addons/gitot/ui/github_auth_
 ## Hard cap: 8 pages × 50 = 400 issues. A solo/small-team repo scope by design.
 const MAX_ISSUE_PAGES: int = 8
 
-## Called by the editor when the user switches to/away from this tab.
+## Context tag marking the REMOTE_URL request made by this panel (the dock makes its own).
+const REMOTE_URL_ISSUES: String = "issues"
+
+## True once gitot.gd requested the issues this session (first tab show); reset when the token is cleared.
 var has_fetched: bool = false
 var _git_engine: GitEngine
 var _issue_list: GithubIssueList
@@ -67,13 +70,20 @@ func set_git_engine(engine: GitEngine) -> void:
 	_git_engine = engine
 
 
-## Parses owner/repo from the origin remote and triggers the fetch.
+## Asks git for the origin remote; the fetch starts in _start_issue_fetch() once it answers.
+## LOADING at once: the async answer must not leave a window for a second click.
 func fetch_current_repo_issues() -> void:
-	var remote_url: String = _git_engine.get_remote_url()
-	var owner_repo: Dictionary = GitEngine.parse_owner_repo(remote_url)
+	_set_refresh_state(RefreshButtonState.LOADING)
+	%StatusLabel.visible = false
+	_git_engine.request_remote_url({ "for": REMOTE_URL_ISSUES })
 
+
+## Parses owner/repo from the origin URL and starts the first page.
+func _start_issue_fetch(remote_url: String) -> void:
+	var owner_repo: Dictionary = GitEngine.parse_owner_repo(remote_url)
 	if owner_repo.is_empty():
 		GitotLogger.w("Could not parse owner/repo from remote '%s'." % remote_url)
+		_set_refresh_state(RefreshButtonState.IDLE)
 		return
 
 	_issues_owner = owner_repo["owner"]
@@ -82,19 +92,21 @@ func fetch_current_repo_issues() -> void:
 	_issues_accumulated.clear()
 	_repo_label.text = _header_text(_issues_owner, _issues_repo, -1)
 	_api.fetch_issues(_issues_owner, _issues_repo, _issues_page)
-	_set_refresh_state(RefreshButtonState.LOADING)
-	%StatusLabel.visible = false
 
 
 ## Keeps the base-branch dropdown current whenever the branch list refreshes
-## (already triggered by switch/create/fetch elsewhere — see gitot_result_router.gd).
+## (already triggered by switch/create/fetch elsewhere — see gitot_result_router.gd),
+## and starts the issue fetch once our own REMOTE_URL request answers.
 func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
-	_context: Dictionary,
+	context: Dictionary,
 ) -> void:
-	if command == GitEngine.Command.BRANCHES and exit_code == 0 and not output.is_empty():
+	if command == GitEngine.Command.REMOTE_URL:
+		if context.get("for", "") == REMOTE_URL_ISSUES: # The dock's own request is not ours.
+			_start_issue_fetch(GitEngine.remote_url_of(exit_code, output))
+	elif command == GitEngine.Command.BRANCHES and exit_code == 0 and not output.is_empty():
 		_detail.set_base_branches(GitBranchParser.parse(output[0]))
 	elif command == GitEngine.Command.STATUS and exit_code == 0 and not output.is_empty():
 		var parsed: Dictionary = GitStatusParser.parse(output[0])

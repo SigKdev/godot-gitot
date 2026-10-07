@@ -11,7 +11,7 @@ href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.3+-F03C
 alt="Git"></a> <a href="https://git-lfs.com"><img
 src="https://img.shields.io/badge/GIT_LFS-3.4+-F64935?logo=gitlfs&logoColor=F64935" alt="Git LFS"></a> <a
 href="https://store.godotengine.org/asset/sigk/gitot/"><img
-src="https://img.shields.io/badge/Gitot-0.15.1-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
+src="https://img.shields.io/badge/Gitot-0.15.2-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
 src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -99,9 +99,9 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
   flagging oversized files with a warning icon. Files covered by an LFS rule are exempt (when LFS is ready),
   and a **Track with LFS** button on a flagged file adds the rule in one click.
 
-- **GitHub Issues Tracker Board:** Split list/detail view (like the commit history) of the repo's open issues
-  (requires a [PAT](#github-personal-access-token)); opt-out in settings. Header: `owner/repo · N open`,
-  Refresh, Clear PAT. Sortable column list (number, title, date, type, priority, labels),
+- **GitHub Issues Tracker Board:** Split list/detail view of the repo's open issues (requires a [PAT](#github-personal-access-token));
+  opt-out in settings. Header: `owner/repo · N open`, refresh, Clear PAT.
+  Sortable column list (number, title, date, type, priority, labels),
   Type/Priority/Label filters, full issue detail (metadata, colored labels, Markdown body, Open in Browser).
   Create a branch directly from an issue, auto-named from its number/title/type (editable),
   with a base-branch picker and a dirty-working-tree confirmation.
@@ -116,7 +116,7 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
   panel clean. The console's **Info** menu: Reflog (last 20), Repo size (`git count-objects -vH`), Copy log,
   Clear log. After a big commit only the summary line (`N files changed, ...`) is printed, not the file list.
 
-- **Beginner-friendly messages:** commit / push / pull / fetch / stash results are worded in plain language,
+- **Friendly messages:** commit / push / pull / fetch / stash results are worded in plain language,
   and a failure shows git's raw error plus the common causes.
 
 More details per feature: [Wiki](../../wiki).
@@ -212,23 +212,24 @@ project.
 
 ## 🧪 Testing
 
-Last run v0.15.1: **17 suites, 137 tests, 0 failures** (Godot 4.7.2, Windows).
+Last run v0.15.2: **18 suites, 146 tests, 0 failures** (Godot 4.7.2, Windows)
 
 - **Automated:** [GdUnit4](https://github.com/MikeSchulze/gdUnit4) cover the pure logic: parsers
   (status, diff, log, stash, branch, LFS, paths), the runner (shell contract, encoding, shell-safety whitelist),
-  the engine (command classes, branch-name safety), the push planner, and the UI helpers (sync symbols, counts,
-  tooltips, titles, LFS dashboard texts and stats, issue header).
+  the engine (command classes, write lock, branch-name safety, file-list helpers), the repo sync state,
+  settings clamping, the push planner, and the UI helpers (sync symbols, counts, tooltips, titles,
+  LFS dashboard texts and stats, issue header).
 - **Manual:** the UI flows were tested in the editor (stage / commit / amend / push / pull, branches,
   remote delete, tags, shelf, issues, LFS panel, console menu).
 - **Not covered:** UI scenes and node wiring have no automated tests, and the LFS flows against a real LFS remote
   (Install LFS, push / pull / prune of real objects, the not-installed views) have not been exercised yet.
 
-Details: [[Testing](../../wiki/Testing) in the wiki.
+Details: [Testing](../../wiki/Testing) in the wiki.
 
 
 ## 🗃 Changelog
 
-See **[CHANGELOG.md](CHANGELOG.md)**. Latest: **v0.15.1**.
+See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.15.2**.
 
 
 ## © License

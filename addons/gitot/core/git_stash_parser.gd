@@ -22,7 +22,7 @@ static func parse(raw: String) -> Array[Dictionary]:
 	for line: String in text.split("\n", false):
 		var fields: PackedStringArray = line.strip_edges().split(GitEngine.UNIT_SEP)
 		if fields.size() != 5:
-			continue # Malformed line safeguard - skip rather than crash the UI.
+			continue # Malformed line: skip it.
 		var parts: PackedStringArray = _split_subject(fields[4])
 		entries.append({
 			# "stash@{n}" -> n. Parsed, not counted, so a skipped line can't shift indices.

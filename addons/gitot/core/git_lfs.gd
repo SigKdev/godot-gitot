@@ -9,6 +9,10 @@ extends RefCounted
 signal state_detected(state: State, repo_uses_lfs: bool)
 signal files_listed(files: Array[Dictionary])
 
+## Emitted when the local listing failed. The previous list stays (stale beats blank); the panel
+## uses it to drop its "Loading" text.
+signal files_list_failed
+
 ## Emitted after a successful track/untrack: .gitattributes changed, re-read get_patterns().
 signal patterns_changed
 
@@ -59,7 +63,6 @@ func teardown() -> void:
 
 #region Requests
 ## Starts the async state chain (see _on_command_completed). Result: state_detected.
-## Dropped with a warning if a git write is in flight: callers keep their previous state.
 func detect_state() -> void:
 	_engine.run_fast(GitEngine.Command.LFS_VERSION, ["lfs", "version"])
 
@@ -199,9 +202,11 @@ func _handle_files_result(exit_code: int, raw: String, context: Dictionary) -> v
 			{ "stage": "local", "remote": remote_files },
 		)
 		return
-	if exit_code == 0:
-		var remote_list: Array[Dictionary] = context.get("remote", [] as Array[Dictionary])
-		files_listed.emit(GitLfsParser.merge_scopes(GitLfsParser.parse_files(raw), remote_list))
+	if exit_code != 0:
+		files_list_failed.emit()
+		return
+	var remote_list: Array[Dictionary] = context.get("remote", [] as Array[Dictionary])
+	files_listed.emit(GitLfsParser.merge_scopes(GitLfsParser.parse_files(raw), remote_list))
 
 
 ## track / untrack share one handler: both only rewrite .gitattributes.

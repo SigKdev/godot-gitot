@@ -1,6 +1,5 @@
 ## github_issue_list.gd
 ## Issue list: 6-column Tree with header-click sorting.
-## RefCounted, constructor-injected — matches the GitotLogPanel pattern.
 class_name GithubIssueList
 extends RefCounted
 
@@ -25,7 +24,7 @@ const COLUMN_MIN_WIDTHS: PackedInt32Array = [45, 80, 90, 70, 70, 100]
 
 var _tree: Tree
 var _filter: GithubIssueFilter
-var _entries: Array[Dictionary] = [] # Full normalized data (filters, step 5, act on this).
+var _entries: Array[Dictionary] = [] # Full normalized data (filters act on this).
 var _sort_column: int = Col.NUMBER
 var _sort_ascending: bool = false # Default: newest first.
 

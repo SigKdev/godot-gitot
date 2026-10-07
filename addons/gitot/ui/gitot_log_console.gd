@@ -4,12 +4,17 @@
 class_name GitotLogConsole
 extends RefCounted
 
+enum MenuItem {
+	REFLOG,
+	REPO_SIZE,
+	COPY,
+	CLEAR,
+}
+
 var _git_engine: GitEngine
 var _log_list: VBoxContainer
 var _scroll: ScrollContainer
 var _base: Control
-
-enum MenuItem { REFLOG, REPO_SIZE, COPY, CLEAR }
 
 
 ## @param log_list: VBoxContainer to append log lines into.
@@ -26,7 +31,7 @@ func _init(
 	_setup_info_menu(fold)
 	_log_list.resized.connect(_scroll_to_bottom)
 	# Backfill existing history so console isn't empty on dock (re)open.
-	for line in GitotLogger.log_history:
+	for line: String in GitotLogger.get_history():
 		_append_line(line)
 	GitotLogger.set_listener(_append_line)
 
@@ -59,7 +64,9 @@ func _append_line(formatted: String) -> void:
 	label.text = formatted
 	_log_list.add_child(label)
 	if _log_list.get_child_count() > GitotLogger.MAX_HISTORY:
-		_log_list.get_child(0).queue_free()
+		var oldest: Node = _log_list.get_child(0)
+		_log_list.remove_child(oldest) # queue_free() alone keeps it counted until frame end.
+		oldest.queue_free()
 
 
 ## Adds the Info menu to the fold's title bar: quick read-only git facts + log utilities.
@@ -103,7 +110,7 @@ func _plain_text() -> String:
 
 ## Empties the console AND the history, so a dock reopen does not backfill the cleared lines.
 func _clear() -> void:
-	GitotLogger.log_history.clear()
+	GitotLogger.clear_history()
 	for child: Node in _log_list.get_children():
 		child.queue_free()
 

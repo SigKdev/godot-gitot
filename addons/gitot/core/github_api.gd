@@ -24,10 +24,11 @@ const ISSUES_PER_PAGE: int = 50
 ## (and "request already in progress" would block every later one).
 const REQUEST_TIMEOUT_SEC: float = 20.0
 
-var _http: HTTPRequest = HTTPRequest.new()
+var _http: HTTPRequest
 
 
 func _ready() -> void:
+	_http = HTTPRequest.new() # Here, not in the initializer: an instance that never enters the tree must not leak a node.
 	_http.timeout = REQUEST_TIMEOUT_SEC
 	add_child(_http)
 	_http.request_completed.connect(_on_request_completed)

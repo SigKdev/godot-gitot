@@ -6,9 +6,6 @@
 class_name GitotCommitLogDiff
 extends RefCounted
 
-## Render cap (chars): CodeEdit + per-line coloring gets slow past a few thousand lines.
-const MAX_DIFF_CHARS: int = 200_000
-
 var _git_engine: GitEngine
 var _panel: GitotDiffPanel
 var _commit_hash: String = "" # Newest wanted commit ("" = commit mode inactive).
@@ -105,9 +102,9 @@ func _on_command_completed(
 
 
 func _show_file_diff(raw: String) -> void:
-	if raw.length() > MAX_DIFF_CHARS:
+	if raw.length() > GitotDiffPanel.MAX_DIFF_CHARS:
 		GitotLogger.w("Diff of '%s' truncated for display." % _path)
-		raw = raw.substr(0, MAX_DIFF_CHARS)
+		raw = raw.substr(0, GitotDiffPanel.MAX_DIFF_CHARS)
 	var files: Array[Dictionary] = GitDiffParser.parse_full(raw)
 	var hunks: Array[Dictionary] = []
 	if not files.is_empty():

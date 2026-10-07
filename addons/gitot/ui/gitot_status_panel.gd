@@ -9,18 +9,19 @@ const MAX_BRANCH_CHARS: int = 24
 const SCOPE_SHORT: Dictionary = { "(Local + Remote)": "(L+R)" }
 
 var _label: RichTextLabel
+var _state: GitotRepoState
 var _repo_name: String = ""
 var _branch: String = ""
 ## False until the first branch list arrives: an empty name then means "not loaded", not "detached".
 var _branch_known: bool = false
 var _branch_scope: String = ""
-var _has_upstream: bool = false
-var _ahead: int = 0
-var _behind: int = 0
 
 
-func _init(label: RichTextLabel) -> void:
+## @param state: sync state source; the line is redrawn whenever it changes.
+func _init(label: RichTextLabel, state: GitotRepoState) -> void:
 	_label = label
+	_state = state
+	_state.changed.connect(_render)
 
 
 ## Sets the static "owner/repo" label. Called once in _ready() - never changes mid-session.
@@ -36,29 +37,15 @@ func update_branch(branch: String, scope: String = "") -> void:
 	_render()
 
 
-## Updates sync status. Returns true if it changed since last call,
-## so the caller can decide whether to log (avoid spam on redundant refreshes).
-## @param has_upstream: false = branch never pushed (counts are then meaningless).
-func update_sync(has_upstream: bool, ahead: int, behind: int) -> bool:
-	var changed: bool = (
-		has_upstream != _has_upstream or ahead != _ahead or behind != _behind
-	)
-	_has_upstream = has_upstream
-	_ahead = ahead
-	_behind = behind
-	_render()
-	return changed
-
-
 ## Same symbols as the branch list (GitotUi.sync_symbol), plus the counts next to arrows:
 ## "↑ 2", "↓ 1", "↑↓ 2/1"; "✓" (in sync) and "—" (no upstream) need none.
 func _sync_markup() -> String:
-	var key: String = GitotUi.sync_key(_ahead, _behind)
-	var symbol: String = GitotUi.sync_symbol(_has_upstream, key)
-	var color: String = GitotUi.sync_color(_has_upstream, key).to_html(false)
-	if not _has_upstream:
+	var key: String = GitotUi.sync_key(_state.ahead, _state.behind)
+	var symbol: String = GitotUi.sync_symbol(_state.has_upstream, key)
+	var color: String = GitotUi.sync_color(_state.has_upstream, key).to_html(false)
+	if not _state.has_upstream:
 		return "[color=#%s]%s[/color]" % [color, symbol]
-	return "[color=#%s]%s%s[/color]" % [color, symbol, GitotUi.sync_counts(key, _ahead, _behind)]
+	return "[color=#%s]%s%s[/color]" % [color, symbol, GitotUi.sync_counts(key, _state.ahead, _state.behind)]
 
 
 func _render() -> void:

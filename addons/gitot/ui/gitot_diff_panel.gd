@@ -6,6 +6,9 @@
 class_name GitotDiffPanel
 extends Control
 
+## Render cap (chars): CodeEdit + per-line coloring gets slow past a few thousand lines.
+const MAX_DIFF_CHARS: int = 200_000
+
 ## Emitted when the panel's own refresh button is pressed.
 signal refresh_requested(file_path: String)
 
@@ -101,7 +104,7 @@ func show_diff(file_path: String, hunks: Array[Dictionary]) -> void:
 ## rendered CodeEdit line, expanding its hunk first if collapsed, then
 ## scrolls/highlights it.
 func jump_to_source_line(source_line: int) -> void:
-	for idx in _current_hunks.size():
+	for idx: int in _current_hunks.size():
 		var hunk: Dictionary = _current_hunks[idx]
 		var new_file_line: int = hunk["new_start"]
 		var offset: int = 0
@@ -198,7 +201,7 @@ func _make_numbered_lines(hunk: Dictionary) -> Array[Dictionary]:
 func _rebuild_view() -> void:
 	var render_lines: Array[Dictionary] = []
 	_hunk_header_lines.resize(_current_hunks.size())
-	for idx in _current_hunks.size():
+	for idx: int in _current_hunks.size():
 		var hunk: Dictionary = _current_hunks[idx]
 		_hunk_header_lines[idx] = render_lines.size()
 		render_lines.append(_make_header_line(hunk))
@@ -215,9 +218,9 @@ func _rebuild_view() -> void:
 		texts.append(entry["text"])
 	_code_edit.text = "\n".join(texts) # single assignment: reassigning mid-loop wipes prior per-line state
 
-	for i in range(render_lines.size()):
+	for i: int in range(render_lines.size()):
 		_style_line(i, render_lines[i])
-	for idx in _current_hunks.size():
+	for idx: int in _current_hunks.size():
 		_code_edit.set_line_gutter_icon(
 			_hunk_header_lines[idx],
 			_fold_gutter_idx,
@@ -264,7 +267,7 @@ func _style_line(i: int, entry: Dictionary) -> void:
 func _make_gdscript_highlighter() -> CodeHighlighter:
 	var hl: CodeHighlighter = CodeHighlighter.new()
 	var keyword_color: Color = Color("ff7085")
-	for kw in [
+	for kw: String in [
 		"func",
 		"var",
 		"const",
@@ -331,7 +334,7 @@ func _on_fold_pressed() -> void:
 	if _collapsed_hunks.size() == _current_hunks.size():
 		_collapsed_hunks.clear()
 	else:
-		for idx in _current_hunks.size():
+		for idx: int in _current_hunks.size():
 			_collapsed_hunks[idx] = true
 	_rebuild_view()
 

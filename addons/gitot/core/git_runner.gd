@@ -8,11 +8,6 @@ extends RefCounted
 ## so any write (commit, stage, stash...) is covered without per-button wiring.
 signal write_busy_changed(busy: bool)
 
-## Timeout for bounded local reads (execute_bounded). Short: these are cheap plumbing
-## commands, a hang past this means a stuck lock/gc, not normal latency.
-## Distinct from the user-set "network_timeout_sec" (push/pull).
-const LOCAL_TIMEOUT_SEC: float = 5.0
-
 ## Max chars of path arguments per git call. Windows CreateProcess caps the WHOLE command
 ## line at 32767; 24000 leaves headroom for "git -C <root> add --" and arg quoting.
 const MAX_ARGS_CHARS: int = 24000
@@ -22,14 +17,17 @@ const MAX_ARGS_CHARS: int = 24000
 ## meaning in cmd.exe or sh, yet are legal in git ref names, so a blacklist can never be complete.
 const SHELL_SAFE_PATTERN: String = "^[A-Za-z0-9._/@+:-]+$"
 
+## Compiled once on first use (see SHELL_SAFE_PATTERN). Lazy: a static initializer is not reliably
+## re-run on editor hot-reload (the var stays null).
+static var _shell_safe_regex: RegEx
+
 ## PID → temp log path of running network operations (push/pull). Tracks both so a
 ## mid-operation kill (timeout or teardown) can also remove the orphaned log file.
 var _active_pids: Dictionary[int, String] = { }
 
-## True while a write op is executing. Blocks any other run_fast() call from racing it
-## on index.lock; reads never block each other, and never block while no write is in flight.
+## True while a write op is executing. Blocks any other WRITE from racing it on index.lock;
+## reads are never blocked, so every read always completes.
 var _write_busy: bool = false
-
 
 ## Absolute project root, anchors every git call regardless of editor CWD.
 static func _project_root() -> String:
@@ -37,9 +35,8 @@ static func _project_root() -> String:
 
 
 ## Builds the shell + args that redirect a git call's stdout/stderr to log_path and
-## append a trailing exit-status marker. Shared by run_network() and execute_bounded()
-## — single source for this shell contract.
-## SECURITY: args are static (execute_bounded) or whitelisted by run_network() (is_shell_safe).
+## append a trailing exit-status marker. Used by run_network() only.
+## SECURITY: args are whitelisted by run_network() (is_shell_safe).
 static func _shell_invocation(args: PackedStringArray, log_path: String) -> Array:
 	var git_cmd: String = (
 		"git -C \"%s\" %s > \"%s\" 2>&1 && echo EXITCODE:0 >> \"%s\" || echo EXITCODE:1 >> \"%s\""
@@ -55,7 +52,9 @@ static func _shell_invocation(args: PackedStringArray, log_path: String) -> Arra
 ## True if arg can be placed in the shell string of run_network() without being interpreted.
 ## Single source of truth for that rule; also used to validate names BEFORE they are created.
 static func is_shell_safe(arg: String) -> bool:
-	return RegEx.create_from_string(SHELL_SAFE_PATTERN).search(arg) != null
+	if _shell_safe_regex == null:
+		_shell_safe_regex = RegEx.create_from_string(SHELL_SAFE_PATTERN)
+	return _shell_safe_regex.search(arg) != null
 
 
 ## Splits a redirected git-call log into [success: bool, cleaned text: String].
@@ -81,7 +80,7 @@ static func _fix_encoding(text: String) -> String:
 
 
 ## Splits args after the "--" separator so each call's paths fit MAX_ARGS_CHARS.
-## No "--" or short list -> a single chunk, identical to the old behaviour.
+## No "--" or short list -> a single chunk.
 static func _chunk_args(args: PackedStringArray) -> Array[PackedStringArray]:
 	var chunks: Array[PackedStringArray] = []
 	var sep: int = args.find("--")
@@ -110,13 +109,14 @@ func is_write_busy() -> bool:
 
 ## Runs a local git command off the main thread. NOT for push/pull (see run_network).
 ## @param label: command name, used in logs.
-## @param is_write: mutates index/tree/refs. Takes the write lock; every call is ignored while held.
+## @param is_write: mutates index/tree/refs. Takes the write lock; a write is dropped (logged,
+## on_done never called) while another is held. Reads always run.
 ## @param on_done: Callable(exit_code: int, output: Array[String]), called on the main thread.
 func run_fast(label: String, args: PackedStringArray, is_write: bool, on_done: Callable) -> void:
-	if _write_busy:
-		GitotLogger.i("%s skipped: Git is still finishing the previous change. Try again." % label.capitalize())
-		return
 	if is_write:
+		if _write_busy:
+			GitotLogger.i("%s skipped: Git is still finishing the previous change. Try again." % label.capitalize())
+			return
 		_write_busy = true
 		write_busy_changed.emit(true)
 	WorkerThreadPool.add_task(_execute_and_report.bind(args, is_write, on_done))
@@ -153,37 +153,6 @@ func run_network(label: String, args: PackedStringArray, on_done: Callable) -> v
 	_poll_process.call_deferred(pid, log_path, Time.get_ticks_msec(), on_done)
 
 
-## Runs a local git query synchronously, capped at LOCAL_TIMEOUT_SEC: blocks the calling
-## thread up to the cap, then kills the process. Only for one-off reads; hot UI paths
-## use run_fast()/run_network() (never blocking).
-## @return: [exit_code: int, output: String]. exit_code -1 on timeout/spawn failure.
-func execute_bounded(args: PackedStringArray) -> Array:
-	var log_path: String = ProjectSettings.globalize_path(
-		"user://gitot_sync_%d.log" % Time.get_ticks_usec()
-	)
-	var shell_invocation: Array = _shell_invocation(args, log_path)
-	var pid: int = OS.create_process(shell_invocation[0], shell_invocation[1])
-	if pid == -1:
-		return [-1, ""]
-
-	var start_msec: int = Time.get_ticks_msec()
-	while OS.is_process_running(pid):
-		if (Time.get_ticks_msec() - start_msec) / 1000.0 > LOCAL_TIMEOUT_SEC:
-			OS.kill(pid)
-			if FileAccess.file_exists(log_path):
-				DirAccess.remove_absolute(log_path) # Orphaned log from the killed process.
-			return [-1, ""]
-		OS.delay_msec(10)
-
-	var log_content: String = ""
-	if FileAccess.file_exists(log_path):
-		log_content = FileAccess.get_file_as_string(log_path)
-		DirAccess.remove_absolute(log_path)
-
-	var parsed: Array = _parse_log(log_content)
-	return [0 if parsed[0] else 1, parsed[1]]
-
-
 ## Kills any push/pull processes still running and removes their logs. Call on plugin exit.
 func teardown() -> void:
 	for pid: int in _active_pids:
@@ -198,6 +167,9 @@ func teardown() -> void:
 ## Polls a network process until it ends or exceeds "network_timeout_sec",
 ## then reports through on_done. Reads the redirected log once the process ends.
 func _poll_process(pid: int, log_path: String, start_time_ms: int, on_done: Callable) -> void:
+	# teardown() cleared the pid (process killed, log removed): stop polling, never report.
+	if not _active_pids.has(pid):
+		return
 	if OS.is_process_running(pid):
 		var elapsed_sec: float = (Time.get_ticks_msec() - start_time_ms) / 1000.0
 		# Read per poll (cached Dictionary lookup) so a settings change applies to in-flight ops.

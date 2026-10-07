@@ -16,11 +16,21 @@ enum Level {
 
 const MAX_HISTORY: int = 200
 
-static var log_history: Array[String] = []
+static var _history: Array[String] = []
 
 ## Optional dock listener, set via set_listener(). Kept decoupled: logger
 ## never references UI types directly, just calls back if one is registered.
 static var _on_log: Callable
+
+
+## Copy of the formatted lines so far (oldest first), for a console opened late.
+static func get_history() -> Array[String]:
+	return _history.duplicate()
+
+
+## Forgets the history (the console's Clear), so a reopened console does not backfill cleared lines.
+static func clear_history() -> void:
+	_history.clear()
 
 
 ## Registers a callback invoked with each formatted log line.
@@ -71,7 +81,7 @@ static func _print(message: String, level: Level) -> void:
 			prefix = "[color=firebrick][Gitot Error][/color]"
 		Level.EXTREME:
 			color = "red"
-			prefix = "[color=red][Gitot Error][/color]"
+			prefix = "[color=red][Gitot Fatal][/color]"
 		Level.GIT:
 			color = "dark_gray"
 			prefix = "[color=dark_gray][git raw][/color]"
@@ -80,9 +90,9 @@ static func _print(message: String, level: Level) -> void:
 			prefix = "[color=gray][Gitot Info][/color]"
 
 	var formatted := "%s [color=%s]%s[/color]" % [prefix, color, message]
-	log_history.append(formatted)
-	if log_history.size() > MAX_HISTORY:
-		log_history.pop_front()
+	_history.append(formatted)
+	if _history.size() > MAX_HISTORY:
+		_history.pop_front()
 
 	if _on_log.is_valid():
 		_on_log.call(formatted)

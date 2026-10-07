@@ -19,6 +19,11 @@ const PRESETS: Dictionary = {
 	"Godot binary (if large)": ["*.scn", "*.res", "*.lmbake"],
 }
 
+## State label texts while git answers, so a blank list is never labelled "ready".
+const READY_TEXT: String = "Git LFS is ready."
+const CHECKING_TEXT: String = "Checking Git LFS..."
+const LOADING_TEXT: String = "Loading LFS files..."
+
 const POINTER_WARNING: String = "This project uses LFS: tracked assets stay pointer files until it is installed."
 
 var _lfs: GitLfs
@@ -47,6 +52,7 @@ func _ready() -> void:
 		return # Scene opened in the scene editor: nothing injected.
 	_setup_files_tree()
 	_lfs.files_listed.connect(_populate_files)
+	_lfs.files_list_failed.connect(_on_files_list_failed)
 	_lfs.patterns_changed.connect(_populate_patterns)
 	%TrackButton.pressed.connect(_on_track_pressed)
 	%UntrackButton.pressed.connect(_on_untrack_pressed)
@@ -92,12 +98,16 @@ func set_lfs(lfs: GitLfs) -> void:
 ## Reloads the LFS file list while the active view is on screen (one git spawn).
 ## Called by gitot.gd after commands that move the index/HEAD, and after a pull.
 func refresh_files() -> void:
-	if _files_tree.visible and is_visible_in_tree():
-		_lfs.list_files()
+	if not (_files_tree.visible and is_visible_in_tree()):
+		return
+	if _files_tree.get_root() == null: # First load: no list yet, say so instead of "ready".
+		_state_label.text = LOADING_TEXT
+	_lfs.list_files()
 
 
-## Bottom panels are hidden until their tab is selected: first show = first detection;
-## later shows reload the file list (updates are skipped while hidden, see refresh_files()).
+## Bottom panels are hidden until their tab is selected. Updates are skipped while hidden (see
+## refresh_files()), so every show reloads the file list; the first one also re-detects the state
+## (startup detection ran hidden and loaded no list).
 func _on_visibility_changed() -> void:
 	if not is_visible_in_tree():
 		return
@@ -105,7 +115,8 @@ func _on_visibility_changed() -> void:
 		refresh_files()
 	else:
 		_has_refreshed = true
-		_lfs.detect_state()
+		_state_label.text = CHECKING_TEXT
+		_lfs.detect_state() # state_detected -> refresh_files(): panel is visible now, so the list loads.
 
 
 func _on_pull_pressed() -> void:
@@ -129,6 +140,10 @@ func _on_note_toggled(shown: bool) -> void:
 	GitotSettings.set_value("lfs_note_visible", shown)
 
 
+func _on_files_list_failed() -> void:
+	_state_label.text = READY_TEXT # Nothing to wait for any more; the previous list stays.
+
+
 ## READY = dashboard + file list. Anything else = dashboard only, as a setup guide with the one
 ## button that fixes the state.
 func _on_state_detected(state: GitLfs.State, repo_uses_lfs: bool) -> void:
@@ -144,7 +159,7 @@ func _on_state_detected(state: GitLfs.State, repo_uses_lfs: bool) -> void:
 	_steps_label.text = _steps_text(state)
 	if is_ready:
 		_populate_patterns()
-		_lfs.list_files() # Result arrives via files_listed -> _populate_files().
+		refresh_files() # Skipped while hidden (startup detection): the first show reloads. Result: files_listed.
 
 
 static func _state_text(state: GitLfs.State, repo_uses_lfs: bool) -> String:
@@ -153,7 +168,7 @@ static func _state_text(state: GitLfs.State, repo_uses_lfs: bool) -> String:
 			return "Git LFS is not installed." + ("\n" + POINTER_WARNING if repo_uses_lfs else "")
 		GitLfs.State.NOT_INITIALIZED:
 			return "Git LFS is installed but not initialized."
-	return "Git LFS is ready."
+	return READY_TEXT
 
 
 ## Numbered setup steps; finished ones are marked so the user sees where they stand.
@@ -243,6 +258,7 @@ func _populate_files(files: Array[Dictionary]) -> void:
 		item.set_icon(2, GitotUi.get_icon(_status_icon(local, remote)))
 		item.set_tooltip_text(2, _status_tooltip(local, remote))
 	_stats_label.text = _stats_bbcode(GitLfsParser.summarize(files))
+	_state_label.text = READY_TEXT # Ends the "Loading" text of the first load.
 
 
 ## Dashboard stats as a 2-column BBCode table. Rows for "nothing to do" counters are omitted.

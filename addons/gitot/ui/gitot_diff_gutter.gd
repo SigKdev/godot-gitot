@@ -46,7 +46,7 @@ func teardown() -> void:
 ## checked by name rather than object identity (more reliable across tab switches).
 func _ensure_gutter(code_edit: CodeEdit) -> int:
 	var gutter_idx: int = -1
-	for i in range(code_edit.get_gutter_count()):
+	for i: int in range(code_edit.get_gutter_count()):
 		if code_edit.get_gutter_name(i) == GUTTER_NAME:
 			gutter_idx = i
 			break
@@ -59,8 +59,10 @@ func _ensure_gutter(code_edit: CodeEdit) -> int:
 		code_edit.set_gutter_width(gutter_idx, 4)
 
 	code_edit.set_gutter_clickable(gutter_idx, true)
-	if not code_edit.gutter_clicked.is_connected(_on_gutter_clicked):
-		code_edit.gutter_clicked.connect(_on_gutter_clicked.bind(gutter_idx))
+	# Test the same bound Callable that is connected: a bare method never equals a bound one.
+	var on_clicked: Callable = _on_gutter_clicked.bind(gutter_idx)
+	if not code_edit.gutter_clicked.is_connected(on_clicked):
+		code_edit.gutter_clicked.connect(on_clicked)
 
 	return gutter_idx
 
@@ -89,7 +91,7 @@ func _on_diff_result(
 	var gutter_idx: int = _ensure_gutter(code_edit)
 
 	# Clear previous markers before applying new ones.
-	for line in range(code_edit.get_line_count()):
+	for line: int in range(code_edit.get_line_count()):
 		code_edit.set_line_gutter_text(line, gutter_idx, "")
 		code_edit.set_line_gutter_item_color(line, gutter_idx, Color(0, 0, 0, 0))
 

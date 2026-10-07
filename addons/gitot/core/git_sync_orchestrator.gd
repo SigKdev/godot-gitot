@@ -10,6 +10,10 @@ signal push_state_changed(pushing: bool)
 ## Emitted when a tag was created but its push failed (true), or on success/reset (false).
 signal tag_retry_needed(needed: bool)
 
+## Emitted when the commit was pushed but its tag name already exists on another commit.
+## The dock tells the user (core has no UI knowledge).
+signal tag_conflict(tag_name: String)
+
 ## What a Push click must do, decided from the branch's sync state (see plan_push()).
 enum PushPlan {
 	NORMAL, ## Plain push (nothing to protect).
@@ -111,7 +115,7 @@ func _handle_tag_collision_result(
 		GitotLogger.e("Tag creation failed. Tag push aborted!")
 		var error: String = context.get("error", "")
 		if not error.is_empty():
-			GitotLogger.g(error) # git's real message, previously swallowed.
+			GitotLogger.g(error) # git's real message.
 		_pending_tag = { }
 		return
 	var tag_name: String = _pending_tag.get("tag_name", "")
@@ -128,9 +132,5 @@ func _handle_tag_collision_result(
 			"Commit pushed. Tag '%s' already exists on a different commit - tag NOT created. Rename tag and push again to tag this commit."
 			% tag_name
 		)
-		EditorInterface.get_editor_toaster().push_toast(
-			"Gitot: Commit pushed, but tag '%s' exists on another commit. Rename tag and push again to tag it."
-			% tag_name,
-			EditorToaster.SEVERITY_ERROR,
-		)
+		tag_conflict.emit(tag_name)
 		_pending_tag = { }

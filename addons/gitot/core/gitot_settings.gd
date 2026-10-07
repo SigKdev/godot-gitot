@@ -7,6 +7,9 @@ extends RefCounted
 const PATH: String = "user://gitot_settings.cfg"
 const SECTION: String = "settings"
 
+## Lowest accepted network timeout (the settings spin box minimum). A hand-edited 0 would kill every push/pull.
+const MIN_NETWORK_TIMEOUT_SEC: int = 30
+
 const DEFAULTS: Dictionary = {
 	"large_file_mb": 50,
 	"network_timeout_sec": 120,
@@ -32,6 +35,7 @@ static func get_value(key: String) -> Variant:
 ## Writes a single setting, persists immediately, and keeps the cache in sync.
 static func set_value(key: String, value: Variant) -> void:
 	_ensure_loaded()
+	value = _sanitized(key, value)
 	_cache[key] = value
 	var cfg := ConfigFile.new()
 	cfg.load(PATH) # Error ignored intentionally: missing file = starts empty, still writes.
@@ -45,6 +49,13 @@ static func _ensure_loaded() -> void:
 		return
 	var cfg := ConfigFile.new()
 	cfg.load(PATH) # Error ignored intentionally: missing file = use defaults.
-	for key in DEFAULTS:
-		_cache[key] = cfg.get_value(SECTION, key, DEFAULTS[key])
+	for key: String in DEFAULTS:
+		_cache[key] = _sanitized(key, cfg.get_value(SECTION, key, DEFAULTS[key]))
 	_loaded = true
+
+
+## Keeps a hand-edited value inside what the plugin can work with.
+static func _sanitized(key: String, value: Variant) -> Variant:
+	if key == "network_timeout_sec":
+		return maxi(int(value), MIN_NETWORK_TIMEOUT_SEC)
+	return value

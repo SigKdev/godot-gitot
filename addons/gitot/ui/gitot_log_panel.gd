@@ -39,7 +39,7 @@ func populate(entries: Array[Dictionary]) -> void:
 	_tree.clear()
 	var root: TreeItem = _tree.create_item()
 
-	for entry in entries:
+	for entry: Dictionary in entries:
 		var item: TreeItem = _tree.create_item(root)
 		item.set_text(0, entry["message"])
 		item.set_text(1, entry["author"])
@@ -66,7 +66,7 @@ func _setup_tree_columns() -> void:
 func _setup_count_dropdown(fold: FoldableContainer) -> void:
 	_count_dropdown = OptionButton.new()
 	_count_dropdown.set_flat(true)
-	for count in COUNT_OPTIONS:
+	for count: int in COUNT_OPTIONS:
 		_count_dropdown.add_item(str(count))
 	_count_dropdown.item_selected.connect(_on_count_selected)
 	fold.add_title_bar_control(_count_dropdown)

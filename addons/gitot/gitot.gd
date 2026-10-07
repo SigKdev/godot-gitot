@@ -32,10 +32,15 @@ const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 	GitEngine.Command.LFS_UNTRACK,
 ]
 
+## Subset of STATUS_TRIGGERING_COMMANDS that can only change the Staged/Unstaged lists: one `git status`
+## is enough (they never touch branches, history, shelf or ahead/behind).
+const FILES_ONLY_COMMANDS: Array[GitEngine.Command] = [
+	GitEngine.Command.STAGE,
+	GitEngine.Command.UNSTAGE,
+]
+
 const GithubPanelScene: PackedScene = preload("res://addons/gitot/ui/github_panel.tscn")
-
 const GitotDiffPanelScene: PackedScene = preload("res://addons/gitot/ui/gitot_diff_panel.tscn")
-
 const GitotLfsPanelScene: PackedScene = preload("res://addons/gitot/ui/gitot_lfs_panel.tscn")
 
 var _git_engine: GitEngine
@@ -44,10 +49,9 @@ var _diff_gutter: GitotDiffGutter
 var _sync_orchestrator: GitSyncOrchestrator
 var _github_panel: Control
 var _diff_panel: GitotDiffPanel
-var _pending_diff_path: String = ""
-var _pending_diff_line: int = -1
 var _files_refresh_queued: bool = false
 var _commit_log_diff: GitotCommitLogDiff
+var _working_diff: GitotWorkingDiff
 
 var _lfs: GitLfs
 var _lfs_panel: GitotLfsPanel
@@ -71,7 +75,6 @@ func _enter_tree() -> void:
 
 	_diff_gutter = GitotDiffGutter.new(_git_engine)
 	_diff_gutter.hunk_clicked.connect(_on_hunk_clicked)
-	_git_engine.command_completed.connect(_on_diff_full_result)
 
 	_sync_orchestrator = GitSyncOrchestrator.new(_git_engine)
 
@@ -109,8 +112,8 @@ func _enter_tree() -> void:
 
 	_diff_panel = GitotDiffPanelScene.instantiate()
 	add_control_to_bottom_panel(_diff_panel, "Gitot Diff")
-	_diff_panel.refresh_requested.connect(_on_diff_refresh_requested)
 	_commit_log_diff = GitotCommitLogDiff.new(_git_engine, _diff_panel)
+	_working_diff = GitotWorkingDiff.new(_git_engine, _diff_panel)
 	_dock.commit_selected.connect(_on_commit_selected)
 
 
@@ -139,12 +142,6 @@ func _exit_tree() -> void:
 	if _git_engine and _git_engine.command_completed.is_connected(_on_git_command_completed):
 		_git_engine.command_completed.disconnect(_on_git_command_completed)
 
-	if _git_engine and _git_engine.command_completed.is_connected(_on_diff_full_result):
-		_git_engine.command_completed.disconnect(_on_diff_full_result)
-
-	if _diff_panel and _diff_panel.refresh_requested.is_connected(_on_diff_refresh_requested):
-		_diff_panel.refresh_requested.disconnect(_on_diff_refresh_requested)
-
 	if _lfs:
 		_lfs.teardown()
 		_lfs = null
@@ -160,6 +157,10 @@ func _exit_tree() -> void:
 	if _commit_log_diff:
 		_commit_log_diff.teardown()
 		_commit_log_diff = null
+
+	if _working_diff:
+		_working_diff.teardown()
+		_working_diff = null
 
 	if _diff_panel:
 		remove_control_from_bottom_panel(_diff_panel)
@@ -210,15 +211,19 @@ func _on_git_command_completed(
 		if not output.is_empty():
 			GitotLogger.g(output[0])
 	if command in STATUS_TRIGGERING_COMMANDS:
-		_dock.refresh_status() # status + ahead/behind + history + shelf
+		if command in FILES_ONLY_COMMANDS:
+			_dock.refresh_files()
+		else:
+			_dock.refresh_status() # status + ahead/behind + history + shelf
 		if _lfs_panel:
 			_lfs_panel.refresh_files() # LFS file list follows stage/commit/switch/pull
 
 
 ## The Size Guard exemption depends on LFS being READY: re-evaluate the trees when that flips.
+## Only the Staged/Unstaged lists use it, so a status read is enough.
 func _on_lfs_ready_changed() -> void:
 	if _dock:
-		_dock.refresh_status()
+		_dock.refresh_files()
 
 
 ## Triggers gutter refresh on script save
@@ -248,13 +253,10 @@ func _flush_files_refresh() -> void:
 		_dock.refresh_files()
 
 
-## Gutter click, request full-context diff. Line/path stored to guard against
-## a stale result if the user switches script tabs before git responds.
+## Gutter click: working-tree diff of that script, scrolled to the clicked hunk.
 func _on_hunk_clicked(file_path: String, line: int) -> void:
 	_commit_log_diff.cancel()
-	_pending_diff_path = file_path
-	_pending_diff_line = line + 1 # CodeEdit's 0-based -> git's 1-based (matches GitDiffParser)
-	_git_engine.diff_full(ProjectSettings.globalize_path(file_path))
+	_working_diff.show_file(file_path, line)
 	make_bottom_panel_item_visible(_diff_panel)
 
 
@@ -262,37 +264,3 @@ func _on_hunk_clicked(file_path: String, line: int) -> void:
 func _on_commit_selected(entry: Dictionary) -> void:
 	_commit_log_diff.show_commit(entry)
 	make_bottom_panel_item_visible(_diff_panel)
-
-
-## Re-fetches the diff for the file currently shown in the panel.
-## Refreshes content in place, it doesn't re-navigate (see _on_hunk_clicked).
-func _on_diff_refresh_requested(file_path: String) -> void:
-	_pending_diff_path = file_path
-	_pending_diff_line = -1
-	_git_engine.diff_full(ProjectSettings.globalize_path(file_path))
-
-
-## Applies a finished DIFF_FULL result, discarding it if the active script
-## tab no longer matches the file that was requested.
-func _on_diff_full_result(
-	command: GitEngine.Command,
-	exit_code: int,
-	output: Array[String],
-	_context: Dictionary,
-) -> void:
-	if command != GitEngine.Command.DIFF_FULL or exit_code != 0 or output.is_empty():
-		return
-	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
-	if not current_script or current_script.resource_path != _pending_diff_path:
-		return
-	var raw: String = output[0]
-	if raw.length() > GitotCommitLogDiff.MAX_DIFF_CHARS:
-		raw = raw.substr(0, GitotCommitLogDiff.MAX_DIFF_CHARS)
-	var files: Array[Dictionary] = GitDiffParser.parse_full(raw)
-	if files.is_empty():
-		return
-	var hunks: Array[Dictionary] = []
-	hunks.assign(files[0]["hunks"])
-	_diff_panel.set_commit_mode(false)
-	_diff_panel.show_diff(_pending_diff_path, hunks)
-	_diff_panel.jump_to_source_line(_pending_diff_line)

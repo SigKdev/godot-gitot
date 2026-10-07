@@ -109,15 +109,6 @@ func _setup_tree_columns() -> void:
 	_tree.set_column_custom_minimum_width(2, 80)
 
 
-# func _add_title_button(icon_name: String, tooltip: String, callback: Callable) -> Button:
-# 	var button := Button.new()
-# 	button.flat = true
-# 	button.icon = GitotUi.get_icon(icon_name)
-# 	button.tooltip_text = tooltip
-# 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-# 	button.pressed.connect(callback)
-# 	_fold.add_title_bar_control(button)
-# 	return button
 func _add_title_button(icon_name: String, tooltip: String, callback: Callable) -> Button:
 	var button: Button = GitotUi.add_title_button(_fold, icon_name, tooltip)
 	button.pressed.connect(callback)

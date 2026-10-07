@@ -1,7 +1,6 @@
 ## github_issue_filter.gd
 ## Type / Priority / Label dropdowns + the matching rule (AND across filters).
 ## Options come from the fetched data, so no vocabulary is hardcoded.
-## RefCounted, constructor-injected — matches the GitotLogPanel pattern.
 class_name GithubIssueFilter
 extends RefCounted
 
