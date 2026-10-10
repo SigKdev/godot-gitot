@@ -19,7 +19,8 @@ const PRESETS: Dictionary = {
 	"Godot binary (if large)": ["*.scn", "*.res", "*.lmbake"],
 }
 
-## State label texts while git answers, so a blank list is never labelled "ready".
+## State label texts. CHECKING_TEXT and LOADING_TEXT cover the wait for git, so a blank list is
+## never labelled "ready".
 const READY_TEXT: String = "Git LFS is ready."
 const CHECKING_TEXT: String = "Checking Git LFS..."
 const LOADING_TEXT: String = "Loading LFS files..."
@@ -84,7 +85,7 @@ func _ready() -> void:
 			OS.shell_open(str(meta)),
 	)
 	# Notes: shown by default, hideable; the choice persists. Set BEFORE connecting (no save on init).
-	_note_button.icon = GitotUi.get_icon("NodeInfo")
+	_note_button.icon = GitotUi.get_icon("Info")
 	_note_button.button_pressed = GitotSettings.get_value("lfs_note_visible")
 	_hint_label.visible = _note_button.button_pressed
 	_note_button.toggled.connect(_on_note_toggled)
@@ -95,7 +96,7 @@ func set_lfs(lfs: GitLfs) -> void:
 	_lfs = lfs
 
 
-## Reloads the LFS file list while the active view is on screen (one git spawn).
+## Reloads the LFS file list while the active view is on screen (two chained git reads).
 ## Called by gitot.gd after commands that move the index/HEAD, and after a pull.
 func refresh_files() -> void:
 	if not (_files_tree.visible and is_visible_in_tree()):
@@ -270,7 +271,7 @@ static func _stats_bbcode(stats: Dictionary) -> String:
 		["Files", str(stats["count"])],
 		["Total size", String.humanize_size(stats["total"])],
 		["On this computer", _count_size(stats["local"], stats["local_size"])],
-		["On GitHub", _count_size(stats["remote"], stats["remote_size"])],
+		["On Remote", _count_size(stats["remote"], stats["remote_size"])],
 	]
 	if stats["unpushed"] > 0:
 		rows.append(["To upload", _count_size(stats["unpushed"], stats["unpushed_size"])])
@@ -290,7 +291,7 @@ static func _stats_bbcode(stats: Dictionary) -> String:
 	var table: String = "[table=2]"
 	for row: Array in rows:
 		table += "[cell][color=gray]%s  [/color][/cell][cell]%s[/cell]" % row
-	return table + "[/table]\n[font_size=11][color=gray]GitHub = origin as of your last fetch, current files only (GitHub also counts old versions).[/color][/font_size]"
+	return table + "[/table]\n[font_size=11][color=gray]Remote = origin as of your last fetch, current files only (GitHub also counts old versions).[/color][/font_size]"
 
 
 static func _count_size(count: int, size: int) -> String:

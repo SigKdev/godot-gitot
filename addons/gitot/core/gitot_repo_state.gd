@@ -1,11 +1,17 @@
 ## gitot_repo_state.gd
-## Single source of truth for the current branch's sync state vs its upstream.
+## Single source of truth for the current branch: its name, the origin repo and its sync state vs upstream.
 ## Written only by GitotResultRouter; panels and the push flow read it.
 class_name GitotRepoState
 extends RefCounted
 
 ## Emitted when has_upstream, ahead or behind changed.
 signal changed
+
+## Checked-out branch ("" until the first branch list). Detached HEAD: git's own "(HEAD detached at ...)" text.
+## Plain field, no signal: only log messages read it.
+var branch: String = ""
+## "owner/repo" of origin ("" = no origin, or a URL that is not owner/repo shaped).
+var repo: String = ""
 
 ## False = the branch was never pushed (counts are then meaningless, kept at 0).
 var has_upstream: bool = false

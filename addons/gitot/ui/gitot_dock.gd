@@ -1,6 +1,6 @@
 ## gitot_dock.gd
-## Main dock for the Gitot plugin. Contains all UI elements,
-## and delegates git commands to the shared GitEngine instance.
+## Main dock: builds the panels (each owns its injected widgets) and wires them to the shared
+## GitEngine and GitotResultRouter. Also holds the toolbar, commit and amend logic.
 @tool
 class_name GitotDock
 extends Control
@@ -8,16 +8,19 @@ extends Control
 ## Forwarded from the history list (signal up; gitot.gd owns the diff panel).
 signal commit_selected(entry: Dictionary)
 
+## Forwarded from the result router (signal up; gitot.gd owns the editor-level tooltip).
+signal status_parsed(parsed: Dictionary)
+
 const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 
 ## Project page behind the Support & Feedback links (opened in the browser).
 const REPO_URL: String = "https://github.com/SigKdev/godot-gitot"
 const KOFI_URL: String = "https://ko-fi.com/sigkgames"
 
-# Caps _ready()'s self-retry when _git_engine never arrives.
+## Caps _ready()'s self-retry when _git_engine never arrives.
 const MAX_READY_RETRIES: int = 30
 
-# Commit area wording, normal vs amend mode (see _refresh_commit_ui).
+## Commit area wording, normal vs amend mode (see _refresh_commit_ui).
 const COMMIT_PLACEHOLDER: String = "Commit Message (multiline supported)"
 const AMEND_PLACEHOLDER: String = "Leave empty to keep the previous message"
 
@@ -47,12 +50,11 @@ var _write_busy: bool = false
 
 func _ready() -> void:
 	if not _git_engine:
-		# GitEngine not yet injected — either the normal @tool-dock timing quirk
-		# (resolves within a frame or two) or an orphaned instance the editor
-		# spawned outside gitot.gd's flow (never resolves — give up past the cap).
+		# GitEngine not injected yet. Either normal @tool dock timing (resolves within a frame or two)
+		# or an instance the editor spawned outside gitot.gd (never resolves): give up past the cap.
 		_ready_retry_count += 1
 		if _ready_retry_count > MAX_READY_RETRIES:
-			GitotLogger.e("GitEngine never injected - dock disabled.")
+			GitotLogger.x("Dock disabled: GitEngine was never injected (the plugin failed to start).")
 			return
 		_ready.call_deferred()
 		return
@@ -170,6 +172,7 @@ func _build_router() -> void:
 	_result_router.head_moved.connect(_git_engine.request_changed_files_since_switch)
 	_result_router.files_changed.connect(_editor_sync.on_files_changed)
 	_result_router.file_restored.connect(_editor_sync.on_file_restored)
+	_result_router.status_parsed.connect(status_parsed.emit)
 
 
 func _setup_push_flow() -> void:
@@ -186,6 +189,7 @@ func _setup_settings() -> void:
 			%SettingsPanel.visible = not %SettingsPanel.visible,
 	)
 	%SettingsPanel.stash_cap_changed.connect(_stash_panel.refresh_limits)
+	%SettingsPanel.status_display_changed.connect(refresh_files) # One `git status` repaints the lists.
 #endregion
 
 
@@ -209,7 +213,7 @@ func set_lfs(lfs: GitLfs) -> void:
 	_lfs = lfs
 
 
-## Assigns the Push chain sync.
+## Assigns the push/tag sync orchestrator.
 func set_sync_orchestrator(orchestrator: GitSyncOrchestrator) -> void:
 	_orchestrator = orchestrator
 	orchestrator.push_state_changed.connect(_on_push_state_changed)
@@ -223,9 +227,8 @@ func set_diff_gutter(gutter: GitotDiffGutter) -> void:
 #endregion
 
 
-## Manual fallback Triggers a fresh git status query for unreliable save signal.
-## (e.g. during editor startup, before the setter runs)
-## Shared refresh call. Guards against git_engine not yet injected.
+## Full refresh: file lists, ahead/behind, branches, history and shelf. Does nothing until the
+## GitEngine is injected (e.g. during editor startup).
 func refresh_status() -> void:
 	if not _git_engine:
 		return
@@ -266,7 +269,8 @@ func _on_refresh_diff_pressed() -> void:
 	_diff_gutter.refresh_current_script()
 
 
-## Routes a finished GitEngine command;
+## Handles the dock-owned reactions to a finished command (busy buttons, commit field reset),
+## then hands the result to the router.
 func _on_status_result(
 	command: GitEngine.Command,
 	exit_code: int,
@@ -298,13 +302,13 @@ func _on_commit_pressed() -> void:
 		_on_amend_pressed()
 		return
 	if message.is_empty():
-		GitotLogger.w("Commit message is empty. Commit aborted!")
+		GitotLogger.w("Commit message is empty - nothing was committed.")
 		return
 	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message])
 
 
-## Guards against amending a commit already on origin (ahead == 0 with an
-## upstream set means HEAD == upstream). No upstream at all is always safe.
+## Guards against amending a commit already on origin (ahead == 0 with an upstream set means
+## HEAD is already on the upstream). No upstream at all is always safe.
 func _on_amend_pressed() -> void:
 	if _repo_state.has_upstream and _repo_state.ahead == 0:
 		%AmendConfirmDialog.popup_centered()
@@ -312,7 +316,7 @@ func _on_amend_pressed() -> void:
 	_do_amend()
 
 
-## Executes the amend - called directly or after dialog confirmation.
+## Runs the amend, called directly or after the dialog is confirmed.
 ## Empty message keeps the existing one (--no-edit).
 func _do_amend() -> void:
 	var message: String = %CommitMessageInput.text.strip_edges()
@@ -342,7 +346,7 @@ func _refresh_commit_ui() -> void:
 	if _write_busy:
 		%CommitButton.text = "Working..."
 	else:
-		%CommitButton.text = "Amend" if amend else "Commit"
+		%CommitButton.text = "Amend!" if amend else "Commit"
 		%CommitButton.tooltip_text = "Amend last commit" if amend else "Commit staged changes"
 	%CommitMessageInput.placeholder_text = AMEND_PLACEHOLDER if amend else COMMIT_PLACEHOLDER
 
@@ -359,13 +363,13 @@ func _on_tag_retry_needed(needed: bool) -> void:
 ## The push went through but the tag name is taken by another commit: the log line alone is easy to miss.
 func _on_tag_conflict(tag_name: String) -> void:
 	EditorInterface.get_editor_toaster().push_toast(
-		"Gitot: Commit pushed, but tag '%s' exists on another commit. Rename tag and push again to tag it."
+		"Gitot: Commits pushed, but tag '%s' already exists on another commit. Rename the tag and push again to tag it."
 		% tag_name,
 		EditorToaster.SEVERITY_ERROR,
 	)
 
 
-## Button that opens a web page: external-link icon on the right, the URL as tooltip.
+## Button that opens a web page: external-link icon, the URL as tooltip.
 func _setup_link_button(button: Button, url: String) -> void:
 	button.icon = GitotUi.get_icon("ExternalLink")
 	button.tooltip_text = url

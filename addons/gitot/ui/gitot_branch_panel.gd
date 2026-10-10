@@ -1,7 +1,7 @@
 ## gitot_branch_panel.gd
 ## Branches section: list (name / sync / last commit), Fetch button (toolbar row of the scene) and a
 ## right-aligned sync status of the current branch in the fold title bar.
-## Double-click switches branch. UI-only — no OS.execute() calls.
+## Double-click switches branch. UI only: no OS.execute() calls.
 class_name GitotBranchPanel
 extends RefCounted
 
@@ -239,14 +239,14 @@ func _on_fetch_pressed() -> void:
 
 
 ## Double-click (or Enter/Space): switch to a local branch, or create a tracking
-## branch for a remote-only one (atomic `switch -c --track`).
+## branch for a remote-only one (`switch -c --track`).
 func _on_item_activated() -> void:
 	var item: TreeItem = _tree.get_selected()
 	if item == null:
 		return
 	var branch: GitBranchEntry = _entry(item)
 	if branch.is_current:
-		return # Already on it: a no-op switch would still trigger a stale file refresh.
+		return # Already checked out: a no-op switch would still trigger the post-switch refresh.
 	if branch.is_remote:
 		_git_engine.track_remote_branch(branch.name)
 	else:

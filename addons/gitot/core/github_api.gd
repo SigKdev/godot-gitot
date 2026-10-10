@@ -8,7 +8,7 @@ extends Node
 ## Emitted when a request succeeds. [param data] is the parsed JSON body.
 signal request_succeeded(data: Variant)
 
-## Emitted on 401 — token is invalid/expired/revoked.
+## Emitted on 401: the token is invalid, expired or revoked.
 signal auth_failed
 
 ## Emitted on any other failure (network, non-200/401 status).
@@ -17,7 +17,7 @@ signal request_failed(status_code: int)
 const API_BASE: String = "https://api.github.com"
 const USER_AGENT: String = "Gitot-Godot-Plugin"
 
-## Page size for fetch_issues(); kept low deliberately (solo/small-repo scope).
+## Page size for fetch_issues(). Kept small: Gitot targets solo/small repos.
 const ISSUES_PER_PAGE: int = 50
 
 ## Without a timeout an unreachable GitHub would leave the request pending forever
@@ -49,8 +49,8 @@ func get_endpoint(endpoint: String) -> void:
 
 
 ## Fetches one page of open issues for [param owner]/[param repo].
-## Pagination (page count, stop condition) is the caller's concern — see
-## github_panel.gd's page-chaining in _on_request_succeeded().
+## Pagination (page count, stop condition) is the caller's concern, see
+## GithubPanel._on_request_succeeded().
 func fetch_issues(owner: String, repo: String, page: int = 1) -> void:
 	get_endpoint(
 		"/repos/%s/%s/issues?per_page=%d&page=%d&state=open" % [owner, repo, ISSUES_PER_PAGE, page]

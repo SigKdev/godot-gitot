@@ -9,8 +9,8 @@ extends RefCounted
 signal state_detected(state: State, repo_uses_lfs: bool)
 signal files_listed(files: Array[Dictionary])
 
-## Emitted when the local listing failed. The previous list stays (stale beats blank); the panel
-## uses it to drop its "Loading" text.
+## Emitted when the local listing failed. The previous list stays; the panel uses this to drop its
+## "Loading" text.
 signal files_list_failed
 
 ## Emitted after a successful track/untrack: .gitattributes changed, re-read get_patterns().
@@ -150,8 +150,8 @@ func _run_pattern(command: GitEngine.Command, verb: String, pattern: String) -> 
 	return true
 
 
-## Result routing. LFS_VERSION -> LFS_STATE is the state chain; others emit parsed data.
-## On failure the previous data is kept (stale beats blank), like the stash list.
+## Result routing. LFS_VERSION -> LFS_STATE is the state chain, LS_FILES and TRACK/UNTRACK emit
+## signals, the other commands only log. A failed listing keeps the previous data, like the stash list.
 func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
@@ -175,9 +175,15 @@ func _on_command_completed(
 			_log_outcome(exit_code, raw, "Git LFS initialized.", "Git LFS install failed.")
 			detect_state() # The write lock is already released at this point.
 		GitEngine.Command.LFS_PULL:
-			_log_outcome(exit_code, raw, "LFS pull finished.", "LFS pull failed.")
+			_log_outcome(
+				exit_code,
+				raw,
+				"LFS pull finished.",
+				"LFS pull failed.",
+				"Common fail causes: no internet, or the LFS storage of origin is not reachable.",
+			)
 			if exit_code == -1 and raw.begins_with("Timed out"): # run_network()'s timeout output.
-				GitotLogger.i(
+				GitotLogger.h(
 					"Raise the network timeout in Settings and pull again: files already downloaded are skipped."
 				)
 			pull_finished.emit(exit_code == 0)
@@ -190,7 +196,7 @@ func _on_command_completed(
 
 
 ## Stage "remote": keep the upstream list (empty on failure = no upstream), then read this checkout.
-## Stage "local": merge both and publish. On failure the previous list is kept (stale beats blank).
+## Stage "local": merge both and publish. On failure the previous list is kept.
 func _handle_files_result(exit_code: int, raw: String, context: Dictionary) -> void:
 	if context.get("stage", "") == "remote":
 		var remote_files: Array[Dictionary] = (
@@ -218,24 +224,33 @@ func _handle_rule_result(
 ) -> void:
 	var is_track: bool = command == GitEngine.Command.LFS_TRACK
 	var pattern: String = context["pattern"]
-	if exit_code == 0:
-		GitotLogger.s("LFS pattern '%s' %s." % [pattern, "tracked" if is_track else "untracked"])
-		if is_track:
-			GitotLogger.i("Commit .gitattributes so collaborators and CI get the rule.")
-		patterns_changed.emit()
-	else:
-		GitotLogger.e("LFS %s failed for '%s'." % ["track" if is_track else "untrack", pattern])
+	if exit_code != 0:
+		GitotLogger.fail(
+			"LFS %s failed for '%s'." % ["track" if is_track else "untrack", pattern],
+			raw,
+		)
+		return
+	GitotLogger.s("LFS pattern '%s' %s." % [pattern, "tracked" if is_track else "untracked"])
+	if is_track:
+		GitotLogger.h("Commit .gitattributes so collaborators and CI get the rule.")
+	patterns_changed.emit()
 	var text: String = raw.strip_edges()
 	if not text.is_empty():
 		GitotLogger.g(text) # '"*.png" already supported'.
 
 
 ## Success/failure line, then git-lfs's own output, for commands with no parsed result.
-func _log_outcome(exit_code: int, raw: String, ok_text: String, fail_text: String) -> void:
-	if exit_code == 0:
-		GitotLogger.s(ok_text)
-	else:
-		GitotLogger.e(fail_text)
+func _log_outcome(
+	exit_code: int,
+	raw: String,
+	ok_text: String,
+	fail_text: String,
+	hint: String = "",
+) -> void:
+	if exit_code != 0:
+		GitotLogger.fail(fail_text, raw, hint)
+		return
+	GitotLogger.s(ok_text)
 	var text: String = raw.strip_edges()
 	if not text.is_empty():
 		GitotLogger.g(text)

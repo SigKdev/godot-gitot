@@ -1,7 +1,6 @@
 ## gitot_logger.gd
-## Centralized print wrapper (info/success/warning/error/extreme/git)
-## with capped history and an optional UI listener;
-## `EXTREME` also routes through `printerr`.
+## Static logger: formatted (BBCode) lines to the Output panel, a capped history and an optional
+## UI listener. EXTREME also goes to printerr.
 class_name GitotLogger
 extends RefCounted
 
@@ -12,6 +11,7 @@ enum Level {
 	ERROR,
 	EXTREME,
 	GIT,
+	HINT, # Advice that follows an error or a result: "Common fail causes: ...", what to do next.
 }
 
 const MAX_HISTORY: int = 200
@@ -40,6 +40,7 @@ static func set_listener(callback: Callable) -> void:
 	_on_log = callback
 
 
+## Level shortcuts: i = info, s = success, w = warning, h = hint, e = error, x = extreme (fatal).
 static func i(message: String) -> void:
 	_print(message, Level.INFO)
 
@@ -50,6 +51,10 @@ static func s(message: String) -> void:
 
 static func w(message: String) -> void:
 	_print(message, Level.WARNING)
+
+
+static func h(message: String) -> void:
+	_print(message, Level.HINT)
 
 
 static func e(message: String) -> void:
@@ -65,14 +70,25 @@ static func g(message: String) -> void:
 	_print(message.replace("[", "[lb]"), Level.GIT)
 
 
+## One shape for every failure: what failed (names the subject), git's raw message, then an
+## optional hint. An empty raw message or hint is skipped.
+static func fail(title: String, raw: String, hint: String = "") -> void:
+	e(title)
+	var text: String = raw.strip_edges()
+	if not text.is_empty():
+		g(text)
+	if not hint.is_empty():
+		h(hint)
+
+
 static func _print(message: String, level: Level) -> void:
-	var prefix := "[color=cyan][Gitot][/color]"
+	var prefix := "[color=deep_sky_blue][Gitot][/color]"
 	var color := "white"
 
 	match level:
 		Level.SUCCESS:
-			color = "lime_green"
-			prefix = "[color=lime_green][Gitot Success][/color]"
+			color = "forest_green"
+			prefix = "[color=forest_green][Gitot Success][/color]"
 		Level.WARNING:
 			color = "orange"
 			prefix = "[color=orange][Gitot Warning][/color]"
@@ -85,9 +101,12 @@ static func _print(message: String, level: Level) -> void:
 		Level.GIT:
 			color = "dark_gray"
 			prefix = "[color=dark_gray][git raw][/color]"
+		Level.HINT:
+			color = "dark_gray"
+			prefix = "[color=dark_gray][Gitot Hint][/color]"
 		Level.INFO:
 			color = "gray"
-			prefix = "[color=gray][Gitot Info][/color]"
+			prefix = "[color=gray][Gitot][/color]"
 
 	var formatted := "%s [color=%s]%s[/color]" % [prefix, color, message]
 	_history.append(formatted)

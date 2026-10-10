@@ -126,6 +126,6 @@ func _on_open_pressed() -> void:
 func _request_branch(_text: String = "") -> void:
 	var branch_name: String = %BranchNameEdit.text.strip_edges()
 	if branch_name.is_empty():
-		GitotLogger.w("Branch name is empty. Creation aborted!")
+		GitotLogger.w("Branch name is empty - no branch was created.")
 		return
 	create_branch_requested.emit(branch_name, _selected_base())

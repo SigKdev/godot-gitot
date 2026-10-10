@@ -2,6 +2,72 @@
 
 All notable changes to Gitot. Latest first.
 
+## v0.16.0
+
+feat: status letters & FileSystem tooltip. refactor: explicit output messages - one failure shape
+
+Tested with GdUnit4 (19 suites, 152 tests, 0 failures) and by hand in the editor.
+
+feat: status in the Staged / Unstaged lists
+
+- Each row shows its status as a colored icon (default) or as a colored letter before the path: `U` untracked,
+  `A` added, `M` modified, `D` deleted, `C` conflict. Never both.
+- New setting **Status letters** (`status_letters`, default off). Toggling it repaints the lists with one
+  `git status` (the row selection is cleared).
+- Size Guard rows keep their warning icon in both modes.
+
+feat: git status in the FileSystem dock
+
+- Hovering a changed file adds one line to Godot's tooltip: `Git (staged): M`, `Git (unstaged): M`,
+  colored like the lists. Unchanged files keep Godot's own tooltip.
+- Always on, no setting. The data is the last status parse: no extra git call, no cost per hover.
+
+feat: messages name what they concern
+
+- Success and info lines name the branch, repo, tag or file: `Commit saved locally on branch 'dev'.`,
+  `Commits pushed to 'owner/repo' on branch 'dev'.`, `Pulled from 'owner/repo' into branch 'dev'.`,
+  `Fetched from 'owner/repo': ...`, `Switched to branch 'x'.`, `Tag 'v1' pushed to 'owner/repo'.`,
+  `Current branch 'dev' is 10 ahead, 0 behind origin.`
+- A forced push says so: `Commits force-pushed to ... Origin's diverged commits were replaced.`
+- The tag line names the repo, not a branch: a tag belongs to a commit, and Retry can run after a branch switch.
+- Push / pull no longer claim "new commits merged" or "nothing was uploaded": exit 0 also covers "Already up to
+  date", a conflicted pull leaves a merge in progress, an LFS push can upload objects before failing. Git's raw
+  line follows the result.
+- Empty-input and cancel warnings say what did not happen (`Commit message is empty - nothing was committed.`).
+- Startup: `'git' binary found. Plugin ready.` The Fatal line says what to do (install git, restart the editor).
+
+refactor
+
+- `GitotStatusTree.STATUS_VISUALS` (letter, icon, color, tip) is the single source for both the lists and the
+  tooltip.
+- A row's path is stored in the item metadata (`_path_of()`): the cell text is display-only, so stage, unstage,
+  Open file and Track with LFS never parse it.
+
+fix: failures
+
+- Every command failure logs the same three lines: an error naming the subject (`Push of branch 'dev' to
+  'owner/repo' failed.`), git's raw message, and a `Common causes` hint. Added for stash, pop, drop, local and
+  remote branch delete, restore, switch, create, reflog, repo size, stage / unstage, tag push, tag creation,
+  LFS pull and track / untrack. A hint only lists causes git is known to produce: LFS install / prune show the raw
+  message only.
+- Tag push failure is reported by the result router (it names the Retry button; the core has no UI knowledge).
+  Tag creation failure reads `Commits pushed, but tag 'v1' could not be created.` (the old text said the push was
+  aborted, but it had already happened).
+- GitHub issue-loading failures are logged as errors (were warnings).
+
+refactor: logger and state
+
+- `GitotLogger.fail(title, raw, hint)`: the single failure shape (error, raw, hint). Empty raw / hint are skipped.
+- New `Level.HINT` / `GitotLogger.h()`, prefix `[Gitot Hint]`, for advice lines: causes, "unfocus/focus the editor
+  window", "Commit .gitattributes ...", recovery tips. Fatal (`x`) is kept for "Gitot cannot work": git missing, or
+  the dock without its engine.
+- `GitotRepoState` gains `branch` and `repo` (written by the router from the branch list, the remote URL and
+  switch / create). Messages fall back to `HEAD` / `origin` until known.
+- `GitEngine` context: `PUSH` carries `{force}`, `PUSH_TAG` carries `{tag}`.
+- Known limit: after a branch switch made outside Gitot, the ahead/behind line can name the previous branch for
+  one refresh.
+<hr>
+
 ## v0.15.2
 fix: console leak, UI freezes while a write runs, hot-reload null regex - refactor: dock split, typed branch entries, one sync state
 

@@ -63,7 +63,7 @@ func _on_add_toggled(on: bool) -> void:
 func _on_create_pressed(_text: String = "") -> void:
 	var branch_name: String = _name_edit.text.strip_edges()
 	if branch_name.is_empty():
-		GitotLogger.w("Branch name is empty. Creation aborted!")
+		GitotLogger.w("Branch name is empty - no branch was created.")
 		return
 	if not GitotSettings.get_value("confirm_create_branch"):
 		_create(branch_name)

@@ -1,6 +1,6 @@
 ## github_issue_parser.gd
 ## Normalizes raw GitHub issue JSON into flat entries for the UI.
-## Static, no state — same pattern as GitLogParser.
+## Static and stateless (same pattern as GitLogParser).
 class_name GithubIssueParser
 extends RefCounted
 
@@ -33,8 +33,8 @@ const RELATIVE_UNITS: Array = [
 
 ## Converts the raw API array into entries, skipping pull requests
 ## (the issues endpoint returns PRs too; they carry a "pull_request" key).
-## @return: Array[Dictionary] {number, title, author, date_short, date_relative,
-##          type, priority, priority_rank, labels[{name,color}], body, url}.
+## @return: Array[Dictionary] {number, title, author, date_short, date_relative, created_at,
+##          type, priority, priority_rank, labels[{name,color}], body, url, branch_name}.
 static func parse(data: Array) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	for issue: Dictionary in data:
@@ -130,6 +130,6 @@ static func _str(dict: Dictionary, key: String, fallback: String = "") -> String
 	return value as String if value is String else fallback
 
 
-## Dictionary value, or {} when null/wrong type — makes nested reads null-safe.
+## Dictionary value, or {} when null or of another type, so nested reads are null-safe.
 static func _dict(value: Variant) -> Dictionary:
 	return value as Dictionary if value is Dictionary else { }

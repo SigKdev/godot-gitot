@@ -1,6 +1,7 @@
 ## gitot_log_console.gd
 ## Renders GitotLogger output live inside the dock.
-## + "Info" title-bar menu: Reflog, Repo size, Copy log, Clear log. Git results are logged by the router.
+## Also adds the "Info" title-bar menu (Reflog, Repo size, Copy log, Clear log). Git results are
+## logged by the router.
 class_name GitotLogConsole
 extends RefCounted
 
@@ -43,7 +44,8 @@ func teardown() -> void:
 		_log_list.resized.disconnect(_scroll_to_bottom)
 
 
-## Adds formatted (bbcode) log line, styled to match Godot's own Output panel.
+## Appends one formatted (BBCode) log line, styled like Godot's Output panel. The oldest line is
+## dropped past GitotLogger.MAX_HISTORY.
 func _append_line(formatted: String) -> void:
 	var label := RichTextLabel.new()
 	label.bbcode_enabled = true
@@ -115,7 +117,7 @@ func _clear() -> void:
 		child.queue_free()
 
 
-## Deferred: scroll_vertical max isn't updated until after the new child's
-## size is computed on the next layout pass.
+## Connected to the list's `resized`: the scroll bar's max only updates once the new child's size
+## is laid out.
 func _scroll_to_bottom() -> void:
 	_scroll.scroll_vertical = int(_scroll.get_v_scroll_bar().max_value)

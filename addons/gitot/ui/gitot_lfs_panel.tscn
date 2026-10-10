@@ -5,6 +5,8 @@
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_1f6tb"]
 vertical = true
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_x0few"]
+
 [node name="GitotLfsPanel" type="Control" unique_id=520384113]
 custom_minimum_size = Vector2(0, 90)
 layout_mode = 3
@@ -29,7 +31,7 @@ size_flags_vertical = 3
 theme_override_styles/split_bar_background = SubResource("StyleBoxLine_1f6tb")
 
 [node name="DashboardScroll" type="ScrollContainer" parent="VBox/Body" unique_id=1710100001]
-custom_minimum_size = Vector2(260, 0)
+custom_minimum_size = Vector2(290, 0)
 layout_mode = 2
 horizontal_scroll_mode = 0
 
@@ -39,6 +41,7 @@ size_flags_horizontal = 3
 
 [node name="StateLabel" type="Label" parent="VBox/Body/DashboardScroll/Dashboard" unique_id=614566646]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 autowrap_mode = 3
 
@@ -64,7 +67,7 @@ A normal Pull or checkout already downloads them: use this when
 files show 'Remote' (on GitHub, only a pointer here: e.g. after a timeout,
 or a clone made without LFS)."
 mouse_default_cursor_shape = 2
-text = "Download"
+text = "Pull"
 
 [node name="PruneButton" type="Button" parent="VBox/Body/DashboardScroll/Dashboard/Actions/LfsActions" unique_id=1568035295]
 unique_name_in_owner = true
@@ -76,13 +79,18 @@ Pruned files are downloaded again from the remote when needed."
 mouse_default_cursor_shape = 2
 text = "Prune"
 
+[node name="VSeparator" type="VSeparator" parent="VBox/Body/DashboardScroll/Dashboard/Actions" unique_id=2040911129]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/separator = SubResource("StyleBoxEmpty_x0few")
+
 [node name="NoteButton" type="Button" parent="VBox/Body/DashboardScroll/Dashboard/Actions" unique_id=1710100003]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Show / hide the LFS notes at the bottom (what LFS does, timeouts, GitHub quota)."
 mouse_default_cursor_shape = 2
 toggle_mode = true
-text = "Info"
+flat = true
 
 [node name="SetupView" type="VBoxContainer" parent="VBox/Body/DashboardScroll/Dashboard" unique_id=185001092]
 unique_name_in_owner = true
@@ -91,6 +99,7 @@ layout_mode = 2
 
 [node name="StepsLabel" type="Label" parent="VBox/Body/DashboardScroll/Dashboard/SetupView" unique_id=1710100004]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 autowrap_mode = 3
 
@@ -122,7 +131,7 @@ fit_content = true
 [node name="HeaderContainer" type="HBoxContainer" parent="VBox/Body/DashboardScroll/Dashboard/ReadyView" unique_id=1321910181]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="VBox/Body/DashboardScroll/Dashboard/ReadyView/HeaderContainer" unique_id=1113998447]
+[node name="TrackedLabel" type="Label" parent="VBox/Body/DashboardScroll/Dashboard/ReadyView/HeaderContainer" unique_id=1113998447]
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Applies to ALL matching files: existing ones become modified, history keeps old blobs."

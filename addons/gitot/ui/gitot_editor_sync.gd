@@ -4,8 +4,8 @@
 class_name GitotEditorSync
 extends RefCounted
 
-## Shared by switch/pull and pop: refreshes EditorFileSystem/open tabs per file,
-## or warns once if git couldn't list them.
+## Shared by every HEAD move and stash pop: refreshes EditorFileSystem and open tabs per file,
+## or warns once if git couldn't list the files.
 ## @param result: {"reliable": bool, "files": PackedStringArray} (GitEngine.to_file_list).
 func on_files_changed(result: Dictionary) -> void:
 	if not result["reliable"]:
@@ -29,7 +29,7 @@ func on_files_changed(result: Dictionary) -> void:
 			) % stale_scripts,
 			EditorToaster.SEVERITY_WARNING,
 		)
-		GitotLogger.i(
+		GitotLogger.h(
 			"%d open script(s) changed on disk, unfocus/focus the editor window to refresh."
 			% stale_scripts,
 		)
@@ -45,7 +45,7 @@ func on_file_restored(relative_path: String) -> void:
 			) % relative_path,
 			EditorToaster.SEVERITY_WARNING,
 		)
-		GitotLogger.i("'%s' restored, unfocus/focus the editor window to refresh." % relative_path)
+		GitotLogger.h("'%s' restored, unfocus/focus the editor window to refresh." % relative_path)
 
 
 ## LFS pull replaced pointer files with real binaries: ask EditorFileSystem to look for changes.
@@ -56,8 +56,8 @@ func on_lfs_pull_finished(success: bool) -> void:
 
 ## Refreshes EditorFileSystem's cache for one file changed on disk outside the editor,
 ## and reloads it if open: reload_scene_from_path() for a scene tab, Script.reload() for a
-## script (recompiles the running class - the open tab's visible text only follows an
-## editor focus change, which is Godot's own external-change check; nothing else forces it).
+## script (recompiles the running class). The open script tab's text only follows when the editor
+## window regains focus (Godot's own external-change check); no public API forces it.
 ## @return: true if an open script tab was reloaded, so callers can warn about it.
 func _refresh_file(res_path: String) -> bool:
 	if not FileAccess.file_exists(res_path):
@@ -70,4 +70,3 @@ func _refresh_file(res_path: String) -> bool:
 			script.reload(true)
 			return true
 	return false
-## Refreshes EditorFileSystem's cache for one file changed on disk outside the editor,

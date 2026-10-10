@@ -1,6 +1,6 @@
 ## git_branch_entry.gd
-## One row of `git branch -a` (see GitBranchParser). Typed replacement for the former Dictionary,
-## so a misspelled field is a parse error instead of a silent null.
+## One row of `git branch -a` output (see GitBranchParser).
+## A typed class instead of a Dictionary: a misspelled field is a script error, not a silent null.
 class_name GitBranchEntry
 extends RefCounted
 

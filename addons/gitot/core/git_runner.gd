@@ -21,8 +21,8 @@ const SHELL_SAFE_PATTERN: String = "^[A-Za-z0-9._/@+:-]+$"
 ## re-run on editor hot-reload (the var stays null).
 static var _shell_safe_regex: RegEx
 
-## PID → temp log path of running network operations (push/pull). Tracks both so a
-## mid-operation kill (timeout or teardown) can also remove the orphaned log file.
+## PID -> temp log path of running network operations (push, pull...), so a mid-operation kill
+## (timeout or teardown) can also remove the orphaned log file.
 var _active_pids: Dictionary[int, String] = { }
 
 ## True while a write op is executing. Blocks any other WRITE from racing it on index.lock;

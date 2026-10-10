@@ -1,5 +1,5 @@
 ## gitot_settings.gd
-## Static for user-configurable plugin settings.
+## Static accessors for the user-configurable plugin settings.
 ## Storage: user://gitot_settings.cfg - plaintext, non-sensitive values only.
 class_name GitotSettings
 extends RefCounted
@@ -18,7 +18,8 @@ const DEFAULTS: Dictionary = {
 	"confirm_create_branch": true,
 	"auto_refresh_on_focus": true,
 	"github_issues_enabled": true,
-	"lfs_note_visible": true, # Bottom notes of the LFS panel (Info toggle).
+	"lfs_note_visible": true,
+	"status_letters": false,
 }
 
 ## In-memory cache, populated on first read - avoids a ConfigFile disk load per get_value() call.

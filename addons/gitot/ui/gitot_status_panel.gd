@@ -24,12 +24,13 @@ func _init(label: RichTextLabel, state: GitotRepoState) -> void:
 	_state.changed.connect(_render)
 
 
-## Sets the static "owner/repo" label. Called once in _ready() - never changes mid-session.
+## Sets the "owner/repo" part ("" = unknown). Called by the router when the origin URL answers.
 func update_repo(name: String) -> void:
 	_repo_name = name
 	_render()
 
 
+## Sets the branch name ("" = detached HEAD) and its scope text, e.g. "(Local + Remote)".
 func update_branch(branch: String, scope: String = "") -> void:
 	_branch = branch
 	_branch_known = true

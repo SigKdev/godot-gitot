@@ -1,6 +1,6 @@
-## git_log_panel.gd
+## gitot_log_panel.gd
 ## Commit history section: count-filtered Tree list (message/author/date).
-## RefCounted, constructor-injected — matches GitotBranchPanel/GitotTagPanel pattern.
+## RefCounted, constructor-injected (same pattern as GitotBranchPanel/GitotTagPanel).
 class_name GitotLogPanel
 extends RefCounted
 
@@ -17,7 +17,7 @@ var _count_dropdown: OptionButton
 
 ## @param git_engine: shared engine instance, used to re-request log on filter change.
 ## @param fold: FoldableContainer hosting the log section; dropdown is added to its title bar.
-## @param tree: 3-column Tree (Message/Author/Date), hide_root expected true.
+## @param tree: 3-column Tree (Message/Author/Date); configured here.
 func _init(git_engine: GitEngine, fold: FoldableContainer, tree: Tree) -> void:
 	_git_engine = git_engine
 	_tree = tree
@@ -34,7 +34,7 @@ func refresh() -> void:
 
 
 ## Populates the Tree from parsed GitLogParser entries.
-## @param entries: Array[Dictionary] with "message"/"author"/"date" keys.
+## @param entries: GitLogParser.parse() result ("hash", "author", "date_relative", "date_short", "message").
 func populate(entries: Array[Dictionary]) -> void:
 	_tree.clear()
 	var root: TreeItem = _tree.create_item()

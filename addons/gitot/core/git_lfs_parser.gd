@@ -1,7 +1,7 @@
 ## git_lfs_parser.gd
 ## Parses Git LFS output: `ls-files --json`, `track --json` and .gitattributes text.
-## The man pages do not document the --json schema; the keys used here (files[].name / size / checkout /
-## oid) were read from git-lfs's own source (commands/command_ls_files.go, lsFilesObject).
+## The --json schema is not documented in the man pages; the keys used here (files[].name, size,
+## checkout, oid) come from git-lfs's source (commands/command_ls_files.go, lsFilesObject).
 class_name GitLfsParser
 extends RefCounted
 
@@ -25,10 +25,10 @@ static func parse_files(raw: String) -> Array[Dictionary]:
 	return files
 
 
-## Combines this checkout's LFS files with the ones in the upstream tree (`ls-files @{u}`).
-## Every row gets "local" (full object on this computer = "present") and "remote" (the SAME content,
-## compared by oid, is in the upstream tree: pushed as of the last fetch). Upstream files missing from
-## this checkout are appended as remote-only rows. No upstream -> pass [] -> nothing is "remote".
+## Merges this checkout's LFS files with the upstream tree's (`ls-files @{u}`).
+## Every row gets "local" (full object in the working tree) and "remote" (the same content, compared
+## by oid, is in the upstream tree: pushed as of the last fetch). Upstream files missing from this
+## checkout are appended as remote-only rows. No upstream: pass [] and nothing is "remote".
 static func merge_scopes(local_files: Array[Dictionary], remote_files: Array[Dictionary]) -> Array[Dictionary]:
 	var remote_by_path: Dictionary[String, String] = { }
 	for file: Dictionary in remote_files:
@@ -56,7 +56,7 @@ static func merge_scopes(local_files: Array[Dictionary], remote_files: Array[Dic
 
 ## Totals for the LFS dashboard, from merge_scopes() rows. Sizes are in bytes.
 ## "remote_size" = what origin's tree holds as of the last fetch: an ESTIMATE of GitHub storage
-## (current files only; GitHub also counts old versions). No LFS quota API exists.
+## (current files only; GitHub also counts old versions). The real quota is not queried.
 static func summarize(files: Array[Dictionary]) -> Dictionary:
 	var stats: Dictionary = {
 		"count": files.size(), "total": 0,

@@ -1,6 +1,6 @@
 ## git_branch_parser.gd
 ## Parses `git branch -a` output produced with GitEngine.BRANCH_LIST_FORMAT.
-## Static parser, no state — same pattern as GitStatusParser.
+## Static and stateless (same pattern as GitStatusParser).
 class_name GitBranchParser
 extends RefCounted
 
@@ -29,7 +29,7 @@ static func parse(raw_output: String) -> Array[GitBranchEntry]:
 		if f.size() < Field.size():
 			continue
 		var refname: String = f[Field.REF].strip_edges()
-		# Skip origin/HEAD: a symbolic-ref alias, not a real checkout-able branch.
+		# Skip origin/HEAD: a symbolic-ref alias, not a branch of its own.
 		if refname.is_empty() or refname.ends_with("/HEAD"):
 			continue
 		var entry: GitBranchEntry = GitBranchEntry.new()

@@ -81,9 +81,8 @@ func get_tag_input(last_commit_message: String) -> Dictionary:
 	return { "tag_name": tag_name, "tag_message": tag_message }
 
 
-## Reflects the current project version on the toggle label,
-## refreshed on tag panel toggle and when the setting is toggled on/off
-## in case project.godot may have changed since last check.
+## Shows the project's current version on the toggle label. Refreshed when the tag panel or the
+## project-version toggle changes, since project.godot may have changed in the meantime.
 func _update_project_version_label() -> void:
 	var raw_version: String = ProjectSettings.get_setting("application/config/version", "")
 	var display: String = _format_version_tag(raw_version) if not raw_version.is_empty() else "unset"

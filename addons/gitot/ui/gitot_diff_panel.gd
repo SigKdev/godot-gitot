@@ -1,5 +1,5 @@
 ## gitot_diff_panel.gd
-## Bottom-dock full-context diff viewer. Read-only CodeEdit rendering of
+## Bottom-panel full-context diff viewer. Read-only CodeEdit rendering of
 ## parsed hunks from GitDiffParser.parse_full(), with per-line +/- coloring,
 ## per-hunk collapse, and click-to-hunk navigation.
 @tool
@@ -24,7 +24,7 @@ const COLOR_HEADER: Color = Color(0.22, 0.545, 0.992, 0.11)
 const SIGN_GUTTER_NAME: String = "diff_sign"
 const LINE_NUM_GUTTER_NAME: String = "diff_line_no"
 const FOLD_GUTTER_NAME: String = "diff_fold"
-const LINE_PAD_DIGITS: int = 3 # floor: Same as Godot default (001 not 1)
+const LINE_PAD_DIGITS: int = 3 # Line numbers are zero-padded to this width ("001").
 
 var _line_num_gutter_idx: int = -1
 var _sign_gutter_idx: int = -1
@@ -42,12 +42,11 @@ var _gdscript_highlighter: CodeHighlighter
 
 func _ready() -> void:
 	_code_edit.editable = false
-	_code_edit.gutters_draw_line_numbers = false # replaced below
+	_code_edit.gutters_draw_line_numbers = false # Replaced by the custom gutter below.
 
 	_gdscript_highlighter = _make_gdscript_highlighter()
 
-	# Line numbers gutter
-	# built-in count is rendered-line, not source-line
+	# Line numbers gutter: custom, because the built-in one counts rendered lines, not source lines.
 	_code_edit.add_gutter(-1)
 	_line_num_gutter_idx = _code_edit.get_gutter_count() - 1
 	_code_edit.set_gutter_name(_line_num_gutter_idx, LINE_NUM_GUTTER_NAME)
@@ -89,8 +88,8 @@ func _ready() -> void:
 	%CommitInfoLabel.gui_input.connect(_on_commit_info_gui_input)
 
 
-## Renders all hunks of one file, fully expanded. See _rebuild_view() for the
-## actual line-building/styling — this only resets per-file state.
+## Renders all hunks of one file, fully expanded. Only resets the per-file state here, the line
+## building and styling is in _rebuild_view().
 func show_diff(file_path: String, hunks: Array[Dictionary]) -> void:
 	_current_file_path = file_path
 	_code_edit.syntax_highlighter = _gdscript_highlighter if file_path.get_extension() == "gd" else null
@@ -196,8 +195,8 @@ func _make_numbered_lines(hunk: Dictionary) -> Array[Dictionary]:
 	return result
 
 
-## Full-rebuild-on-toggle keeps buffer text and per-line gutter/color state
-## always in lockstep (patching individual lines risked them drifting apart).
+## Rebuilds the whole view on every change, so buffer text and per-line gutter/color state stay
+## in sync (patching single lines risks them drifting apart).
 func _rebuild_view() -> void:
 	var render_lines: Array[Dictionary] = []
 	_hunk_header_lines.resize(_current_hunks.size())
@@ -211,12 +210,12 @@ func _rebuild_view() -> void:
 	for entry: Dictionary in render_lines:
 		if entry.has("line_no"):
 			entry["line_no"] = str(entry["line_no"]).pad_zeros(LINE_PAD_DIGITS)
-	_code_edit.set_gutter_width(_line_num_gutter_idx, LINE_PAD_DIGITS * 8 + 4) # 8 px/digit is a monospace-width approximation (not exact font metrics)
+	_code_edit.set_gutter_width(_line_num_gutter_idx, LINE_PAD_DIGITS * 8 + 4) # 8 px per digit approximates the monospace width.
 
 	var texts: PackedStringArray = []
 	for entry: Dictionary in render_lines:
 		texts.append(entry["text"])
-	_code_edit.text = "\n".join(texts) # single assignment: reassigning mid-loop wipes prior per-line state
+	_code_edit.text = "\n".join(texts) # Assign once: setting the text again wipes the per-line state.
 
 	for i: int in range(render_lines.size()):
 		_style_line(i, render_lines[i])
@@ -264,6 +263,7 @@ func _style_line(i: int, entry: Dictionary) -> void:
 			_code_edit.set_line_gutter_item_color(i, _line_num_gutter_idx, Color(0.5, 0.5, 0.5))
 
 
+## Minimal GDScript highlighter, applied to .gd files only.
 func _make_gdscript_highlighter() -> CodeHighlighter:
 	var hl: CodeHighlighter = CodeHighlighter.new()
 	var keyword_color: Color = Color("ff7085")

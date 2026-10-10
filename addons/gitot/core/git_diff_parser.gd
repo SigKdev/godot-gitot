@@ -4,7 +4,7 @@
 class_name GitDiffParser
 extends RefCounted
 
-## Line state constants for gutter coloring.
+## Change state of a line, used for the gutter color.
 enum LineState {
 	ADDED,
 	MODIFIED,
@@ -28,6 +28,9 @@ static func _old_regex() -> RegEx:
 	return _old_hunk_regex
 
 
+## Parses `git diff -U0` hunk headers.
+## @return: {new-file line number (1-based): LineState}. A hunk without removed lines is ADDED,
+## otherwise MODIFIED.
 static func parse(raw_diff: String) -> Dictionary:
 	var result: Dictionary = { }
 
@@ -51,11 +54,11 @@ static func parse(raw_diff: String) -> Dictionary:
 	return result
 
 
-## Parses a full-context `git diff -U3` into per-file hunks for the bottom-dock viewer.
-## Multi-file-ready shape (one entry per `diff --git` block; the gutter diff and the commit diff both use it).
-## Line numbers are 1-based, matching git's own convention (same as parse()'s hunk parsing).
+## Parses a full-context `git diff -U3` into per-file hunks for the bottom-panel diff viewer.
+## One entry per `diff --git` block; used by the working-tree diff and the commit diff.
+## Line numbers are 1-based, as in git.
 ## @return: [{file: String, hunks: [{old_start: int, new_start: int, lines: [{type, text}]}]}]
-##   type is "add" / "del" / "context". Malformed input yields an empty Array.
+##   type is "add" / "del" / "context". Input without a `diff --git` block yields an empty Array.
 static func parse_full(raw_diff: String) -> Array[Dictionary]:
 	var files: Array[Dictionary] = []
 	var current_file: Dictionary = { }

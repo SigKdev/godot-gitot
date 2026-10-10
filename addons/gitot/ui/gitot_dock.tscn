@@ -186,7 +186,7 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "0 = disabled (default 50 MB)"
 max_value = 500.0
-value = 2.0
+value = 50.0
 rounded = true
 suffix = "MB"
 
@@ -231,8 +231,14 @@ layout_mode = 2
 tooltip_text = "Range: 1-50 (default 10)"
 min_value = 1.0
 max_value = 50.0
-value = 10.0
+value = 6.0
 rounded = true
+
+[node name="StatusLettersCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1873246690]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show the status as a letter (U/A/M/D/C) instead of the icons"
+text = "Status letters"
 
 [node name="ConfirmPushCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=2016523303]
 unique_name_in_owner = true

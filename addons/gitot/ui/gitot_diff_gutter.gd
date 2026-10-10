@@ -103,8 +103,8 @@ func _on_diff_result(
 			if line_states[line_num] == GitDiffParser.LineState.ADDED
 			else COLOR_MODIFIED
 		)
-		var target_line: int = line_num - 1
 		# Diff line numbers are 1-based; CodeEdit lines are 0-based.
+		var target_line: int = line_num - 1
 		code_edit.set_line_gutter_text(target_line, gutter_idx, "▌")
 		code_edit.set_line_gutter_item_color(target_line, gutter_idx, color)
 

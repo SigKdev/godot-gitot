@@ -11,7 +11,7 @@ href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.3+-F03C
 alt="Git"></a> <a href="https://git-lfs.com"><img
 src="https://img.shields.io/badge/GIT_LFS-3.4+-F64935?logo=gitlfs&logoColor=F64935" alt="Git LFS"></a> <a
 href="https://store.godotengine.org/asset/sigk/gitot/"><img
-src="https://img.shields.io/badge/Gitot-0.15.2-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
+src="https://img.shields.io/badge/Gitot-0.16.0-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
 src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -109,6 +109,11 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
 - **Repo Status Panel:** One-line summary of the current repo, branch (detached HEAD flagged in red), branch
   scope, and ahead/behind sync status.
 
+- **Status Signs:** Every row of the Staged / Unstaged lists shows its status (`U` untracked, `A` added,
+  `M` modified, `D` deleted, `C` conflict) as a colored icon, or as letter with the **Status letters**
+  setting. Hovering a changed file in the FileSystem dock adds its git status (staged / unstaged) to Godot's
+  tooltip.
+
 - **Accents & Unicode:** files with accented or non-Latin names (`Lumière.mp3`) can be staged,
   and accented text displays correctly in diffs, commit history and stash names.
 
@@ -116,8 +121,8 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
   panel clean. The console's **Info** menu: Reflog (last 20), Repo size (`git count-objects -vH`), Copy log,
   Clear log. After a big commit only the summary line (`N files changed, ...`) is printed, not the file list.
 
-- **Friendly messages:** commit / push / pull / fetch / stash results are worded in plain language,
-  and a failure shows git's raw error plus the common causes.
+- **Explicit messages:** every result names what it concerns (`Commits pushed to 'owner/repo' on branch 'dev'.`,
+  a forced push says so). A failure shows what failed, git's raw error, then a `Hint` line with the common causes.
 
 More details per feature: [Wiki](../../wiki).
 
@@ -147,7 +152,6 @@ Full documentation lives in the **[Wiki](../../wiki)**:
   tab. Gitot recompiles the script's class and shows a toast, but the tab's visible text only updates on the
   next **editor focus change**. To avoid it altogether, close the affected script tab _before_ switching
   branches, pulling or popping.
-- Validated on Windows only. Non-ASCII text is verified on Windows-1252 only.
 
 All other limitations (editor refresh, branches, stash, diff viewer, LFS): see **[Troubleshooting](../../wiki/Troubleshooting)** in the wiki.
 
@@ -212,24 +216,24 @@ project.
 
 ## 🧪 Testing
 
-Last run v0.15.2: **18 suites, 146 tests, 0 failures** (Godot 4.7.2, Windows)
+Last run v0.16.0: **19 suites, 152 tests, 0 failures** (Godot 4.7.2, Windows)
 
 - **Automated:** [GdUnit4](https://github.com/MikeSchulze/gdUnit4) cover the pure logic: parsers
   (status, diff, log, stash, branch, LFS, paths), the runner (shell contract, encoding, shell-safety whitelist),
   the engine (command classes, write lock, branch-name safety, file-list helpers), the repo sync state,
-  settings clamping, the push planner, and the UI helpers (sync symbols, counts, tooltips, titles,
+  settings clamping, the push planner, the log messages (failure shape, result lines), and the UI helpers (sync symbols, counts, tooltips, titles,
   LFS dashboard texts and stats, issue header).
 - **Manual:** the UI flows were tested in the editor (stage / commit / amend / push / pull, branches,
   remote delete, tags, shelf, issues, LFS panel, console menu).
-- **Not covered:** UI scenes and node wiring have no automated tests, and the LFS flows against a real LFS remote
-  (Install LFS, push / pull / prune of real objects, the not-installed views) have not been exercised yet.
+- **Not covered:** UI scenes and node wiring have no automated tests, and the LFS flows against a real full
+  LFS remote (Install LFS, push / pull / prune of real objects, the not-installed views) have not been exercised yet.
 
 Details: [Testing](../../wiki/Testing) in the wiki.
 
 
 ## 🗃 Changelog
 
-See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.15.2**.
+See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.16.0**.
 
 
 ## © License

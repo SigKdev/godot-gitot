@@ -1,6 +1,7 @@
 ## gitot_push_flow.gd
 ## Push use case: plan (blocked / force / normal), confirmation dialog, tag input validation,
-## hand-off to GitSyncOrchestrator. UI nodes are injected; no git call is made here.
+## hand-off to GitSyncOrchestrator. UI nodes are injected; the only git call is the last-commit-message
+## read for the tag message.
 class_name GitotPushFlow
 extends RefCounted
 
@@ -34,7 +35,7 @@ func _init(
 	)
 
 
-# TODO: an explicit "abandon this tag" escape hatch if the user wants to push a new commit without resolving the stuck tag first.
+# TODO: add an "abandon this tag" action, so a new commit can be pushed without resolving a stuck tag first.
 ## Entry point of the Push button: pushes the current branch to its remote tracking branch.
 ## Gated by the "confirm_push" setting to avoid accidental remote pushes.
 func start() -> void:
@@ -78,7 +79,7 @@ func on_last_commit_message(exit_code: int, output: Array[String]) -> void:
 	_start_with_tag_input(message)
 
 
-## Executes the actual push - called directly or after dialog confirmation.
+## Runs the push, called directly or after the dialog is confirmed.
 ## Skips the async commit-message fetch when it isn't needed (push without tag).
 func _do_push() -> void:
 	if _tag_panel.is_enabled() and _tag_panel.uses_commit_message():
@@ -92,15 +93,15 @@ func _start_with_tag_input(last_commit_message: String) -> void:
 	var tag_input: Dictionary = _tag_panel.get_tag_input(last_commit_message)
 	if _tag_panel.is_enabled():
 		if tag_input["tag_name"].is_empty():
-			GitotLogger.w("Tag name is empty. Push aborted!")
+			GitotLogger.w("Tag name is empty - nothing was pushed.")
 			return
 		if not GitEngine.is_valid_tag_name(tag_input["tag_name"]):
 			GitotLogger.w(
-				"'%s' is not a valid git tag name (no spaces, ~ ^ : ? * [ \\ ..). Push aborted!"
+				"'%s' is not a valid git tag name (no spaces, ~ ^ : ? * [ \\ ..). nothing was pushed."
 				% tag_input["tag_name"]
 			)
 			return
 		if tag_input["tag_message"].is_empty():
-			GitotLogger.w("Tag message is empty. Push aborted!")
+			GitotLogger.w("Tag message is empty - nothing was pushed.")
 			return
 	_orchestrator.start_push(tag_input, _needs_force_push)

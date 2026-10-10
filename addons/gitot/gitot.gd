@@ -1,20 +1,20 @@
 ## Copyright (c) 2026-present SigK - under the MIT License.
 ##
-## A Git workflow plugin for the Godot 4 editor in pure GDScript
-## Gitot wraps your system's git binary directly,
-## so it inherits your existing SSH/credential setup,
-## and the full Git feature set without reimplementing any of it.
-## Gitot does not manage credentials!!
+## A Git workflow plugin for the Godot 4 editor, in pure GDScript.
+## Gitot wraps the system git binary, so it uses your existing SSH/credential setup and the full
+## Git feature set without reimplementing any of it.
+## Git credentials are not managed by Gitot. The only stored secret is the optional GitHub token
+## of the Issues tab.
 ##
 ## https://github.com/SigKdev/godot-gitot
 ##
 ## gitot.gd
-## Gitot plugin entry point.
-## Aborts initialization if Git is unavailable.
+## Plugin entry point: creates and wires the engine, panels and dock, and tears them down on exit.
+## Aborts initialization if git is unavailable.
 @tool
 extends EditorPlugin
 
-## Commands that change working tree / index state and require a status refresh.
+## Commands that change the working tree, index or refs and require a status refresh.
 const STATUS_TRIGGERING_COMMANDS: Array[GitEngine.Command] = [
 	GitEngine.Command.STAGE,
 	GitEngine.Command.UNSTAGE,
@@ -52,6 +52,7 @@ var _diff_panel: GitotDiffPanel
 var _files_refresh_queued: bool = false
 var _commit_log_diff: GitotCommitLogDiff
 var _working_diff: GitotWorkingDiff
+var _file_tooltip: GitotFileTooltip
 
 var _lfs: GitLfs
 var _lfs_panel: GitotLfsPanel
@@ -59,13 +60,16 @@ var _lfs_panel: GitotLfsPanel
 
 #region Plugin Initialisation
 func _enter_tree() -> void:
-	# Suppress interactive credential prompts for this session.
+	# Disables git's terminal credential prompt while the plugin is enabled. Credential helpers with
+	# their own UI are unaffected.
 	OS.set_environment("GIT_TERMINAL_PROMPT", "0")
 
-	# Binary failsafe: hard stop if git isn't on PATH.
+	# Hard stop if git is not on PATH.
 	var git_version: String = GitEngine.get_git_version()
 	if git_version.is_empty():
-		GitotLogger.x("'git' binary not found in system PATH. Plugin DISABLED!")
+		GitotLogger.x(
+			"'git' binary not found in system PATH. Plugin disabled: install git, then restart the editor."
+		)
 		return
 
 	_git_engine = GitEngine.new()
@@ -82,7 +86,7 @@ func _enter_tree() -> void:
 	resource_saved.connect(_on_resource_saved)
 	scene_saved.connect(_on_scene_saved)
 
-	# Load and register the dock UI in the editor's right-upper dock slot.
+	# Create the dock and register it in DOCK_SLOT_RIGHT_UL.
 	_dock = preload("res://addons/gitot/ui/gitot_dock.tscn").instantiate()
 	_dock.set_git_engine(_git_engine)
 	_dock.set_diff_gutter(_diff_gutter)
@@ -94,10 +98,10 @@ func _enter_tree() -> void:
 		_github_panel = GithubPanelScene.instantiate()
 		_github_panel.set_git_engine(_git_engine)
 		EditorInterface.get_editor_main_screen().add_child(_github_panel)
-		_github_panel.hide() # Godot calls _make_visible(true) when tab is selected
+		_github_panel.hide() # Shown by _make_visible() when the tab is selected.
 
 	var lfs_version: String = GitEngine.get_lfs_version()
-	GitotLogger.s("'git' binary verified. Plugin ready!")
+	GitotLogger.s("'git' binary found. Plugin ready.")
 	GitotLogger.i(
 		"git v%s | LFS v%s"
 		% [git_version, "not installed" if lfs_version.is_empty() else lfs_version],
@@ -116,6 +120,11 @@ func _enter_tree() -> void:
 	_working_diff = GitotWorkingDiff.new(_git_engine, _diff_panel)
 	_dock.commit_selected.connect(_on_commit_selected)
 
+	# FileSystem dock hover tooltip: adds each file's git status to Godot's own.
+	_file_tooltip = GitotFileTooltip.new()
+	EditorInterface.get_file_system_dock().add_resource_tooltip_plugin(_file_tooltip)
+	_dock.status_parsed.connect(_file_tooltip.update)
+
 
 func _exit_tree() -> void:
 	OS.unset_environment("GIT_TERMINAL_PROMPT")
@@ -124,6 +133,10 @@ func _exit_tree() -> void:
 		resource_saved.disconnect(_on_resource_saved)
 	if scene_saved.is_connected(_on_scene_saved):
 		scene_saved.disconnect(_on_scene_saved)
+
+	if _file_tooltip: # Set only after registration: removal fails for a plugin that was never added.
+		EditorInterface.get_file_system_dock().remove_resource_tooltip_plugin(_file_tooltip)
+		_file_tooltip = null
 
 	if _dock:
 		_dock.teardown()
@@ -198,7 +211,7 @@ func _make_visible(visible: bool) -> void:
 #endregion
 
 
-## Decides which finished commands should trigger an automatic status refresh.
+## Reports a failed stage/unstage and refreshes the UI after commands that change repo state.
 func _on_git_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
@@ -207,9 +220,12 @@ func _on_git_command_completed(
 ) -> void:
 	# A failed stage/unstage aborts the WHOLE batch (git add is all-or-nothing): never fail silently.
 	if exit_code != 0 and command in [GitEngine.Command.STAGE, GitEngine.Command.UNSTAGE]:
-		GitotLogger.e("%s failed." % GitEngine.Command.keys()[command].capitalize())
-		if not output.is_empty():
-			GitotLogger.g(output[0])
+		var is_stage: bool = command == GitEngine.Command.STAGE
+		GitotLogger.fail(
+			"Staging failed - no file was staged." if is_stage else "Unstaging failed - no file was unstaged.",
+			output[0] if not output.is_empty() else "",
+			"Common fail causes: a listed file changed or vanished since the list was drawn, or another Git tool holds .git/index.lock.",
+		)
 	if command in STATUS_TRIGGERING_COMMANDS:
 		if command in FILES_ONLY_COMMANDS:
 			_dock.refresh_files()
@@ -226,8 +242,8 @@ func _on_lfs_ready_changed() -> void:
 		_dock.refresh_files()
 
 
-## Triggers gutter refresh on script save
-## (can be unreliable - manual refresh in dock is the reliable fallback).
+## Refreshes the diff gutter on script save and queues a status refresh. The gutter refresh can be
+## unreliable: the dock's manual refresh button is the fallback.
 func _on_resource_saved(resource: Resource) -> void:
 	if resource is Script:
 		_diff_gutter.refresh_current_script()
@@ -238,8 +254,8 @@ func _on_scene_saved(_path: String) -> void:
 	_queue_files_refresh()
 
 
-## Coalesces a burst of saves (Alt+S saves every open file) into ONE status call on the next
-## idle moment, instead of one `git status` per file.
+## Unite a burst of saves (Alt+S saves every open file) into ONE status call on
+## the next idle moment, instead of one `git status` per file.
 func _queue_files_refresh() -> void:
 	if _files_refresh_queued:
 		return

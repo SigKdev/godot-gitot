@@ -4,7 +4,7 @@
 class_name GitSyncOrchestrator
 extends RefCounted
 
-## Emitted when a push starts/ends — dock updates the Push button state.
+## Emitted when a push starts (true) or ends (false). The dock uses it for the Push button state.
 signal push_state_changed(pushing: bool)
 
 ## Emitted when a tag was created but its push failed (true), or on success/reset (false).
@@ -51,7 +51,7 @@ func start_push(tag_input: Dictionary, force: bool) -> void:
 		if force
 		else ["push", "-u", "origin", "HEAD"]
 	)
-	_git_engine.run_network(GitEngine.Command.PUSH, push_args)
+	_git_engine.run_network(GitEngine.Command.PUSH, push_args, { "force": force }) # Context: the result line says "force-pushed".
 
 
 ## Re-attempts pushing the tag that was created locally but failed to push.
@@ -87,24 +87,19 @@ func _on_command_completed(
 				_git_engine.check_tag_collision(_pending_tag["tag_name"], error)
 		GitEngine.Command.PUSH_TAG:
 			if exit_code == 0:
-				GitotLogger.s("Tag pushed")
 				tag_retry_needed.emit(false)
 				_pending_tag = { }
 			else:
-				GitotLogger.e(
-					"Tag '%s' created locally but failed to push. Retry pushing with new tag button on the dock"
-					% _pending_tag["tag_name"]
-				)
+				# The failure line is logged by GitotResultRouter (it knows the repo).
 				tag_retry_needed.emit(true)
 		GitEngine.Command.TAG_COLLISION_CHECK:
 			_handle_tag_collision_result(exit_code, output, context)
 
 
-## Resolves a "tag already exists" TAG failure using the two SHAs from
-## check_tag_collision(). Only pushes if the existing local tag already
-## points at HEAD (legitimate retry after a prior failed push) - never
-## pushes a same-named tag pointing at an unrelated commit.
-## A failed rev-parse means the tag doesn't exist, so the original creation error is reported
+## Resolves a failed TAG using the result of check_tag_collision() (rev-parse of the tag and HEAD).
+## Pushes only if the existing local tag already points at HEAD (retry after a failed push), never
+## a same-named tag on another commit. A failed rev-parse means the tag does not exist, so the
+## original creation error is reported.
 func _handle_tag_collision_result(
 	exit_code: int,
 	output: Array[String],
@@ -112,10 +107,11 @@ func _handle_tag_collision_result(
 ) -> void:
 	if exit_code != 0:
 		# Tag doesn't exist: the creation failed for another reason (name, identity, signing...).
-		GitotLogger.e("Tag creation failed. Tag push aborted!")
-		var error: String = context.get("error", "")
-		if not error.is_empty():
-			GitotLogger.g(error) # git's real message.
+		GitotLogger.fail(
+			"Commits pushed, but tag '%s' could not be created." % _pending_tag.get("tag_name", ""),
+			context.get("error", ""),
+			"Common fail causes: your git name/email is not set (git config --global user.name / user.email), or git rejects the tag name.",
+		)
 		_pending_tag = { }
 		return
 	var tag_name: String = _pending_tag.get("tag_name", "")
@@ -125,11 +121,13 @@ func _handle_tag_collision_result(
 		else []
 	)
 	if shas.size() == 2 and shas[0] == shas[1]:
-		GitotLogger.w("Tag '%s' already exists locally on this commit - Pushing as-is!" % tag_name)
+		GitotLogger.w(
+			"Tag '%s' already exists locally on this commit - pushing it as-is." % tag_name
+		)
 		_git_engine.push_tag(tag_name)
 	else:
 		GitotLogger.e(
-			"Commit pushed. Tag '%s' already exists on a different commit - tag NOT created. Rename tag and push again to tag this commit."
+			"Commits pushed, but tag '%s' already exists on a different commit - no tag was created. Rename the tag and push again to tag this commit."
 			% tag_name
 		)
 		tag_conflict.emit(tag_name)

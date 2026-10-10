@@ -4,12 +4,13 @@
 class_name GitStatusParser
 extends RefCounted
 
-## Visual/semantic category of a file entry, used by the dock for coloring.
+## Category of a file entry (drives the color, letter and tooltip in GitotStatusTree).
 enum FileStatus {
 	NEW_FILE,
 	MODIFIED,
 	DELETED,
 	CONFLICT,
+	UNTRACKED,
 }
 
 
@@ -25,11 +26,11 @@ static func parse(raw_output: String) -> Dictionary:
 			continue
 
 		match line[0]:
-			"?": # Untracked — format: "? <path>"
+			"?": # Untracked, format: "? <path>"
 				result["unstaged"].append(
-					{ "path": GitPath.unquote(line.substr(2)), "status": FileStatus.NEW_FILE }
+					{ "path": GitPath.unquote(line.substr(2)), "status": FileStatus.UNTRACKED }
 				)
-			"1": # Ordinary entry — format: "<type> <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>"
+			"1": # Ordinary entry, format: "<type> <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>"
 				var parts: PackedStringArray = line.split(" ", false, 8)
 				if parts.size() < 9:
 					continue
@@ -39,7 +40,7 @@ static func parse(raw_output: String) -> Dictionary:
 					result["staged"].append({ "path": path, "status": _status_from_code(xy[0]) })
 				if xy[1] != ".":
 					result["unstaged"].append({ "path": path, "status": _status_from_code(xy[1]) })
-			"u": # Unmerged/conflict — format: "u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>"
+			"u": # Unmerged/conflict, format: "u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>"
 				var parts: PackedStringArray = line.split(" ", false, 10)
 				if parts.size() < 11:
 					continue
@@ -59,4 +60,4 @@ static func _status_from_code(code: String) -> FileStatus:
 		"A":
 			return FileStatus.NEW_FILE
 		_:
-			return FileStatus.MODIFIED # M, R, C, T, etc.
+			return FileStatus.MODIFIED # M, T (R/C can't occur: --no-renames)

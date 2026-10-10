@@ -4,11 +4,13 @@
 class_name GitotStatusTree
 extends RefCounted
 
-const STATUS_COLORS: Dictionary = {
-	GitStatusParser.FileStatus.NEW_FILE: Color.FOREST_GREEN,
-	GitStatusParser.FileStatus.MODIFIED: Color.ORANGE,
-	GitStatusParser.FileStatus.DELETED: Color.INDIAN_RED,
-	GitStatusParser.FileStatus.CONFLICT: Color.RED,
+## Per-status look. Letter mode shows "letter" before the path, icon mode shows "icon" (setting: status_letters).
+const STATUS_VISUALS: Dictionary = {
+	GitStatusParser.FileStatus.UNTRACKED: { "letter": "U", "icon": "Add", "color": Color.FOREST_GREEN, "tip": "Untracked File" },
+	GitStatusParser.FileStatus.NEW_FILE: { "letter": "A", "icon": "Add", "color": Color.FOREST_GREEN, "tip": "Added File" },
+	GitStatusParser.FileStatus.MODIFIED: { "letter": "M", "icon": "Edit", "color": Color.ORANGE, "tip": "Modified File" },
+	GitStatusParser.FileStatus.DELETED: { "letter": "D", "icon": "Close", "color": Color.INDIAN_RED, "tip": "Deleted File" },
+	GitStatusParser.FileStatus.CONFLICT: { "letter": "C", "icon": "NodeWarning", "color": Color.RED, "tip": "⚠ Merge conflict - resolve before staging ⚠" },
 }
 
 ## TreeItem button id for the "open file in editor" action.
@@ -21,7 +23,9 @@ const OPENABLE_EXTENSIONS: PackedStringArray = ["gd", "cs", "gdshader", "gdshade
 ## TreeItem button id for the "track this file type with LFS" action (Size Guard rows only).
 const BUTTON_TRACK_LFS: int = 1
 
-## Assigned by gitot_dock.gd right after construction.
+## Single column: hover and selection cover the whole row.
+const COL_PATH: int = 0
+
 var _git_engine: GitEngine
 
 var _unstaged_tree: Tree
@@ -77,42 +81,24 @@ func _populate_tree(
 	check_size: bool = false,
 ) -> void:
 	tree.clear()
-	var root: TreeItem = tree.create_item() # required even with hide_root; acts as invisible parent
+	var root: TreeItem = tree.create_item() # Required even with hide_root: acts as the invisible parent.
 	fold_container.title = "%s (%d)" % [title, entries.size()]
 	var max_bytes: int = _max_file_size_bytes() if check_size else 0
 	for entry: Dictionary in entries:
 		var item: TreeItem = tree.create_item(root)
-		item.set_text(0, entry["path"])
 		var status: GitStatusParser.FileStatus = entry["status"]
-		if STATUS_COLORS.has(status):
-			item.set_custom_color(0, STATUS_COLORS[status])
-		if status == GitStatusParser.FileStatus.MODIFIED:
-			item.set_icon(0, GitotUi.get_icon("Edit"))
-			item.set_icon_modulate(0, Color.ORANGE)
-			item.set_tooltip_text(0, "Modified File")
-		if status == GitStatusParser.FileStatus.DELETED:
-			item.set_icon(0, GitotUi.get_icon("Close"))
-			item.set_icon_modulate(0, Color.INDIAN_RED)
-			item.set_tooltip_text(0, "Deleted File")
-		if status == GitStatusParser.FileStatus.NEW_FILE:
-			item.set_icon(0, GitotUi.get_icon("Add"))
-			item.set_icon_modulate(0, Color.FOREST_GREEN)
-			item.set_tooltip_text(0, "Untracked File")
-		if status == GitStatusParser.FileStatus.CONFLICT:
-			item.set_icon(0, GitotUi.get_icon("NodeWarning"))
-			item.set_icon_modulate(0, Color.RED)
-			item.set_tooltip_text(0, "⚠ Merge conflict - resolve before staging ⚠")
+		_apply_status_visuals(item, entry["path"], status) # Size Guard below may override the icon/tooltip.
 		if (
 			check_size and status != GitStatusParser.FileStatus.CONFLICT
 			and _violates_guard(entry["path"], max_bytes)
 		):
-			item.set_icon(0, GitotUi.get_icon("StatusWarning"))
-			item.set_icon_modulate(0, Color.ORANGE)
-			item.set_tooltip_text(0, "⚠ Exceeds your Size Guard - excluded from Staging ⚠")
+			item.set_icon(COL_PATH, GitotUi.get_icon("StatusWarning"))
+			item.set_icon_modulate(COL_PATH, Color.ORANGE)
+			item.set_tooltip_text(COL_PATH, "⚠ Exceeds your Size Guard - excluded from Staging ⚠")
 			if _lfs != null and _lfs.is_ready():
 				var pattern: String = _lfs_pattern(entry["path"])
 				item.add_button(
-					0,
+					COL_PATH,
 					GitotUi.get_icon("Pin"),
 					BUTTON_TRACK_LFS,
 					false,
@@ -121,13 +107,34 @@ func _populate_tree(
 				)
 		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
 			item.add_button(
-				0,
+				COL_PATH,
 				GitotUi.get_icon("ShaderDock"),
 				BUTTON_OPEN_FILE,
 				false,
 				"Open file in editor",
 			)
-			item.set_button_color(0, item.get_button_by_id(0, BUTTON_OPEN_FILE), Color.DARK_GRAY)
+			item.set_button_color(COL_PATH, item.get_button_by_id(COL_PATH, BUTTON_OPEN_FILE), Color.DARK_GRAY)
+
+
+## Text, color and tooltip from STATUS_VISUALS. The path lives in metadata (see _path_of),
+## so the cell text is display-only: "M  path" in letter mode, plain path + tinted icon otherwise.
+func _apply_status_visuals(item: TreeItem, path: String, status: GitStatusParser.FileStatus) -> void:
+	var visual: Dictionary = STATUS_VISUALS[status]
+	var color: Color = visual["color"]
+	item.set_metadata(COL_PATH, path)
+	item.set_custom_color(COL_PATH, color) # One color per cell: letter and path share it.
+	item.set_tooltip_text(COL_PATH, visual["tip"])
+	if GitotSettings.get_value("status_letters"):
+		item.set_text(COL_PATH, "%s  %s" % [visual["letter"], path])
+	else:
+		item.set_text(COL_PATH, path)
+		item.set_icon(COL_PATH, GitotUi.get_icon(visual["icon"]))
+		item.set_icon_modulate(COL_PATH, color)
+
+
+## Repo-relative path of a row. Never read it from the text, which may carry the status letter.
+func _path_of(item: TreeItem) -> String:
+	return item.get_metadata(COL_PATH)
 
 
 ## Creates and wires the Stage All / Unstage All buttons into each fold header.
@@ -173,8 +180,8 @@ func _on_tree_gui_input(event: InputEvent, tree: Tree) -> void:
 	)
 
 
-## Opens the clicked row's file in the editor
-## (script editor for scripts, inspector/2D-3D for other resources).
+## Handles the row buttons: "Track with LFS" (Size Guard rows) or "Open file in editor"
+## (script editor for scripts, inspector/2D/3D for other resources).
 func _on_tree_button_clicked(
 	item: TreeItem,
 	_column: int,
@@ -182,11 +189,11 @@ func _on_tree_button_clicked(
 	_mouse_button_index: int,
 ) -> void:
 	if id == BUTTON_TRACK_LFS:
-		_lfs.track(_lfs_pattern(item.get_text(0))) # Result: GitLfs logs, status refresh re-evaluates the row.
+		_lfs.track(_lfs_pattern(_path_of(item))) # Result: GitLfs logs, status refresh re-evaluates the row.
 		return
 	if id != BUTTON_OPEN_FILE:
 		return
-	var res_path: String = "res://" + item.get_text(0)
+	var res_path: String = "res://" + _path_of(item)
 	if not ResourceLoader.exists(res_path):
 		GitotLogger.w("'%s' has no importable resource to open." % res_path)
 		return
@@ -237,7 +244,7 @@ func _get_tree_paths(tree: Tree) -> Array[String]:
 	var paths: Array[String] = []
 	var item: TreeItem = tree.get_root().get_first_child() if tree.get_root() else null
 	while item:
-		paths.append(item.get_text(0))
+		paths.append(_path_of(item))
 		item = item.get_next()
 	return paths
 
@@ -247,7 +254,7 @@ func _get_selected_paths(tree: Tree) -> Array[String]:
 	var paths: Array[String] = []
 	var item: TreeItem = tree.get_next_selected(null) # null = start from the top.
 	while item:
-		paths.append(item.get_text(0))
+		paths.append(_path_of(item))
 		item = tree.get_next_selected(item)
 	return paths
 
@@ -256,13 +263,13 @@ func _max_file_size_bytes() -> int:
 	return int(GitotSettings.get_value("large_file_mb")) * 1024 * 1024
 
 
-## @return: true if the file exists and is at/above the given threshold (0 = guard disabled).
+## @return: true if the file exists and is at or above max_bytes (max_bytes 0 = guard disabled: always false).
 func _is_oversized(abs_path: String, max_bytes: int) -> bool:
 	if max_bytes == 0:
 		return false
 	var file: FileAccess = FileAccess.open(abs_path, FileAccess.READ)
 	if not file:
-		return false # Unreadable/missing - let git report the real error, not gitot.
+		return false # Unreadable or missing: let git report the real error.
 	return file.get_length() >= max_bytes
 
 

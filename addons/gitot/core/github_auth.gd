@@ -1,7 +1,7 @@
 ## github_auth.gd
 ## Handles local storage of the GitHub Personal Access Token (PAT).
-## !! Stored in plaintext outside res:// — see README for security notes !!
-## Never touches res:// or version-controlled paths.
+## WARNING: stored in plaintext in user:// (outside res://, never committed). See the wiki page
+## "Credentials and GitHub Token" for the security notes.
 @tool
 class_name GithubAuth
 extends RefCounted
@@ -17,7 +17,7 @@ static func save_token(token: String) -> bool:
 	config.set_value(SECTION, KEY_TOKEN, token)
 	var err: Error = config.save(CONFIG_PATH)
 	if err != OK:
-		GitotLogger.e("Failed to save token (error %d)" % err)
+		GitotLogger.e("Could not save the GitHub token: %s." % error_string(err))
 		return false
 	return true
 
@@ -31,7 +31,7 @@ static func load_token() -> String:
 	return config.get_value(SECTION, KEY_TOKEN, "")
 
 
-## Clears the stored token (used on 401 / auth_failed).
+## Clears the stored token (Clear Token button, 401 / auth_failed, Issues disabled in Settings).
 static func clear_token() -> void:
 	var config: ConfigFile = ConfigFile.new()
 	config.set_value(SECTION, KEY_TOKEN, "")

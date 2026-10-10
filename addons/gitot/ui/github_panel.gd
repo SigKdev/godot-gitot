@@ -1,5 +1,5 @@
 ## github_panel.gd
-## Central panel for the GitHub Issues Task Board.
+## Issues tab: fetches the open issues of the origin repo and shows them as a list with a detail pane.
 @tool
 class_name GithubPanel
 extends Control
@@ -12,7 +12,8 @@ enum RefreshButtonState {
 
 const AuthDialogScene: PackedScene = preload("res://addons/gitot/ui/github_auth_dialog.tscn")
 
-## Hard cap: 8 pages × 50 = 400 issues. A solo/small-team repo scope by design.
+## Hard cap on fetched pages (MAX_ISSUE_PAGES x GithubApi.ISSUES_PER_PAGE issues).
+## Sized for solo/small-team repos.
 const MAX_ISSUE_PAGES: int = 8
 
 ## Context tag marking the REMOTE_URL request made by this panel (the dock makes its own).
@@ -35,6 +36,15 @@ var _issues_accumulated: Array = [] # Raw JSON items across pages, parsed once c
 @onready var _repo_label: Label = %RepoLabel
 
 
+## Header text: "owner/repo" while the count is unknown (negative), else "owner/repo  ·  3 open".
+## The list only holds open issues (state=open) without pull requests, so the count is exact.
+static func _header_text(owner: String, repo: String, open_count: int) -> String:
+	if owner.is_empty():
+		return "Open issues"
+	var text: String = "%s/%s" % [owner, repo]
+	return text if open_count < 0 else "%s  ·  %d open" % [text, open_count]
+
+
 func _ready() -> void:
 	_issue_list = GithubIssueList.new(
 		%IssueTree,
@@ -55,15 +65,6 @@ func _ready() -> void:
 	_api.request_succeeded.connect(_on_request_succeeded)
 	_api.auth_failed.connect(_on_auth_failed)
 	_api.request_failed.connect(_on_request_failed)
-
-
-## Header text: "owner/repo" while the count is unknown (negative), else "owner/repo  ·  3 open".
-## The list only holds open issues (state=open) without pull requests, so the count is exact.
-static func _header_text(owner: String, repo: String, open_count: int) -> String:
-	if owner.is_empty():
-		return "Open issues"
-	var text: String = "%s/%s" % [owner, repo]
-	return text if open_count < 0 else "%s  ·  %d open" % [text, open_count]
 
 
 func set_git_engine(engine: GitEngine) -> void:
@@ -94,9 +95,9 @@ func _start_issue_fetch(remote_url: String) -> void:
 	_api.fetch_issues(_issues_owner, _issues_repo, _issues_page)
 
 
-## Keeps the base-branch dropdown current whenever the branch list refreshes
-## (already triggered by switch/create/fetch elsewhere — see gitot_result_router.gd),
-## and starts the issue fetch once our own REMOTE_URL request answers.
+## Handles engine results: REMOTE_URL (our own request) starts the issue fetch, BRANCHES refreshes
+## the base-branch dropdown, STATUS updates the uncommitted-change count. BRANCHES and STATUS are
+## already requested elsewhere (see gitot_result_router.gd).
 func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
@@ -131,8 +132,8 @@ func _on_create_branch_confirmed() -> void:
 	_git_engine.create_branch(_pending_branch, _pending_base)
 
 
-## Refresh button's text/disabled state,
-## every transition goes through here so none can forget to reset either.
+## Sets the Refresh button's text and disabled state. Every transition goes through here, so
+## neither is left stale.
 func _set_refresh_state(state: RefreshButtonState, label: String = "Refresh Issues") -> void:
 	match state:
 		RefreshButtonState.IDLE:
@@ -181,7 +182,7 @@ func _on_clear_token_pressed() -> void:
 func _on_auth_failed() -> void:
 	_set_refresh_state(RefreshButtonState.NEEDS_AUTH)
 	%StatusLabel.visible = false
-	GitotLogger.w("Github token invalid/expired, re-auth needed!")
+	GitotLogger.w("GitHub token is invalid or expired - sign in again.")
 	var dialog: ConfirmationDialog = AuthDialogScene.instantiate()
 	add_child(dialog)
 	dialog.confirmed.connect(
@@ -199,7 +200,11 @@ func _on_request_failed(status_code: int) -> void:
 	%StatusLabel.visible = true
 	if status_code == 0:
 		%StatusLabel.text = "[b][color=orange]Network error - check your connection[/color][/b]"
-		GitotLogger.w("Load issues request failed; Network error - Check your connection!")
+		GitotLogger.fail(
+			"Loading issues from GitHub failed: no answer from the network.",
+			"",
+			"Common fail causes: no internet, or GitHub is unreachable.",
+		)
 	else:
 		%StatusLabel.text = "[b][color=orange]Failed to load issues (status %d)[/color][/b]" % status_code
-		GitotLogger.w("Load issues request failed (status %d)" % status_code)
+		GitotLogger.e("Loading issues from GitHub failed (HTTP status %d)." % status_code)

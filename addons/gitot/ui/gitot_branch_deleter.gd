@@ -110,7 +110,7 @@ func _on_confirmed() -> void:
 		_git_engine.delete_branch(_pending_name, _pending_on_remote)
 		return
 	# Deleting on origin prints no hash: log the old tip so a mistake stays recoverable.
-	GitotLogger.i(
+	GitotLogger.h(
 		"Tip of 'origin/%s' was %s. To restore it: git push origin %s:refs/heads/%s"
 		% [_pending_name, _pending_hash, _pending_hash, _pending_name]
 	)
