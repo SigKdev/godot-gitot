@@ -1,5 +1,5 @@
 <div align="center">
-<img width="640" height="360" alt="Image" src="https://github.com/user-attachments/assets/af78184e-57f6-4306-bd31-e50b3315ac7b" />
+<img width="640" height="360" alt="Image" src="https://asset-store-prod.fra1.digitaloceanspaces.com/assets/2912/gitot2.png" />
 </div>
 
 <p align="center">
@@ -11,7 +11,7 @@ href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.3+-F03C
 alt="Git"></a> <a href="https://git-lfs.com"><img
 src="https://img.shields.io/badge/GIT_LFS-3.4+-F64935?logo=gitlfs&logoColor=F64935" alt="Git LFS"></a> <a
 href="https://store.godotengine.org/asset/sigk/gitot/"><img
-src="https://img.shields.io/badge/Gitot-0.16.0-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
+src="https://img.shields.io/badge/Gitot-0.17.0-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
 src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -52,6 +52,10 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
 
 
 ## 🧬 Features
+
+- **Initialze Git Repo:** In a project with no repository the dock offers Initialize repository button
+  (`git init -b main` and a default `.gitignore` if not present). The first **Push** asks for 
+  the remote URL (https or ssh) and adds `origin`, then pushes as usual.
 
 - **Commit & Sync:** Stage or unstage files individually, by multi-selection (Enter) or in bulk, write
   multiline commit messages, and Commit, Amend, Push, or Pull. Amend is guarded. A diverged branch asks
@@ -100,14 +104,14 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
   and a **Track with LFS** button on a flagged file adds the rule in one click.
 
 - **GitHub Issues Tracker Board:** Split list/detail view of the repo's open issues (requires a [PAT](#github-personal-access-token));
-  opt-out in settings. Header: `owner/repo · N open`, refresh, Clear PAT.
+  opt-out in settings. Header: `owner/repo · N open · N Bug · N High priority`, refresh, Clear PAT.
   Sortable column list (number, title, date, type, priority, labels),
   Type/Priority/Label filters, full issue detail (metadata, colored labels, Markdown body, Open in Browser).
   Create a branch directly from an issue, auto-named from its number/title/type (editable),
   with a base-branch picker and a dirty-working-tree confirmation.
 
-- **Repo Status Panel:** One-line summary of the current repo, branch (detached HEAD flagged in red), branch
-  scope, and ahead/behind sync status.
+- **Repo Status Panel:** One-line summary of the current repo, owner/repo (click opens it in the browser),
+  branch (detached HEAD flagged in red), branch scope, and ahead/behind sync status.
 
 - **Status Signs:** Every row of the Staged / Unstaged lists shows its status (`U` untracked, `A` added,
   `M` modified, `D` deleted, `C` conflict) as a colored icon, or as letter with the **Status letters**
@@ -216,7 +220,7 @@ project.
 
 ## 🧪 Testing
 
-Last run v0.16.0: **19 suites, 152 tests, 0 failures** (Godot 4.7.2, Windows)
+Last run (v0.17.0): **22 suites, 179 tests, 0 failures** (Godot 4.7.2, Windows).
 
 - **Automated:** [GdUnit4](https://github.com/MikeSchulze/gdUnit4) cover the pure logic: parsers
   (status, diff, log, stash, branch, LFS, paths), the runner (shell contract, encoding, shell-safety whitelist),
@@ -233,7 +237,7 @@ Details: [Testing](../../wiki/Testing) in the wiki.
 
 ## 🗃 Changelog
 
-See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.16.0**.
+See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.17.0**.
 
 
 ## © License

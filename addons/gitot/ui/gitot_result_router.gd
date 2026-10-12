@@ -18,6 +18,9 @@ signal files_changed(result: Dictionary)
 ## Emitted with each parsed status {"staged", "unstaged"}, after the lists are repainted.
 signal status_parsed(parsed: Dictionary)
 
+## Emitted after `remote add origin` succeeded; the dock resumes the push that asked for the remote.
+signal origin_added
+
 var _git_engine: GitEngine
 var _repo_state: GitotRepoState
 var _status_panel: GitotStatusPanel
@@ -128,6 +131,10 @@ func route(
 			files_changed.emit(GitEngine.to_file_list(exit_code, output))
 		GitEngine.Command.REMOTE_URL:
 			_handle_remote_url_result(exit_code, output)
+		GitEngine.Command.REMOTE_ADD:
+			_handle_remote_add_result(exit_code, output, context)
+		GitEngine.Command.CURRENT_BRANCH:
+			_handle_current_branch_result(exit_code, output)
 		GitEngine.Command.SHOW_PREFIX:
 			_handle_show_prefix_result(exit_code, output)
 
@@ -362,7 +369,7 @@ func _handle_push_pull_result(
 	var hint: String = (
 		"Common fail causes: your uncommitted changes would be overwritten (commit or stash them first), or a merge conflict (resolve the marked files)."
 		if is_pull
-		else "Common fail causes: not signed in / no permission on GitHub, or origin has newer commits (Pull first)."
+		else "Common fail causes: not signed in / no permission on GitHub, origin has newer commits (Pull first), or the branch has no commit yet (commit first)."
 	)
 	_log_failure(
 		(
@@ -407,14 +414,14 @@ func _handle_push_tag_result(exit_code: int, output: Array[String], context: Dic
 	GitotLogger.h("Use the tag Retry button next to Push to push it again.")
 
 
-## Branch name for log messages; "HEAD" until the first branch list arrives.
+## Branch name for log messages (see GitotRepoState.branch_label()).
 func _branch() -> String:
-	return _repo_state.branch if not _repo_state.branch.is_empty() else "HEAD"
+	return _repo_state.branch_label()
 
 
-## "owner/repo" for messages. "origin" when the URL could not be parsed.
+## "owner/repo" for messages (see GitotRepoState.repo_label()).
 func _repo() -> String:
-	return _repo_state.repo if not _repo_state.repo.is_empty() else "origin"
+	return _repo_state.repo_label()
 
 
 ## Branch list refresh, switch, and create - everything that changes HEAD or the dropdown.
@@ -424,8 +431,10 @@ func _handle_branch_result(
 	output: Array[String],
 	context: Dictionary,
 ) -> void:
-	if command == GitEngine.Command.BRANCHES and exit_code == 0:
-		if not output.is_empty():
+	if command == GitEngine.Command.BRANCHES:
+		# A failed list (e.g. not a repository) is silent and must not fall through to the
+		# switch/create code below (it reads context["branch"], which a list has not).
+		if exit_code == 0 and not output.is_empty():
 			var branches: Array[GitBranchEntry] = GitBranchParser.parse(output[0])
 			var branch_scopes: Dictionary[String, String] = { }
 
@@ -438,6 +447,11 @@ func _handle_branch_result(
 			_branch_panel.populate(branches, branch_scopes)
 
 			var current_branch: String = _get_current_branch_from_list(branches)
+			if current_branch.is_empty():
+				# No current entry: an unborn branch (fresh `git init`, no ref until the first commit)
+				# or a detached HEAD. Only git can tell which; the answer sets the header.
+				_git_engine.request_current_branch()
+				return
 			_status_panel.update_branch(current_branch, branch_scopes.get(current_branch, ""))
 			_repo_state.branch = current_branch
 		return
@@ -503,12 +517,43 @@ func _handle_repo_size_result(exit_code: int, output: Array[String]) -> void:
 		GitotLogger.g(output[0].strip_edges())
 
 
-## "owner/repo" in the status header, or blank when origin is missing/unparsable.
+## Origin's URL answered: "owner/repo" in the status header, or blank when origin is missing/unparsable.
 func _handle_remote_url_result(exit_code: int, output: Array[String]) -> void:
-	var owner_repo: Dictionary = GitEngine.parse_owner_repo(
-		GitEngine.remote_url_of(exit_code, output)
-	)
+	_apply_origin_url(GitEngine.remote_url_of(exit_code, output))
+
+
+## Result of `branch --show-current`, asked when the branch list has no current entry. A name means an
+## unborn branch (nothing committed yet, so it is not in the list); empty means a detached HEAD.
+func _handle_current_branch_result(exit_code: int, output: Array[String]) -> void:
+	if exit_code != 0:
+		return # Silent like the list: the header stays as it was.
+	var branch: String = output[0].strip_edges() if not output.is_empty() else ""
+	_status_panel.update_branch(branch, _get_branch_scope(branch, []) if not branch.is_empty() else "")
+	_repo_state.branch = branch
+
+
+## Result of `remote add origin <url>`. On success origin is stored right away (no extra git call) and
+## the dock is told to resume the push.
+## @param context: {"url": the URL that was added}.
+func _handle_remote_add_result(exit_code: int, output: Array[String], context: Dictionary) -> void:
+	if exit_code != 0:
+		_log_failure(
+			"Could not add the remote 'origin' - the push was not started.",
+			output,
+			"Common fail causes: the URL is not https://, ssh:// or git@host:path (https URLs must not contain user:token@), or an 'origin' remote already exists.",
+		)
+		return
+	_apply_origin_url(context["url"])
+	GitotLogger.s("Remote 'origin' added: %s" % context["url"])
+	origin_added.emit()
+
+
+## Single place that stores origin in the repo state ("" = no origin) and repaints the status header.
+func _apply_origin_url(url: String) -> void:
+	var owner_repo: Dictionary = GitEngine.parse_owner_repo(url)
+	_repo_state.has_origin = not url.is_empty()
 	_repo_state.repo = "%s/%s" % [owner_repo["owner"], owner_repo["repo"]] if not owner_repo.is_empty() else ""
+	_repo_state.repo_url = GitEngine.web_url(url) # Before update_repo(): the panel reads it on render.
 	_status_panel.update_repo(_repo_state.repo)
 
 

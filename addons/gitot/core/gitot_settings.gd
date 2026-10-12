@@ -16,6 +16,7 @@ const DEFAULTS: Dictionary = {
 	"max_stashes": 10,
 	"confirm_push": true,
 	"confirm_create_branch": true,
+	"confirm_amend": true,
 	"auto_refresh_on_focus": true,
 	"github_issues_enabled": true,
 	"lfs_note_visible": true,

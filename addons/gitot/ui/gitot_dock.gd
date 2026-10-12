@@ -44,6 +44,10 @@ var _result_router: GitotResultRouter
 var _repo_state: GitotRepoState
 var _editor_sync: GitotEditorSync
 var _push_flow: GitotPushFlow
+var _remote_prompt: GitotRemotePrompt
+var _repo_init: GitotRepoInit
+## True once the repo probe succeeded (see _on_repo_probe). Until then no git command but the probe runs.
+var _repo_confirmed: bool = false
 ## Mirrors GitEngine.write_busy_changed: a git write (commit, stage, stash...) is running.
 var _write_busy: bool = false
 
@@ -71,10 +75,11 @@ func _ready() -> void:
 	_build_branch_controls()
 	_build_router()
 	_setup_push_flow()
+	_setup_repo_init()
 	_setup_settings()
-	refresh_status() # Populate trees immediately instead of waiting for a manual refresh.
-	_git_engine.request_remote_url() # Async: the router fills the "owner/repo" header.
-	_git_engine.request_repo_prefix() # Async: the router warns if the project is not the repo root.
+	# Async probe: its answer decides what is shown and loaded (see _on_repo_probe).
+	# The router also warns from it if the project is not the repo root.
+	_git_engine.request_repo_prefix()
 
 
 #region _ready() steps
@@ -148,6 +153,7 @@ func _build_branch_controls() -> void:
 		%BranchNameEdit,
 		%CreateBranchButton,
 		%CreateBranchConfirmDialog,
+		_repo_state,
 	)
 	_branch_deleter = GitotBranchDeleter.new(
 		_git_engine,
@@ -180,6 +186,16 @@ func _setup_push_flow() -> void:
 	%PushButton.pressed.connect(_push_flow.start)
 	if _orchestrator:
 		%RetryTagPushButton.pressed.connect(_orchestrator.retry_tag_push)
+	# No origin: Push asks for the URL first, and resumes once the router confirmed `remote add`.
+	_remote_prompt = GitotRemotePrompt.new(_git_engine, %RemoteUrlDialog, %RemoteUrlEdit)
+	_push_flow.remote_missing.connect(_remote_prompt.prompt)
+	_result_router.origin_added.connect(_push_flow.start)
+
+
+## "No repository" view: its button initializes git, then the folder is probed again like at startup.
+func _setup_repo_init() -> void:
+	_repo_init = GitotRepoInit.new(_git_engine, %InitRepoButton)
+	_repo_init.initialized.connect(_git_engine.request_repo_prefix)
 
 
 func _setup_settings() -> void:
@@ -229,8 +245,12 @@ func set_diff_gutter(gutter: GitotDiffGutter) -> void:
 
 ## Full refresh: file lists, ahead/behind, branches, history and shelf. Does nothing until the
 ## GitEngine is injected (e.g. during editor startup).
+## Without a confirmed repo it only re-probes (e.g. `git init` was run outside Gitot).
 func refresh_status() -> void:
 	if not _git_engine:
+		return
+	if not _repo_confirmed:
+		_git_engine.request_repo_prefix()
 		return
 	refresh_files()
 	_git_engine.get_ahead_behind()
@@ -242,7 +262,7 @@ func refresh_status() -> void:
 ## Refreshes ONLY the Staged/Unstaged lists (one `git status`). Used after file saves: a save
 ## cannot change branches, history or shelf, so the full refresh_status() would be wasted work.
 func refresh_files() -> void:
-	if _git_engine:
+	if _git_engine and _repo_confirmed:
 		_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
 
 
@@ -292,7 +312,28 @@ func _on_status_result(
 			if exit_code == 0:
 				%CommitMessageInput.text = ""
 				%AmendCheckButton.button_pressed = false
+		GitEngine.Command.SHOW_PREFIX:
+			_on_repo_probe(exit_code)
+		GitEngine.Command.INIT:
+			_repo_init.on_init_finished(exit_code, output)
 	_result_router.route(command, exit_code, output, context)
+
+
+## Result of the repo probe (`rev-parse --show-prefix`): exit 0 = inside a repository, so the panels load.
+## Otherwise, with no ".git" entry, the folder has no repository yet: the "no repository" view replaces
+## the panels. A ".git" entry that git still refuses (broken repo, "dubious ownership") is not offered an
+## init: the panels load and their commands report git's own error.
+func _on_repo_probe(exit_code: int) -> void:
+	if _repo_confirmed:
+		return # A second probe was already in flight.
+	var no_repo: bool = exit_code != 0 and not GitEngine.has_git_entry()
+	%NoRepoPanel.visible = no_repo
+	%ScrollContainer.visible = not no_repo
+	if no_repo:
+		return
+	_repo_confirmed = true
+	refresh_status() # Populate trees immediately instead of waiting for a manual refresh.
+	_git_engine.request_remote_url() # Async: the router fills the "owner/repo" header.
 
 
 ## Commits currently staged files with the message from the input field.
@@ -307,10 +348,16 @@ func _on_commit_pressed() -> void:
 	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message])
 
 
-## Guards against amending a commit already on origin (ahead == 0 with an upstream set means
-## HEAD is already on the upstream). No upstream at all is always safe.
+## Confirms before amending. A commit already on origin (ahead == 0 with an upstream set means HEAD is
+## on the upstream) always asks; a local-only commit asks when "confirm_amend" is on.
 func _on_amend_pressed() -> void:
-	if _repo_state.has_upstream and _repo_state.ahead == 0:
+	var pushed: bool = _repo_state.has_upstream and _repo_state.ahead == 0
+	if pushed or GitotSettings.get_value("confirm_amend"):
+		%AmendConfirmDialog.dialog_text = GitotUi.amend_confirm_text(
+			_repo_state.branch_label(),
+			%CommitMessageInput.text.strip_edges(),
+			pushed,
+		)
 		%AmendConfirmDialog.popup_centered()
 		return
 	_do_amend()
@@ -382,6 +429,7 @@ func _refresh_push_tooltip() -> void:
 		_repo_state.has_upstream,
 		_repo_state.ahead,
 		_repo_state.behind,
+		_repo_state.has_origin,
 	)
 
 

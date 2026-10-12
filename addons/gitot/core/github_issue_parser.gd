@@ -7,8 +7,12 @@ extends RefCounted
 ## Priority options, lowest -> highest. SSOT for ranking (GitHub exposes no order).
 const PRIORITY_ORDER: PackedStringArray = ["Low", "Medium", "High", "Urgent"]
 
+## Names counted in the panel header (SSOT; Bug also keys TYPE_BRANCH_PREFIX).
+const TYPE_BUG: String = "Bug"
+const PRIORITY_HIGH: String = "High"
+
 ## Maps a GitHub issue type to its git-flow-style branch prefix. Unlisted/unset -> no prefix.
-const TYPE_BRANCH_PREFIX: Dictionary = { "Feature": "feature/", "Bug": "bugfix/", "Task": "task/" }
+const TYPE_BRANCH_PREFIX: Dictionary = { TYPE_BUG: "bugfix/", "Feature": "feature/", "Task": "task/" }
 
 ## Name of the org Issue Field holding the priority (in "issue_field_values").
 const PRIORITY_FIELD_NAME: String = "Priority"
@@ -49,6 +53,11 @@ static func label_names(entry: Dictionary) -> PackedStringArray:
 	for label: Dictionary in entry["labels"]:
 		names.append(label["name"])
 	return names
+
+
+## Number of entries whose [param key] field equals [param value] (e.g. "type", "Bug").
+static func count_where(entries: Array[Dictionary], key: String, value: String) -> int:
+	return entries.filter(func(entry: Dictionary) -> bool: return entry[key] == value).size()
 
 
 static func _to_entry(issue: Dictionary) -> Dictionary:

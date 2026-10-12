@@ -1,5 +1,5 @@
 ## gitot_status_panel.gd
-## Compact repo-state summary line: repo, branch, scope, sync status.
+## Compact repo-state summary line: repo (clickable: opens it in the browser), branch, scope, sync status.
 class_name GitotStatusPanel
 extends RefCounted
 
@@ -22,6 +22,9 @@ func _init(label: RichTextLabel, state: GitotRepoState) -> void:
 	_label = label
 	_state = state
 	_state.changed.connect(_render)
+	_label.meta_clicked.connect(_on_link_clicked)
+	_label.meta_hover_started.connect(_on_link_hover.bind(true))
+	_label.meta_hover_ended.connect(_on_link_hover.bind(false))
 
 
 ## Sets the "owner/repo" part ("" = unknown). Called by the router when the origin URL answers.
@@ -49,7 +52,22 @@ func _sync_markup() -> String:
 	return "[color=#%s]%s%s[/color]" % [color, symbol, GitotUi.sync_counts(key, _state.ahead, _state.behind)]
 
 
+## The only link is "owner/repo": the URL is read from the state, never parsed from the label text.
+func _on_link_clicked(_meta: Variant) -> void:
+	OS.shell_open(_state.repo_url)
+
+
+## Shows the real address as tooltip while the pointer is on the link (hovered = false clears it).
+## `hovered` is bound at connect time, so it comes after the signal's own `meta` argument.
+func _on_link_hover(_meta: Variant, hovered: bool) -> void:
+	_label.tooltip_text = _state.repo_url if hovered else ""
+
+
 func _render() -> void:
+	var repo_display: String = _repo_name
+	if not _repo_name.is_empty() and not _state.repo_url.is_empty(): # No safe web address: plain text.
+		repo_display = "[url=repo]%s[/url]" % _repo_name
+
 	var branch_display: String = "…"
 	if _branch_known:
 		branch_display = (
@@ -63,7 +81,7 @@ func _render() -> void:
 		scope_display = " %s" % _branch_scope
 
 	_label.text = "%s  ·  [b]%s[/b][font_size=10]%s[/font_size]  ·  %s" % [
-		_repo_name,
+		repo_display,
 		branch_display,
 		scope_display,
 		_sync_markup(),

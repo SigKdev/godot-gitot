@@ -2,6 +2,46 @@
 
 All notable changes to Gitot. Latest first.
 
+## v0.17.0
+
+feat: Initialize repository, github issue header - fix: crash outside a repository, unstage before first commit, amend confirmation
+
+Tested with GdUnit4 (22 suites, 179 tests, 0 failures) and by hand in the editor.
+
+feat: project without a repository
+
+- No `.git`: the dock shows "No git repository in this project folder." and **Initialize repository** instead of the panels. It runs `git init -b main` (Git 2.28+) and creates a `.gitignore` (`.godot/`, `*.translation`, per the Godot docs) only if none exists.
+- The gate is the startup `rev-parse --show-prefix` probe (no extra git call): no repository = non-zero exit and no `.git` entry (`GitEngine.has_git_entry()`). A `.git` that git rejects (broken, dubious ownership) is not offered an init.
+- A new repository has no commit: `git branch -a` is empty until the first one. The status line gets the name from `git branch --show-current` (`Command.CURRENT_BRANCH`) instead of showing a detached HEAD. The Branches list fills after the first commit; the init message says so.
+
+feat: first push asks for the remote
+
+- Push with no `origin` opens a URL prompt, validates it (`GitEngine.is_valid_remote_url()`: `https://`, `ssh://`, `git@host:path`; refuses `user:token@`, a leading `-`, `file://`, `ext::`, local paths, whitespace), runs `git remote add origin <url>`, then continues with the normal first push.
+- `GitotRepoState.has_origin` is separate from `repo`: the parsed `owner/repo` is empty for a non-GitHub URL.
+
+feat: confirmations name what they act on
+
+- Push: `Push branch 'dev' to 'owner/repo'?`. Create branch: `Create branch 'x' from 'dev' and switch to it?`. Amend: names the branch, says whether the message is kept or shows the new first line, and warns that a pushed commit needs a force push next.
+- New setting **`confirm_amend`** (default on) with a checkbox. A commit already pushed to origin always asks.
+- No extra git call: all texts read `GitotRepoState` (`branch_label()`, `repo_label()`).
+
+feat: issue counts in the header, repo link in the status line
+
+- Issues header: `owner/repo · 12 open · 3 Bug · 2 High priority`. Counts cover all open issues (not the filtered list), computed from the parsed entries by `GithubIssueParser.count_where()`: no extra request. `High` is an exact match (`Urgent` is not counted). The names are `GithubIssueParser.TYPE_BUG` / `PRIORITY_HIGH` (also the key of `TYPE_BRANCH_PREFIX`).
+- Status line: `owner/repo` is a link that opens the repository in the browser; the tooltip shows the address. `GitEngine.web_url()` builds `https://host/owner/repo` from `https://`, `git@host:path` and `ssh://git@host/path` (the remote's own host, not only GitHub). Any other form gives no link and plain text: `http://`, `user:token@` (no token in a link or tooltip), a port, another ssh user, a local path.
+- The address is stored in `GitotRepoState.repo_url` (written by the router); a click opens it from the state, never from the label text.
+
+fix:
+
+- `Invalid access to property or key 'branch'` outside a repository: a failed branch list fell through to the switch / create handler, which reads `context["branch"]`. It now returns, silently.
+- Unstage before the first commit failed with `could not resolve 'HEAD'`: `git restore --staged` needs a commit. Unstage and Unstage All use `git reset -q`, which works in both cases.
+
+refactor:
+
+- New: `GitIgnore` (`core/`, static), `GitotRepoInit` and `GitotRemotePrompt` (`ui/`, `RefCounted`, constructor-injected like `GitotBranchCreator`). `GitotPushFlow` emits `remote_missing`; the dock only wires signals.
+- `INIT` and `REMOTE_ADD` are in `WRITE_COMMANDS`; `CURRENT_BRANCH` is a read.
+<hr>
+
 ## v0.16.0
 
 feat: status letters & FileSystem tooltip. refactor: explicit output messages - one failure shape

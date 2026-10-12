@@ -36,13 +36,22 @@ var _issues_accumulated: Array = [] # Raw JSON items across pages, parsed once c
 @onready var _repo_label: Label = %RepoLabel
 
 
-## Header text: "owner/repo" while the count is unknown (negative), else "owner/repo  ·  3 open".
-## The list only holds open issues (state=open) without pull requests, so the count is exact.
-static func _header_text(owner: String, repo: String, open_count: int) -> String:
+## Header text: "owner/repo" while the count is unknown (negative), else
+## "owner/repo  ·  12 open  ·  3 Bug  ·  2 High priority".
+## The list only holds open issues (state=open) without pull requests, so the counts are exact.
+static func _header_text(
+		owner: String, repo: String, open_count: int, bug_count: int = 0, high_count: int = 0
+) -> String:
 	if owner.is_empty():
 		return "Open issues"
 	var text: String = "%s/%s" % [owner, repo]
-	return text if open_count < 0 else "%s  ·  %d open" % [text, open_count]
+	if open_count < 0:
+		return text
+	return "%s  ·  %d open  ·  %d %s  ·  %d %s priority" % [
+		text, open_count,
+		bug_count, GithubIssueParser.TYPE_BUG,
+		high_count, GithubIssueParser.PRIORITY_HIGH,
+	]
 
 
 func _ready() -> void:
@@ -165,7 +174,11 @@ func _on_request_succeeded(data: Variant) -> void:
 	%StatusLabel.visible = false
 	var entries: Array[Dictionary] = GithubIssueParser.parse(_issues_accumulated)
 	_issue_list.populate(entries)
-	_repo_label.text = _header_text(_issues_owner, _issues_repo, entries.size())
+	_repo_label.text = _header_text(
+		_issues_owner, _issues_repo, entries.size(),
+		GithubIssueParser.count_where(entries, "type", GithubIssueParser.TYPE_BUG),
+		GithubIssueParser.count_where(entries, "priority", GithubIssueParser.PRIORITY_HIGH),
+	)
 	if entries.is_empty():
 		_set_refresh_state(RefreshButtonState.IDLE, "No issues (Refresh)")
 

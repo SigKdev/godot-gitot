@@ -12,6 +12,11 @@ signal changed
 var branch: String = ""
 ## "owner/repo" of origin ("" = no origin, or a URL that is not owner/repo shaped).
 var repo: String = ""
+## Browser address of origin (see GitEngine.web_url()); "" = no origin, or a URL with no safe web form.
+var repo_url: String = ""
+## True if a remote named "origin" exists, whatever its URL looks like (`repo` is "" for a URL that is not
+## owner/repo shaped). False until the first remote-URL answer; Push asks for a URL while it is false.
+var has_origin: bool = false
 
 ## False = the branch was never pushed (counts are then meaningless, kept at 0).
 var has_upstream: bool = false
@@ -19,6 +24,16 @@ var has_upstream: bool = false
 var ahead: int = 0
 ## Commits its upstream has that HEAD lacks.
 var behind: int = 0
+
+
+## Branch name for messages and dialogs; "HEAD" until the first branch list arrives.
+func branch_label() -> String:
+	return branch if not branch.is_empty() else "HEAD"
+
+
+## "owner/repo" for messages and dialogs; "origin" when the URL could not be parsed.
+func repo_label() -> String:
+	return repo if not repo.is_empty() else "origin"
 
 
 ## Stores a new sync state and emits `changed` if it differs from the previous one.

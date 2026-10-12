@@ -70,7 +70,10 @@ static func sync_counts(key: String, ahead: int, behind: int) -> String:
 
 ## Tooltip of the dock's Push button: what pressing it will do given the current counts.
 ## Mirrors GitSyncOrchestrator.plan_push() (same inputs, so the text never disagrees with the action).
-static func push_tooltip(has_upstream: bool, ahead: int, behind: int) -> String:
+## @param has_origin: false = Push will first ask for the remote URL.
+static func push_tooltip(has_upstream: bool, ahead: int, behind: int, has_origin: bool = true) -> String:
+	if not has_origin:
+		return "No remote yet: Push asks for the repository URL (https or ssh),\nadds it as 'origin', then publishes this branch."
 	var outcome: String
 	if not has_upstream:
 		outcome = "First push of this branch: publishes it to origin\nand sets it as the upstream."
@@ -106,6 +109,21 @@ static func scope_label(local: bool, remote: bool) -> String:
 	if local:
 		return "Local"
 	return "Remote" if remote else ""
+
+
+## Amend confirmation: what will happen to the last commit.
+## @param message: trimmed commit input ("" = the previous message is kept, `--no-edit`).
+## @param pushed: the commit is already on origin (amending then needs a force push).
+static func amend_confirm_text(branch: String, message: String, pushed: bool) -> String:
+	var text: String = "Amend the last commit on '%s'?\n" % branch
+	if message.is_empty():
+		text += "Its message is kept. "
+	else:
+		text += "New message: %s\n" % ellipsize(message.get_slice("\n", 0), 72)
+	text += "Staged changes are added to it."
+	if pushed:
+		text += "\n\nIt is already pushed to origin: amending rewrites history\nand needs a force push next. Continue?"
+	return text
 
 
 ## Shortens text to max_chars with a trailing "…" (display only).

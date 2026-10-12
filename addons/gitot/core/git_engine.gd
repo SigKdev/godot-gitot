@@ -66,6 +66,9 @@ enum Command {
 	REMOTE_URL,
 	CHANGED_FILES,
 	SHOW_PREFIX,
+	INIT,
+	REMOTE_ADD,
+	CURRENT_BRANCH,
 }
 
 ## Canonical status args. --untracked-files=all forces recursion into
@@ -107,6 +110,17 @@ const BRANCH_LIST_FORMAT: String = (
 ## starts with a letter/digit, then letters, digits and . _ / - only. Also excludes every shell metacharacter.
 const SAFE_BRANCH_PATTERN: String = "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
 
+## First branch of a repository created by init_repo().
+const DEFAULT_BRANCH: String = "main"
+
+## Remote URLs add_remote() accepts: https without user info (a "user:token@" would be stored in plaintext
+## in .git/config), ssh://, and scp-like git@host:path. Everything else (http://, local paths, spaces,
+## a leading "-" that git would read as an option) is refused. \z: end of text, not before a final newline.
+const REMOTE_URL_PATTERN: String = r"^(https://[^\s/@]+/\S+|ssh://[^\s/]+/\S+|git@[^\s/@:]+:\S+)\z"
+
+## A browsable repo address, as web_url() builds it: https, bare host (no user info, no port), a path.
+const WEB_URL_PATTERN: String = r"^https://[^\s/@:]+/\S+\z"
+
 ## Git ref-name rules that make a tag name invalid (see `git check-ref-format`):
 ## whitespace/control chars and ~ ^ : ? * [ \ | ".." | "@{" | lone "@" | leading "-" or "/"
 ## | trailing "/" or "." | "//" | ".lock" component | component starting with ".".
@@ -132,12 +146,16 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.LFS_UNTRACK,
 	Command.LFS_INSTALL,
 	Command.LFS_PRUNE,
+	Command.INIT,
+	Command.REMOTE_ADD,
 ]
 
 ## Compiled once on first use. Lazy because a static initializer is not reliably re-run on editor
 ## hot-reload (the var stays null).
 static var _invalid_tag_regex: RegEx
 static var _safe_branch_regex: RegEx
+static var _remote_url_regex: RegEx
+static var _web_url_regex: RegEx
 
 ## Reflog entries requested by the console's Info menu.
 const REFLOG_COUNT: int = 20
@@ -167,6 +185,13 @@ static func get_lfs_version() -> String:
 #endregion
 
 
+## True if the project folder has a ".git" entry (folder, or file for a worktree/submodule), whether
+## or not git accepts it. Tells "no repository yet" from "a repository git refuses to open".
+static func has_git_entry() -> bool:
+	var git_path: String = ProjectSettings.globalize_path("res://.git")
+	return DirAccess.dir_exists_absolute(git_path) or FileAccess.file_exists(git_path)
+
+
 ## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
 ## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
 static func parse_owner_repo(url: String) -> Dictionary:
@@ -175,6 +200,20 @@ static func parse_owner_repo(url: String) -> Dictionary:
 	if parts.size() < 2:
 		return { }
 	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
+
+
+## Browser address of a remote: "https://host/owner/repo" from https://host/owner/repo[.git],
+## git@host:owner/repo[.git] or ssh://git@host/owner/repo[.git].
+## @return: "" for any other form (http, user:token@, port, local path): no link rather than a wrong or leaking one.
+static func web_url(remote_url: String) -> String:
+	var url: String = remote_url.trim_suffix(".git")
+	if url.begins_with("git@"): # scp-like: the ":" separates host and path.
+		url = "https://" + url.trim_prefix("git@").replace(":", "/")
+	elif url.begins_with("ssh://git@"):
+		url = "https://" + url.trim_prefix("ssh://git@")
+	if _web_url_regex == null: # Lazy: a static initializer is not re-run on editor hot-reload.
+		_web_url_regex = RegEx.create_from_string(WEB_URL_PATTERN)
+	return url if _web_url_regex.search(url) != null else ""
 
 
 ## The origin URL from a finished Command.REMOTE_URL; "" when it failed (no origin).
@@ -202,6 +241,13 @@ static func is_valid_tag_name(tag_name: String) -> bool:
 	if _invalid_tag_regex == null:
 		_invalid_tag_regex = RegEx.create_from_string(INVALID_TAG_PATTERN)
 	return not tag_name.is_empty() and _invalid_tag_regex.search(tag_name) == null
+
+
+## True if url is a remote URL add_remote() accepts (see REMOTE_URL_PATTERN).
+static func is_valid_remote_url(url: String) -> bool:
+	if _remote_url_regex == null:
+		_remote_url_regex = RegEx.create_from_string(REMOTE_URL_PATTERN)
+	return _remote_url_regex.search(url) != null
 
 
 ## Runs `git <args>` synchronously (startup checks only) and returns the first stdout line.
@@ -272,6 +318,33 @@ func get_reflog() -> void:
 ## Async: result arrives via command_completed(SHOW_PREFIX, ...).
 func request_repo_prefix() -> void:
 	run_fast(Command.SHOW_PREFIX, ["rev-parse", "--show-prefix"])
+
+
+## Requests the checked-out branch's name (`branch --show-current`, Git >= 2.22). Unlike `branch -a`
+## it also answers on an unborn branch (right after `git init`: no commit, so no ref to list yet);
+## on a detached HEAD the answer is empty. Async: command_completed(CURRENT_BRANCH, ...).
+func request_current_branch() -> void:
+	run_fast(Command.CURRENT_BRANCH, ["branch", "--show-current"])
+
+
+## Creates a repository in the project folder with DEFAULT_BRANCH as its first branch (`git init -b`,
+## Git >= 2.28). Local write op. Only meant for a folder without ".git" (the dock checks first).
+func init_repo() -> void:
+	run_fast(Command.INIT, ["init", "-b", DEFAULT_BRANCH])
+
+
+## Adds url as the remote "origin" (`git remote add origin <url>`). Local write op: nothing is contacted.
+## Completes with exit code -1 and no git call when the URL is not accepted (see is_valid_remote_url()).
+## @param url: trimmed remote URL. Travels in the context so the result can name it.
+func add_remote(url: String) -> void:
+	var context: Dictionary = { "url": url }
+	if not is_valid_remote_url(url):
+		var failure: Array[String] = [
+			"'%s' is not a valid remote URL. Use https://host/owner/repo.git, ssh://git@host/owner/repo.git or git@host:owner/repo.git (no user:token@ in https URLs)." % url,
+		]
+		_relay.call_deferred(-1, failure, Command.REMOTE_ADD, context)
+		return
+	run_fast(Command.REMOTE_ADD, ["remote", "add", "origin", url], context)
 
 
 ## Requests the files changed by the most recent HEAD move (`switch`/`create_branch`/pull: reflog diff).

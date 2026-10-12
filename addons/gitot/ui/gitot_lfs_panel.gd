@@ -266,7 +266,7 @@ func _populate_files(files: Array[Dictionary]) -> void:
 ## @param stats: GitLfsParser.summarize() result.
 static func _stats_bbcode(stats: Dictionary) -> String:
 	if stats["count"] == 0:
-		return "No LFS files yet. Track a pattern: matching files then show up here."
+		return "No LFS files yet. Track a pattern then matching files show up here."
 	var rows: Array[Array] = [
 		["Files", str(stats["count"])],
 		["Total size", String.humanize_size(stats["total"])],
@@ -303,15 +303,15 @@ static func _status_icon(local: bool, remote: bool) -> String:
 	if local and remote:
 		return "StatusSuccess"
 	if local:
-		return "MoveUp" # Not on GitHub yet: Commit + Push.
+		return "MoveUp" # Not on remote yet: Commit + Push.
 	return "MoveDown" if remote else "StatusWarning" # Pointer only here: Pull.
 
 
 static func _status_tooltip(local: bool, remote: bool) -> String:
 	if local and remote:
-		return "Full file on this computer, and on GitHub (as of your last fetch)."
+		return "Full file on this computer, and on Remote (as of your last fetch)."
 	if local:
-		return "Full file on this computer only: not on GitHub yet.\nCommit and Push to upload it."
+		return "Full file on this computer only: not on Remote yet.\nCommit and Push to upload it."
 	if remote:
-		return "On GitHub, but this computer only has a pointer.\nUse the Download button on the left (LFS pull)."
-	return "Only a pointer here, and not found on GitHub (as of your last fetch).\nFetch, then pull."
+		return "On Remote, but this computer only has a pointer.\nUse the Download button on the left (LFS pull)."
+	return "Only a pointer here, and not found on Remote (as of your last fetch).\nFetch, then pull."

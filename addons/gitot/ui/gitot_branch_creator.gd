@@ -11,6 +11,7 @@ var _row: Control
 var _name_edit: LineEdit
 var _confirm_dialog: ConfirmationDialog
 var _add_button: Button
+var _state: GitotRepoState
 ## Name awaiting confirmation (the field could change while the dialog is open).
 var _pending_name: String = ""
 
@@ -26,6 +27,7 @@ func _init(
 	name_edit: LineEdit,
 	create_button: Button,
 	confirm_dialog: ConfirmationDialog,
+	state: GitotRepoState,
 ) -> void:
 	_git_engine = git_engine
 	_fold = fold
@@ -70,7 +72,7 @@ func _on_create_pressed(_text: String = "") -> void:
 		return
 	_pending_name = branch_name
 	_confirm_dialog.dialog_text = (
-		"Create branch '%s' from the current branch\nand switch to it?" % branch_name
+		"Create branch '%s' from '%s'\nand switch to it?" % [branch_name, _state.branch_label()]
 	)
 	_confirm_dialog.popup_centered()
 

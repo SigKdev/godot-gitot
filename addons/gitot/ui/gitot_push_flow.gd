@@ -5,12 +5,15 @@
 class_name GitotPushFlow
 extends RefCounted
 
+## Emitted by start() while there is no origin: the dock opens the remote-URL prompt, and calls start()
+## again once the router confirmed the remote.
+signal remote_missing
+
 var _git_engine: GitEngine
 var _orchestrator: GitSyncOrchestrator
 var _state: GitotRepoState
 var _tag_panel: GitotTagPanel
 var _confirm_dialog: ConfirmationDialog
-var _default_confirm_text: String = ""
 ## Decided once in start(), reused when the (possibly deferred) push begins.
 var _needs_force_push: bool = false
 
@@ -27,7 +30,6 @@ func _init(
 	_state = state
 	_tag_panel = tag_panel
 	_confirm_dialog = confirm_dialog
-	_default_confirm_text = _confirm_dialog.dialog_text
 	_confirm_dialog.confirmed.connect(_do_push)
 	_confirm_dialog.canceled.connect(
 		func() -> void:
@@ -39,6 +41,9 @@ func _init(
 ## Entry point of the Push button: pushes the current branch to its remote tracking branch.
 ## Gated by the "confirm_push" setting to avoid accidental remote pushes.
 func start() -> void:
+	if not _state.has_origin:
+		remote_missing.emit()
+		return
 	# Decided from the cached ahead/behind counts: no git call on the UI thread.
 	var plan: GitSyncOrchestrator.PushPlan = GitSyncOrchestrator.plan_push(
 		_state.has_upstream,
@@ -62,7 +67,7 @@ func start() -> void:
 		)
 		_confirm_dialog.popup_centered()
 		return
-	_confirm_dialog.dialog_text = _default_confirm_text
+	_confirm_dialog.dialog_text = "Push branch '%s' to '%s'?" % [_state.branch_label(), _state.repo_label()]
 	if GitotSettings.get_value("confirm_push"):
 		_confirm_dialog.popup_centered()
 	else:

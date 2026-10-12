@@ -159,13 +159,14 @@ func _on_unstaged_item_activated() -> void:
 
 ## Enter/double-click on staged rows unstages every selected row.
 ## "--" ends option parsing (safe for odd names) and enables chunking in GitRunner.
+## `reset -q` instead of `restore --staged`: the latter needs a HEAD commit and fails before the first one.
 func _on_staged_item_activated() -> void:
 	var paths: Array[String] = _get_selected_paths(_staged_tree)
 	if paths.is_empty():
 		return
 	_git_engine.run_fast(
 		GitEngine.Command.UNSTAGE,
-		["restore", "--staged", "--"] + paths,
+		["reset", "-q", "--"] + paths,
 		{ "count": paths.size() }, # Only for the "Unstaged N file(s)" log line.
 	)
 
@@ -231,7 +232,7 @@ func _stage_paths(paths: Array[String]) -> void:
 func _on_unstage_all_pressed() -> void:
 	if _is_empty(_staged_tree):
 		return
-	_git_engine.run_fast(GitEngine.Command.UNSTAGE, ["restore", "--staged", "."])
+	_git_engine.run_fast(GitEngine.Command.UNSTAGE, ["reset", "-q"])
 
 
 ## True if the tree has no file rows (root always exists after populate, so check its first child).

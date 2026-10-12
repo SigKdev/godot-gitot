@@ -79,6 +79,8 @@ Color(0.37254903, 1, 0.5921569, 1): Color(0.45, 0.95, 0.5, 1),
 Color(1, 0.8666667, 0.39607844, 1): Color(0.83, 0.78, 0.62, 1)
 }
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_qc777"]
+
 [node name="Gitot" type="Control" unique_id=1349837442]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 3
@@ -244,7 +246,15 @@ text = "Status letters"
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Confirmation dialogue before pushing"
+button_pressed = true
 text = "Confirm Push"
+
+[node name="ConfirmAmendCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1711000020]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Confirmation dialogue before amending the last commit.
+A commit already pushed to origin always asks."
+text = "Confirm Amend"
 
 [node name="ConfirmCreateBranchCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=450918464]
 unique_name_in_owner = true
@@ -322,7 +332,31 @@ mouse_default_cursor_shape = 2
 text = "Sponsor"
 flat = true
 
+[node name="NoRepoPanel" type="PanelContainer" parent="MainVBox" unique_id=1711000001]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="MainVBox/NoRepoPanel" unique_id=1711000002]
+layout_mode = 2
+
+[node name="NoRepoLabel" type="Label" parent="MainVBox/NoRepoPanel/VBox" unique_id=1711000003]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "No git repository in this project folder."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="InitRepoButton" type="Button" parent="MainVBox/NoRepoPanel/VBox" unique_id=1711000004]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Runs 'git init -b main' in the project folder and,
+if there is none, adds a .gitignore for Godot (.godot/ and *.translation)."
+mouse_default_cursor_shape = 2
+text = "Initialize repository"
+
 [node name="ScrollContainer" type="ScrollContainer" parent="MainVBox" unique_id=1587278614]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 
@@ -650,13 +684,12 @@ size_flags_horizontal = 3
 
 [node name="PushConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1978313195]
 unique_name_in_owner = true
-dialog_text = "Push current branch to remote?"
 
 [node name="AmendConfirmDialog" type="ConfirmationDialog" parent="." unique_id=1287513168]
 unique_name_in_owner = true
-dialog_text = "Last commit was already pushed to origin.
-Amending rewrites history!
-You'll need to force the next push. Continue?"
+oversampling_override = 1.0
+title = "Amend last commit?"
+size = Vector2i(363, 132)
 
 [node name="StashDropDialog" type="ConfirmationDialog" parent="." unique_id=1885822550]
 unique_name_in_owner = true
@@ -668,5 +701,47 @@ title = "Create branch?"
 
 [node name="DeleteBranchConfirmDialog" type="ConfirmationDialog" parent="." unique_id=856234035]
 unique_name_in_owner = true
+oversampling_override = 1.0
 title = "Delete branch?"
+position = Vector2i(0, 36)
 ok_button_text = "Delete"
+
+[node name="RemoteUrlDialog" type="ConfirmationDialog" parent="." unique_id=1711000010]
+unique_name_in_owner = true
+oversampling_override = 1.0
+title = "Add remote 'origin'"
+position = Vector2i(0, 36)
+size = Vector2i(520, 201)
+ok_button_text = "Add remote"
+
+[node name="VBox" type="VBoxContainer" parent="RemoteUrlDialog" unique_id=1711000011]
+propagate_maximum_size = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -49.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Label" type="Label" parent="RemoteUrlDialog/VBox" unique_id=1711000012]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Paste the URL of the (empty) repository you created on GitHub. It becomes the remote 'origin', then the push continues.
+(https://github.com/owner/repo.git  or  git@github.com:owner/repo.git)"
+autowrap_mode = 3
+
+[node name="----" type="HSeparator" parent="RemoteUrlDialog/VBox" unique_id=1933875628]
+layout_mode = 2
+theme_override_styles/separator = SubResource("StyleBoxEmpty_qc777")
+
+[node name="RemoteUrlEdit" type="LineEdit" parent="RemoteUrlDialog/VBox" unique_id=1711000013]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+placeholder_text = "https or ssh"
+emoji_menu_enabled = false
+clear_button_enabled = true
