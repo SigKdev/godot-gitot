@@ -1,6 +1,5 @@
 ## gitot_log_panel.gd
 ## Commit history section: count-filtered Tree list (message/author/date).
-## RefCounted, constructor-injected (same pattern as GitotBranchPanel/GitotTagPanel).
 class_name GitotLogPanel
 extends RefCounted
 

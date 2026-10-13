@@ -95,7 +95,7 @@ func _on_diff_done(exit_code: int, output: Array[String], commit_hash: String, p
 	if exit_code != 0:
 		_log_load_failure(commit_hash, raw)
 		return
-	_show_file_diff(path, raw)
+	_panel.show_raw_diff(path, raw) # Path comes from the file list, not from the diff.
 
 
 func _first_output(output: Array[String]) -> String:
@@ -105,15 +105,3 @@ func _first_output(output: Array[String]) -> String:
 func _log_load_failure(commit_hash: String, raw: String) -> void:
 	GitotLogger.e("Could not load commit '%s'." % commit_hash)
 	GitotLogger.g(raw)
-
-
-func _show_file_diff(path: String, raw: String) -> void:
-	if raw.length() > GitotDiffPanel.MAX_DIFF_CHARS:
-		GitotLogger.w("Diff of '%s' truncated for display." % path)
-		raw = raw.substr(0, GitotDiffPanel.MAX_DIFF_CHARS)
-	var files: Array[Dictionary] = GitDiffParser.parse_full(raw)
-	var hunks: Array[Dictionary] = []
-	if not files.is_empty():
-		hunks.assign(files[0]["hunks"])
-	# Path comes from the list: parse_full() has no file name for deleted/binary files.
-	_panel.show_diff(path, hunks)

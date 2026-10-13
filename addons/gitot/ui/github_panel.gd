@@ -16,13 +16,13 @@ const AuthDialogScene: PackedScene = preload("res://addons/gitot/ui/github_auth_
 ## Sized for solo/small-team repos.
 const MAX_ISSUE_PAGES: int = 8
 
-## Browser address prefix of github.com (see GitEngine.web_url()): the host is matched whole, so
+## Browser address prefix of github.com (see GitRemote.web_url()): the host is matched whole, so
 ## "github.com.evil.io" does not pass. Any other host would be queried on github.com under its owner/repo.
 const GITHUB_WEB_PREFIX: String = "https://github.com/"
 
-## True once gitot.gd requested the issues this session (first tab show); reset when the token is cleared.
-var has_fetched: bool = false
 var _git_engine: GitEngine
+## True once the issues were requested (first tab show); reset when the token is cleared.
+var _fetched: bool = false
 var _issue_list: GithubIssueList
 var _dirty_count: int = 0
 var _pending_branch: String = ""
@@ -57,7 +57,7 @@ static func _header_text(
 
 ## True if remote_url (https, ssh:// or scp-like) points at github.com.
 static func _is_github_remote(remote_url: String) -> bool:
-	return GitEngine.web_url(remote_url).begins_with(GITHUB_WEB_PREFIX)
+	return GitRemote.web_url(remote_url).begins_with(GITHUB_WEB_PREFIX)
 
 
 func _ready() -> void:
@@ -85,6 +85,14 @@ func set_git_engine(engine: GitEngine) -> void:
 	_git_engine = engine
 
 
+## Called by gitot.gd on every tab show: fetches the issues the first time only (Refresh does the rest).
+func fetch_issues_once() -> void:
+	if _fetched:
+		return
+	_fetched = true
+	fetch_current_repo_issues()
+
+
 ## Asks git for the origin remote; the fetch starts in _start_issue_fetch() once it answers.
 ## LOADING at once: the async answer must not leave a window for a second click.
 func fetch_current_repo_issues() -> void:
@@ -94,12 +102,12 @@ func fetch_current_repo_issues() -> void:
 
 
 func _on_remote_url_done(exit_code: int, output: Array[String]) -> void:
-	_start_issue_fetch(GitEngine.remote_url_of(exit_code, output))
+	_start_issue_fetch(GitRemote.url_of(exit_code, output))
 
 
 ## Parses owner/repo from the origin URL and starts the first page.
 func _start_issue_fetch(remote_url: String) -> void:
-	var owner_repo: Dictionary = GitEngine.parse_owner_repo(remote_url)
+	var owner_repo: Dictionary = GitRemote.parse_owner_repo(remote_url)
 	if owner_repo.is_empty():
 		GitotLogger.w("Could not parse owner/repo from remote '%s'." % remote_url)
 		_set_refresh_state(RefreshButtonState.IDLE)
@@ -193,7 +201,7 @@ func _on_request_succeeded(data: Variant) -> void:
 ## Clears the stored PAT and resets the panel to its pre-fetch state.
 func _on_clear_token_pressed() -> void:
 	GithubAuth.clear_token()
-	has_fetched = false
+	_fetched = false
 	_set_refresh_state(RefreshButtonState.NEEDS_AUTH)
 	_repo_label.text = _header_text(_issues_owner, _issues_repo, -1)
 	_issue_list.populate([])

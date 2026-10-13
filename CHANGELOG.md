@@ -2,6 +2,42 @@
 
 All notable changes to Gitot. Latest first.
 
+## v0.17.2
+
+refactor: engine, settings and dock cleanup - fix: out-of-order reads, shell path safety, catch-all LFS pattern, gutter teardown, startup log
+
+Tested with GdUnit4 (31 suites, 250 tests, 0 failures) and by hand in the editor.
+
+fix: git operations
+
+- Reads that repaint the UI (`STATUS`, `LOG`, `BRANCHES`, `STASH_LIST`, `AHEAD_BEHIND`) are stamped: a slower, older answer is no longer broadcast over a newer one (its `on_done` still runs).
+- `run_network()` also checks the two paths it puts in the shell string (project root, temp log) and refuses characters that still act inside double quotes (`%` on Windows; `$`, backtick, `\` on Linux / macOS; `"` on both). The exit status is read only from a marker that ends the log: git's own output containing the same words no longer counts.
+- `GitLfs.track()` refuses catch-all patterns (`*`, `**`, `*.*`, `/`) that would put every file in LFS.
+- The ahead/behind read at startup is silent; later changes are still logged.
+
+fix: UI
+
+- `GitotDiffGutter.teardown()` hides the gutter and clears its markers in the open script editors (disabling the plugin left them). It hides instead of removing: `CodeEdit.remove_gutter()` raised an index error in 4.7.
+- Diff viewer: the line-number column widens for files past 999 lines. Working-tree and commit diffs share `GitotDiffPanel.show_raw_diff()`; both log when a diff is cut at the size cap (the working-tree one cut silently).
+- The Issues tab fetches once when first shown (`GithubPanel.fetch_issues_once()`), and again after a token reset.
+- Push tooltip is built from `GitSyncOrchestrator.plan_push()`, the same decision as the Push action.
+- Logger: `[` is escaped at every level (a path like `Level[1].tscn` is no longer read as BBCode). Labels and colors come from one `STYLES` table.
+
+perf: startup
+
+- The LFS version is read by the async state chain; `git --version` is the only blocking call left in `_enter_tree`. The version line is logged once the LFS answer arrives.
+
+refactor:
+
+- The Staged / Unstaged tree no longer builds git arguments: `GitEngine.stage()`, `unstage()` and `unstage_all()` do (`reset -q`, so unstage also works before the first commit). The router logs their success and failure.
+- `GitEngine` lost its pure helpers: remote rules are in `GitRemote`, tag and branch name rules in `GitRef`. Each `--format` string sits next to its parser, with the shared separator in `GitFormat.UNIT_SEP`.
+- Settings: every key is a `GitotSettings.KEY_*` constant, the settings panel binds from one table, and every numeric setting is clamped to its range.
+- `GitotCommitFlow` (commit, amend, wording of the commit area) moved out of the dock, next to `GitotPushFlow`. The dock gets its collaborators in one `setup()` call before it enters the tree (it replaced four setters and the `_ready` retry).
+- `GitotRegex.compiled(pattern)`: one cached `RegEx` per pattern replaces nine lazy-compile blocks.
+- Typed `Dictionary[K, V]` members, `Color.FOREST_GREEN` / `Color.DARK_ORANGE`, `Command.find_key()` instead of `keys()[i]`, and redundant checks removed.
+- Comments: boilerplate "constructor-injected - same pattern as ..." lines and a fix-narrative removed.
+<hr>
+
 ## v0.17.1
 
 fix: stuck buttons, failed status, push/pull lock, Issues host check, token hygiene - refactor: typed entries, result handlers split from the router
@@ -21,9 +57,9 @@ fix: git operations
 
 fix: GitHub
 
-- Issues: only `github.com` remotes. Before, a GitLab or Gitea remote `alice/game` fetched `github.com/alice/game` with your token and showed another repository's issues. Now it logs "Issues are only available for repositories hosted on github.com." and fetches nothing.
+- Issues: only `github.com` remotes. Before, a GitLab or Gitea remote `alice/game` fetched `github.com/alice/game` with the token and showed another repository's issues. Now it logs "Issues are only available for repositories hosted on github.com." and fetches nothing.
 - A request that fails to start no longer leaves the panel on "Loading...".
-- A token GitHub rejects (HTTP 401) is deleted: before, a revoked token stayed on disk and was sent again. On Linux/macOS the token file is restricted to your user (0600) after each save. It is still stored in plaintext, not encrypted: see the README.
+- A token GitHub rejects (HTTP 401) is deleted: before, a revoked token stayed on disk and was sent again. On Linux/macOS the token file is restricted to user (0600) after each save. It is still stored in plaintext, not encrypted: see the README.
 
 perf: low-end PCs
 
@@ -36,12 +72,6 @@ refactor:
 - Typed entries replace dictionaries: `GitStatusEntry`, `GitCommitEntry`, `GitStashEntry`, `GitLfsFile` (same pattern as `GitBranchEntry`). `GitDiffParser.LineType` replaces the `"add"` / `"del"` / `"context"` strings.
 - `GitEngine` commands take an optional `on_done(exit_code, output)`. The code that started a command gets its own result (diff views, LFS list, remote URL, Fetch, Pull, delete on origin, Commit / Amend, init, repo probe, last commit message). `command_completed` still broadcasts. This removed the hand-rolled latest-wins gates; the commit diff keeps one request in flight and refetches the newest state.
 - `GitotResultRouter` went from 587 to about 320 lines. Branch and sync results moved to `GitotBranchResults` and `GitotSyncResults` (`RefCounted`, a `COMMANDS` list and `handle()`), shared texts to `GitotMessages`. The dock no longer pre-handles commands: it passes every result to `route()`.
-
-docs:
-
-- README: Git 2.32+ stated (badge and requirements), the Output panel note corrected (the console also echoes to it), `github.com`-only Issues, plaintext token note.
-- `plugin.cfg`: unbalanced parenthesis in the description.
-- Wiki: Architecture (parsers, router, handlers, `on_done`), Credentials, Issues Tracker, Commit and Sync, Settings, Troubleshooting, Implementation Details, Testing.
 <hr>
 
 ## v0.17.0

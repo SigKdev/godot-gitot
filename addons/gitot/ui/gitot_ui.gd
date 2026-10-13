@@ -69,27 +69,33 @@ static func sync_counts(key: String, ahead: int, behind: int) -> String:
 
 
 ## Tooltip of the dock's Push button: what pressing it will do given the current counts.
-## Mirrors GitSyncOrchestrator.plan_push() (same inputs, so the text never disagrees with the action).
+## Branches on GitSyncOrchestrator.plan_push() itself, so the text can never disagree with the action.
 ## @param has_origin: false = Push will first ask for the remote URL.
 static func push_tooltip(has_upstream: bool, ahead: int, behind: int, has_origin: bool = true) -> String:
 	if not has_origin:
 		return "No remote yet: Push asks for the repository URL (https or ssh),\nadds it as 'origin', then publishes this branch."
 	var outcome: String
-	if not has_upstream:
-		outcome = "First push of this branch: publishes it to origin\nand sets it as the upstream."
-	elif behind > 0 and ahead == 0:
-		return "Push blocked: origin has %d newer commit(s).\nPull first, then push." % behind
-	elif behind > 0:
-		outcome = (
-			"Diverged (↑%d ↓%d), e.g. after an amend.\n" % [ahead, behind]
-			+ "Push asks first, then force-pushes (--force-with-lease):\n"
-			+ "origin's %d commit(s) are replaced by yours." % behind
-		)
-	elif ahead > 0:
-		outcome = "Uploads your %d unpushed commit(s) to origin." % ahead
-	else:
-		outcome = "Nothing new to upload: up to date with origin."
+	match GitSyncOrchestrator.plan_push(has_upstream, ahead, behind):
+		GitSyncOrchestrator.PushPlan.BLOCKED_BEHIND:
+			return "Push blocked: origin has %d newer commit(s).\nPull first, then push." % behind
+		GitSyncOrchestrator.PushPlan.FORCE_CONFIRM:
+			outcome = (
+				"Diverged (↑%d ↓%d), e.g. after an amend.\n" % [ahead, behind]
+				+ "Push asks first, then force-pushes (--force-with-lease):\n"
+				+ "origin's %d commit(s) are replaced by yours." % behind
+			)
+		_:
+			outcome = _plain_push_outcome(has_upstream, ahead)
 	return "Push\n%s\nAlso pushes the tag, if one is set." % outcome
+
+
+## Outcome text of a plain push (GitSyncOrchestrator.PushPlan.NORMAL).
+static func _plain_push_outcome(has_upstream: bool, ahead: int) -> String:
+	if not has_upstream:
+		return "First push of this branch: publishes it to origin\nand sets it as the upstream."
+	if ahead > 0:
+		return "Uploads your %d unpushed commit(s) to origin." % ahead
+	return "Nothing new to upload: up to date with origin."
 
 
 ## Trackshort key (">" ahead, "<" behind, "<>" diverged, "=" in sync) from commit counts.

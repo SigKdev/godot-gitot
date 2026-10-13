@@ -24,7 +24,7 @@ const COLOR_HEADER: Color = Color(0.22, 0.545, 0.992, 0.11)
 const SIGN_GUTTER_NAME: String = "diff_sign"
 const LINE_NUM_GUTTER_NAME: String = "diff_line_no"
 const FOLD_GUTTER_NAME: String = "diff_fold"
-const LINE_PAD_DIGITS: int = 3 # Line numbers are zero-padded to this width ("001").
+const MIN_LINE_DIGITS: int = 3 # Line numbers are zero-padded to at least this width ("001").
 
 var _line_num_gutter_idx: int = -1
 var _sign_gutter_idx: int = -1
@@ -32,7 +32,7 @@ var _fold_gutter_idx: int = -1
 var _current_file_path: String = ""
 var _current_hunks: Array[Dictionary] = [] # stored for jump_to_source_line() and _rebuild_view()
 var _current_commit_hash: String = ""
-var _collapsed_hunks: Dictionary = { } # hunk_index(int) -> true, only collapsed ones
+var _collapsed_hunks: Dictionary[int, bool] = { } # hunk_index -> true, only collapsed ones
 var _hunk_header_lines: Array[int] = [] # rendered line of each hunk's header, valid for current render only
 var _gdscript_highlighter: CodeHighlighter
 
@@ -86,6 +86,24 @@ func _ready() -> void:
 	%CommitInfoLabel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	%CommitInfoLabel.tooltip_text = "Click to copy commit hash"
 	%CommitInfoLabel.gui_input.connect(_on_commit_info_gui_input)
+
+
+## Renders the first file of a raw `git diff` (callers pass a one-file diff). The path comes from the
+## caller: parse_full() has no file name for deleted/binary files. An empty diff clears the view.
+func show_raw_diff(file_path: String, raw: String) -> void:
+	show_diff(file_path, _first_file_hunks(raw, file_path))
+
+
+## Hunks of the first file in `raw`, cut at MAX_DIFF_CHARS (logged: the view would end mid-diff).
+static func _first_file_hunks(raw: String, file_path: String) -> Array[Dictionary]:
+	if raw.length() > MAX_DIFF_CHARS:
+		GitotLogger.w("Diff of '%s' truncated for display." % file_path)
+		raw = raw.left(MAX_DIFF_CHARS)
+	var files: Array[Dictionary] = GitDiffParser.parse_full(raw)
+	var hunks: Array[Dictionary] = []
+	if not files.is_empty():
+		hunks.assign(files[0]["hunks"])
+	return hunks
 
 
 ## Renders all hunks of one file, fully expanded. Only resets the per-file state here, the line
@@ -207,10 +225,7 @@ func _rebuild_view() -> void:
 		if not _collapsed_hunks.has(idx):
 			render_lines.append_array(_make_numbered_lines(hunk))
 
-	for entry: Dictionary in render_lines:
-		if entry.has("line_no"):
-			entry["line_no"] = str(entry["line_no"]).pad_zeros(LINE_PAD_DIGITS)
-	_code_edit.set_gutter_width(_line_num_gutter_idx, LINE_PAD_DIGITS * 8 + 4) # 8 px per digit approximates the monospace width.
+	_pad_line_numbers(render_lines)
 
 	var texts: PackedStringArray = []
 	for entry: Dictionary in render_lines:
@@ -240,6 +255,32 @@ func _rebuild_view() -> void:
 		if (not _current_hunks.is_empty() and _collapsed_hunks.size() == _current_hunks.size())
 		else "Click to fold all header"
 	)
+
+
+## Digits needed for line numbers up to `max_line_no` (never below MIN_LINE_DIGITS, so small files
+## keep a stable gutter).
+static func _line_digits(max_line_no: int) -> int:
+	return maxi(MIN_LINE_DIGITS, str(max_line_no).length())
+
+
+## Zero-pads every line number to the widest one and sizes the gutter from the CodeEdit's own font:
+## files past 999 lines no longer clip, and the editor scale is followed.
+func _pad_line_numbers(render_lines: Array[Dictionary]) -> void:
+	var max_no: int = 0
+	for entry: Dictionary in render_lines:
+		var line_no: int = entry.get("line_no", 0)
+		max_no = maxi(max_no, line_no)
+	var digits: int = _line_digits(max_no)
+	for entry: Dictionary in render_lines:
+		if entry.has("line_no"):
+			entry["line_no"] = str(entry["line_no"]).pad_zeros(digits)
+	var digit_px: float = _code_edit.get_theme_font(&"font").get_string_size(
+		"0",
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		_code_edit.get_theme_font_size(&"font_size"),
+	).x
+	_code_edit.set_gutter_width(_line_num_gutter_idx, ceili(digits * digit_px) + 4) # +4 px padding.
 
 
 func _style_line(i: int, entry: Dictionary) -> void:

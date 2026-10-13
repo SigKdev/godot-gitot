@@ -73,7 +73,7 @@ func route(
 		return
 	match command:
 		GitEngine.Command.STAGE, GitEngine.Command.UNSTAGE:
-			_handle_index_result(command, exit_code, context)
+			_handle_index_result(command, exit_code, output, context)
 		GitEngine.Command.COMMIT, GitEngine.Command.AMEND:
 			_handle_commit_result(command, exit_code, output)
 		GitEngine.Command.STASH, GitEngine.Command.STASH_POP:
@@ -93,7 +93,7 @@ func route(
 		GitEngine.Command.RESTORE_FILE:
 			_handle_restore_result(exit_code, output, context)
 		GitEngine.Command.CHANGED_FILES:
-			files_changed.emit(GitEngine.to_file_list(exit_code, output))
+			files_changed.emit(GitPath.to_file_list(exit_code, output))
 		GitEngine.Command.REMOTE_URL:
 			_handle_remote_url_result(exit_code, output)
 		GitEngine.Command.REMOTE_ADD:
@@ -130,13 +130,25 @@ func _handle_commit_result(
 		)
 
 
-## Stage / unstage success (failures are reported by gitot.gd). The status refresh shows the result;
-## this line confirms that the click did something.
+## Stage / unstage result. On success the status refresh shows the change; the log line confirms that the
+## click did something.
 ## @param context: {"count": files, -1 = everything}.
-func _handle_index_result(command: GitEngine.Command, exit_code: int, context: Dictionary) -> void:
+func _handle_index_result(
+	command: GitEngine.Command,
+	exit_code: int,
+	output: Array[String],
+	context: Dictionary,
+) -> void:
+	var is_stage: bool = command == GitEngine.Command.STAGE
 	if exit_code != 0:
+		# git add / reset aborts the WHOLE batch: never fail silently.
+		GitotMessages.log_failure(
+			"Staging failed - no file was staged." if is_stage else "Unstaging failed - no file was unstaged.",
+			output,
+			"Common fail causes: a listed file changed or vanished since the list was drawn, or another Git tool holds .git/index.lock.",
+		)
 		return
-	var verb: String = "Staged" if command == GitEngine.Command.STAGE else "Unstaged"
+	var verb: String = "Staged" if is_stage else "Unstaged"
 	var count: int = context.get("count", -1)
 	GitotLogger.i("%s %s." % [verb, "all files" if count < 0 else "%d file(s)" % count])
 
@@ -264,7 +276,7 @@ func _handle_repo_size_result(exit_code: int, output: Array[String]) -> void:
 
 ## Origin's URL answered: "owner/repo" in the status header, or blank when origin is missing/unparsable.
 func _handle_remote_url_result(exit_code: int, output: Array[String]) -> void:
-	_apply_origin_url(GitEngine.remote_url_of(exit_code, output))
+	_apply_origin_url(GitRemote.url_of(exit_code, output))
 
 
 ## Result of `remote add origin <url>`. On success origin is stored right away (no extra git call) and
@@ -285,10 +297,10 @@ func _handle_remote_add_result(exit_code: int, output: Array[String], context: D
 
 ## Single place that stores origin in the repo state ("" = no origin) and repaints the status header.
 func _apply_origin_url(url: String) -> void:
-	var owner_repo: Dictionary = GitEngine.parse_owner_repo(url)
+	var owner_repo: Dictionary = GitRemote.parse_owner_repo(url)
 	_repo_state.has_origin = not url.is_empty()
 	_repo_state.repo = "%s/%s" % [owner_repo["owner"], owner_repo["repo"]] if not owner_repo.is_empty() else ""
-	_repo_state.repo_url = GitEngine.web_url(url) # Before update_repo(): the panel reads it on render.
+	_repo_state.repo_url = GitRemote.web_url(url) # Before update_repo(): the panel reads it on render.
 	_status_panel.update_repo(_repo_state.repo)
 
 

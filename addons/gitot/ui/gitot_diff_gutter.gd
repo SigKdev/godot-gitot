@@ -9,15 +9,28 @@ extends RefCounted
 ## @param line: 0-based CodeEdit line index (native Godot convention, not git's 1-based).
 signal hunk_clicked(file_path: String, line: int)
 
-const COLOR_ADDED: Color = "forest_green"
-const COLOR_MODIFIED: Color = "dark_orange"
+const COLOR_ADDED: Color = Color.FOREST_GREEN
+const COLOR_MODIFIED: Color = Color.DARK_ORANGE
 const GUTTER_NAME: String = "gitot_diff_gutter"
 
 var _git_engine: GitEngine
+## Instance ids of the CodeEdits that got the gutter, so teardown() can take it back out. Ids, not
+## references: an editor tab closed meanwhile is freed, and instance_from_id() then gives null.
+var _edit_ids: Array[int] = []
 
 
 func _init(engine: GitEngine) -> void:
 	_git_engine = engine
+
+
+## Clears the markers and hides the gutter in every editor that still has it open.
+## Called by gitot.gd on exit, so a disabled plugin leaves no stale markers behind.
+func teardown() -> void:
+	for id: int in _edit_ids:
+		var code_edit: CodeEdit = instance_from_id(id) as CodeEdit
+		if code_edit:
+			_hide_gutter(code_edit)
+	_edit_ids.clear()
 
 
 ## Runs diff for the currently active script and refreshes its gutter.
@@ -51,13 +64,38 @@ func _ensure_gutter(code_edit: CodeEdit) -> int:
 		code_edit.set_gutter_type(gutter_idx, CodeEdit.GUTTER_TYPE_STRING)
 		code_edit.set_gutter_width(gutter_idx, 4)
 
+	code_edit.set_gutter_draw(gutter_idx, true) # Hidden again by teardown(); a re-enabled plugin reuses it.
 	code_edit.set_gutter_clickable(gutter_idx, true)
 	# Test the same bound Callable that is connected: a bare method never equals a bound one.
 	var on_clicked: Callable = _on_gutter_clicked.bind(gutter_idx)
 	if not code_edit.gutter_clicked.is_connected(on_clicked):
 		code_edit.gutter_clicked.connect(on_clicked)
+	if not _edit_ids.has(code_edit.get_instance_id()):
+		_edit_ids.append(code_edit.get_instance_id())
 
 	return gutter_idx
+
+
+## Blanks the marker of every line of the gutter.
+func _clear_markers(code_edit: CodeEdit, gutter_idx: int) -> void:
+	for line: int in range(code_edit.get_line_count()):
+		code_edit.set_line_gutter_text(line, gutter_idx, "")
+		code_edit.set_line_gutter_item_color(line, gutter_idx, Color(0, 0, 0, 0))
+
+
+## Inverse of _ensure_gutter(): clears the markers, hides the gutter and drops the click connection.
+## Hidden, not removed: CodeEdit.remove_gutter() raised an index error in the tests (Godot 4.7).
+func _hide_gutter(code_edit: CodeEdit) -> void:
+	for i: int in range(code_edit.get_gutter_count()):
+		if code_edit.get_gutter_name(i) != GUTTER_NAME:
+			continue
+		var on_clicked: Callable = _on_gutter_clicked.bind(i)
+		if code_edit.gutter_clicked.is_connected(on_clicked):
+			code_edit.gutter_clicked.disconnect(on_clicked)
+		_clear_markers(code_edit, i)
+		code_edit.set_gutter_draw(i, false)
+		code_edit.set_gutter_clickable(i, false)
+		return
 
 
 ## Applies parsed diff line states to the gutter of the requested script, if it is still the active tab.
@@ -78,10 +116,7 @@ func _on_diff_result(exit_code: int, output: Array[String], script_path: String)
 
 	var gutter_idx: int = _ensure_gutter(code_edit)
 
-	# Clear previous markers before applying new ones.
-	for line: int in range(code_edit.get_line_count()):
-		code_edit.set_line_gutter_text(line, gutter_idx, "")
-		code_edit.set_line_gutter_item_color(line, gutter_idx, Color(0, 0, 0, 0))
+	_clear_markers(code_edit, gutter_idx) # Before applying the new ones.
 
 	# Apply the parsed line states to the gutter.
 	var line_states: Dictionary = GitDiffParser.parse(output[0])

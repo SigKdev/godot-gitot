@@ -12,7 +12,7 @@ signal changed
 var branch: String = ""
 ## "owner/repo" of origin ("" = no origin, or a URL that is not owner/repo shaped).
 var repo: String = ""
-## Browser address of origin (see GitEngine.web_url()); "" = no origin, or a URL with no safe web form.
+## Browser address of origin (see GitRemote.web_url()); "" = no origin, or a URL with no safe web form.
 var repo_url: String = ""
 ## True if a remote named "origin" exists, whatever its URL looks like (`repo` is "" for a URL that is not
 ## owner/repo shaped). False until the first remote-URL answer; Push asks for a URL while it is false.

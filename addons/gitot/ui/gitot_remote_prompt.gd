@@ -1,7 +1,6 @@
 ## gitot_remote_prompt.gd
 ## Asks for the repository URL when Push finds no origin, then adds it (`git remote add origin <url>`).
 ## The result (log, repo state, resuming the push) is handled by GitotResultRouter.
-## RefCounted, constructor-injected - same pattern as GitotBranchCreator.
 class_name GitotRemotePrompt
 extends RefCounted
 

@@ -47,12 +47,6 @@ func _on_diff_done(exit_code: int, output: Array[String], file_path: String, lin
 	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
 	if not current_script or current_script.resource_path != file_path:
 		return
-	var raw: String = output[0].left(GitotDiffPanel.MAX_DIFF_CHARS)
-	var files: Array[Dictionary] = GitDiffParser.parse_full(raw)
-	if files.is_empty():
-		return
-	var hunks: Array[Dictionary] = []
-	hunks.assign(files[0]["hunks"])
 	_panel.set_commit_mode(false)
-	_panel.show_diff(file_path, hunks)
+	_panel.show_raw_diff(file_path, output[0])
 	_panel.jump_to_source_line(line)

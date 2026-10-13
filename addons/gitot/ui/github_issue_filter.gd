@@ -12,8 +12,8 @@ var _priority_dropdown: OptionButton
 var _label_dropdown: OptionButton
 
 
-static func _sorted_keys(set: Dictionary) -> Array:
-	var keys: Array = set.keys()
+static func _sorted_keys(values: Dictionary) -> Array:
+	var keys: Array = values.keys()
 	keys.sort()
 	return keys
 

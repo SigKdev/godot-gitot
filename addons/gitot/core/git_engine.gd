@@ -23,7 +23,7 @@ signal command_completed(
 signal write_busy_changed(busy: bool)
 
 ## Identifies which git operation a command_completed signal refers to.
-## Enum key names double as display strings via Command.keys()[cmd].capitalize()
+## Enum key names double as display strings via Command.find_key(cmd).capitalize()
 ## (e.g. STASH_POP -> "Stash Pop"), so key names must stay readable that way.
 enum Command {
 	STATUS,
@@ -72,60 +72,20 @@ enum Command {
 	CURRENT_BRANCH,
 }
 
-## Canonical status args. --untracked-files=all forces recursion into
-## untracked directories instead of collapsing them to one folder entry.
-## --no-optional-locks: status only reads, so it must never take index.lock to refresh the index
-## (that would race a concurrent stage/commit, and reads run during writes).
-const STATUS_ARGS: PackedStringArray = [
-	"--no-optional-locks",
-	"status",
-	"--porcelain=v2",
-	"--untracked-files=all",
-	"--no-renames",
+## Reads that repaint a whole panel. They run concurrently, so an older, slower read could land after a
+## newer one and overwrite fresh data. For these, only the result of the NEWEST request of the command is
+## broadcast; a superseded one is dropped (its newer request still answers). Writes and one-shot lookups
+## are not listed: every answer counts.
+const LATEST_WINS_COMMANDS: Array[Command] = [
+	Command.STATUS,
+	Command.LOG,
+	Command.BRANCHES,
+	Command.STASH_LIST,
+	Command.AHEAD_BEHIND,
 ]
-
-## Field delimiter (unit separator, 0x1F), unlikely to appear in git output.
-const UNIT_SEP: String = char(0x1F)
-
-## Format string for `git log`: hash, author, relative date, absolute date, subject, joined by
-## UNIT_SEP since a commit subject can contain any printable char.
-## UNIT_SEP is built with char(): GDScript has no \x escape.
-const LOG_FORMAT: String = "--pretty=format:%h" + UNIT_SEP + "%an" + UNIT_SEP + "%ar" + UNIT_SEP + "%ad" + UNIT_SEP + "%s"
-
-## Format string for `git stash list`: selector, full hash (stable preview key),
-## relative date, absolute date (tooltip), subject. Unit Separator-delimited like LOG_FORMAT.
-const STASH_LIST_FORMAT: String = "--format=%gd" + UNIT_SEP + "%H" + UNIT_SEP + "%cr" + UNIT_SEP + "%ci" + UNIT_SEP + "%s"
-
-## Format string for `git branch -a`: refname, HEAD marker, upstream, trackshort, track,
-## commit date (unix = sort key, relative = display, exact = tooltip), short hash, subject.
-## Unit Separator-delimited like LOG_FORMAT - "|" is a valid ref-name character.
-## Column order must match GitBranchParser.Field.
-const BRANCH_LIST_FORMAT: String = (
-	"--format=%(refname)" + UNIT_SEP + "%(HEAD)" + UNIT_SEP + "%(upstream:short)" + UNIT_SEP
-	+ "%(upstream:trackshort)" + UNIT_SEP + "%(upstream:track)" + UNIT_SEP + "%(committerdate:unix)"
-	+ UNIT_SEP + "%(committerdate:relative)" + UNIT_SEP + "%(committerdate:format:%Y-%m-%d %H:%M)"
-	+ UNIT_SEP + "%(objectname:short)" + UNIT_SEP + "%(subject)"
-)
-
-## Branch names this plugin may send to origin (strict subset of git's rules, see delete_remote_branch()):
-## starts with a letter/digit, then letters, digits and . _ / - only. Also excludes every shell metacharacter.
-const SAFE_BRANCH_PATTERN: String = "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
 
 ## First branch of a repository created by init_repo().
 const DEFAULT_BRANCH: String = "main"
-
-## Remote URLs add_remote() accepts: https without user info (a "user:token@" would be stored in plaintext
-## in .git/config), ssh://, and scp-like git@host:path. Everything else (http://, local paths, spaces,
-## a leading "-" that git would read as an option) is refused. \z: end of text, not before a final newline.
-const REMOTE_URL_PATTERN: String = r"^(https://[^\s/@]+/\S+|ssh://[^\s/]+/\S+|git@[^\s/@:]+:\S+)\z"
-
-## A browsable repo address, as web_url() builds it: https, bare host (no user info, no port), a path.
-const WEB_URL_PATTERN: String = r"^https://[^\s/@:]+/\S+\z"
-
-## Git ref-name rules that make a tag name invalid (see `git check-ref-format`):
-## whitespace/control chars and ~ ^ : ? * [ \ | ".." | "@{" | lone "@" | leading "-" or "/"
-## | trailing "/" or "." | "//" | ".lock" component | component starting with ".".
-const INVALID_TAG_PATTERN: String = r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|^@$|^[-/]|[/.]$|//|\.lock(/|$)|(^|/)\."
 
 ## Commands that mutate the index, working tree or refs. Only these need mutual exclusion
 ## (write lock in GitRunner); read-only commands (STATUS, LOG, DIFF, BRANCHES, ...) may run
@@ -156,39 +116,28 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.PULL,
 ]
 
-## Compiled once on first use. Lazy because a static initializer is not reliably re-run on editor
-## hot-reload (the var stays null).
-static var _invalid_tag_regex: RegEx
-static var _safe_branch_regex: RegEx
-static var _remote_url_regex: RegEx
-static var _web_url_regex: RegEx
-
 ## Reflog entries requested by the console's Info menu.
 const REFLOG_COUNT: int = 20
 
 ## Process execution layer (threads, timeouts, write lock). See GitRunner.
 var _runner: GitRunner = GitRunner.new()
 
+## Newest request number per LATEST_WINS command (see _stamp()).
+var _latest_request: Dictionary[Command, int] = { }
+
 
 func _init() -> void:
 	_runner.write_busy_changed.connect(write_busy_changed.emit)
 
 
-#region check version
-## Checks if 'git' is callable from the OS PATH.
-static func is_git_available() -> bool:
-	return not get_git_version().is_empty()
-
-
 ## "2.45.0.windows.1" from "git version 2.45.0.windows.1"; "" if git is missing.
+## The only git call that blocks the main thread, once at startup: the plugin cannot start without git, and
+## `git --version` reads no repository, remote or credential helper. OS.execute() has no timeout.
 static func get_git_version() -> String:
-	return _first_line(["--version"]).trim_prefix("git version ")
-
-
-## "3.5.1" from "git-lfs/3.5.1 (GitHub; ...)"; "" if git-lfs is not installed.
-static func get_lfs_version() -> String:
-	return _first_line(["lfs", "version"]).get_slice(" ", 0).trim_prefix("git-lfs/")
-#endregion
+	var output: Array[String] = []
+	if OS.execute("git", ["--version"], output, true) != 0 or output.is_empty():
+		return ""
+	return output[0].get_slice("\n", 0).strip_edges().trim_prefix("git version ")
 
 
 ## True if the project folder has a ".git" entry (folder, or file for a worktree/submodule), whether
@@ -198,80 +147,13 @@ static func has_git_entry() -> bool:
 	return DirAccess.dir_exists_absolute(git_path) or FileAccess.file_exists(git_path)
 
 
-## Splits a git remote URL (SSH or HTTPS form) into owner and repo name.
-## @return: {"owner": String, "repo": String}, or {} if the URL has fewer than 2 path segments.
-static func parse_owner_repo(url: String) -> Dictionary:
-	var cleaned: String = url.trim_suffix(".git")
-	var parts: PackedStringArray = cleaned.split("/")
-	if parts.size() < 2:
-		return { }
-	return { "owner": parts[-2].split(":")[-1], "repo": parts[-1] }
-
-
-## Browser address of a remote: "https://host/owner/repo" from https://host/owner/repo[.git],
-## git@host:owner/repo[.git] or ssh://git@host/owner/repo[.git].
-## @return: "" for any other form (http, user:token@, port, local path): no link rather than a wrong or leaking one.
-static func web_url(remote_url: String) -> String:
-	var url: String = remote_url.trim_suffix(".git")
-	if url.begins_with("git@"): # scp-like: the ":" separates host and path.
-		url = "https://" + url.trim_prefix("git@").replace(":", "/")
-	elif url.begins_with("ssh://git@"):
-		url = "https://" + url.trim_prefix("ssh://git@")
-	if _web_url_regex == null: # Lazy: a static initializer is not re-run on editor hot-reload.
-		_web_url_regex = RegEx.create_from_string(WEB_URL_PATTERN)
-	return url if _web_url_regex.search(url) != null else ""
-
-
-## The origin URL from a finished Command.REMOTE_URL; "" when it failed (no origin).
-static func remote_url_of(exit_code: int, output: Array[String]) -> String:
-	if exit_code != 0 or output.is_empty():
-		return ""
-	return output[0].strip_edges()
-
-
-## Turns a finished name-list command (Command.CHANGED_FILES, the stash pre-read) into
-## {"reliable": bool, "files": PackedStringArray}. reliable=false means git failed - NOT "nothing changed".
-static func to_file_list(exit_code: int, output: Array[String]) -> Dictionary:
-	if exit_code != 0:
-		return { "reliable": false, "files": PackedStringArray() }
-	var stdout: String = output[0].strip_edges() if not output.is_empty() else ""
-	var files: PackedStringArray = PackedStringArray()
-	for line: String in stdout.split("\n", false): # Empty stdout -> no lines.
-		files.append(GitPath.unquote(line))
-	return { "reliable": true, "files": files }
-
-
-## True if git would accept tag_name. Checked BEFORE the push so a bad name can't leave
-## a pushed commit without its tag.
-static func is_valid_tag_name(tag_name: String) -> bool:
-	if _invalid_tag_regex == null:
-		_invalid_tag_regex = RegEx.create_from_string(INVALID_TAG_PATTERN)
-	return not tag_name.is_empty() and _invalid_tag_regex.search(tag_name) == null
-
-
-## True if url is a remote URL add_remote() accepts (see REMOTE_URL_PATTERN).
-static func is_valid_remote_url(url: String) -> bool:
-	if _remote_url_regex == null:
-		_remote_url_regex = RegEx.create_from_string(REMOTE_URL_PATTERN)
-	return _remote_url_regex.search(url) != null
-
-
-## Runs `git <args>` synchronously (startup checks only) and returns the first stdout line.
-## stderr is merged (read_stderr=true) so a missing `git lfs` stays silent in the editor console.
-## @return: "" on a non-zero exit code or empty output.
-static func _first_line(args: PackedStringArray) -> String:
-	var output: Array[String] = []
-	if OS.execute("git", args, output, true) != 0 or output.is_empty():
-		return ""
-	return output[0].get_slice("\n", 0).strip_edges()
-
-
 ## Runs a fast, local git command (read or write) off the main thread.
 ## Use for: status, diff, add, restore, commit. [b]NOT for push/pull[/b] [i](see run_network)[/i].
 ## @param context: optional per-call data, returned unchanged in command_completed.
 ## @param on_done: optional Callable(exit_code: int, output: Array[String]) for this call's own result.
 ## Called after command_completed; bound arguments (bind()) are appended, so the request it answers
-## travels with it. Skipped if its object was freed meanwhile.
+## travels with it. Skipped if its object was freed meanwhile. Always called, also when the broadcast is
+## dropped because a newer request superseded this one (LATEST_WINS_COMMANDS).
 func run_fast(
 	command: Command,
 	args: PackedStringArray,
@@ -279,10 +161,10 @@ func run_fast(
 	on_done: Callable = Callable(),
 ) -> void:
 	_runner.run_fast(
-		Command.keys()[command],
+		Command.find_key(command), # Key name, no per-call keys() array.
 		args,
 		command in WRITE_COMMANDS,
-		_relay.bind(command, context, on_done),
+		_relay.bind(command, context, on_done, _stamp(command)),
 	)
 
 
@@ -300,7 +182,7 @@ func run_network(
 	on_done: Callable = Callable(),
 ) -> void:
 	_runner.run_network(
-		Command.keys()[command],
+		Command.find_key(command), # Key name, no per-call keys() array.
 		args,
 		command in WRITE_COMMANDS,
 		_relay.bind(command, context, on_done),
@@ -308,7 +190,7 @@ func run_network(
 
 
 ## Requests the "origin" remote URL. Async: result arrives via command_completed(REMOTE_URL, ...),
-## decode it with remote_url_of().
+## decode it with GitRemote.url_of().
 ## @param on_done: optional per-call result callback, see run_fast(): a caller that only wants its own
 ## answer (not the dock's) passes one.
 func request_remote_url(on_done: Callable = Callable()) -> void:
@@ -321,11 +203,16 @@ func request_last_commit_message(on_done: Callable = Callable()) -> void:
 	run_fast(Command.LAST_COMMIT_MSG, ["log", "-1", "--pretty=%B"], { }, on_done)
 
 
+## Reads the working tree status. Result output[0] is fed to GitStatusParser.parse().
+func status() -> void:
+	run_fast(Command.STATUS, GitStatusParser.ARGS)
+
+
 ## Lists the last `count` commits on the current branch. Fast/local op.
 ## Result output[0] is fed to GitLogParser.parse().
 ## @param count: max number of commits (chosen in GitotLogPanel's dropdown).
 func get_log(count: int) -> void:
-	run_fast(Command.LOG, ["log", "-n", str(count), LOG_FORMAT, "--date=format:%Y-%m-%d %H:%M"])
+	run_fast(Command.LOG, ["log", "-n", str(count), GitLogParser.FORMAT, "--date=format:%Y-%m-%d %H:%M"])
 
 
 ## Requests the repository's object-store size (`git count-objects -vH`, human-readable units).
@@ -360,11 +247,11 @@ func init_repo(on_done: Callable = Callable()) -> void:
 
 
 ## Adds url as the remote "origin" (`git remote add origin <url>`). Local write op: nothing is contacted.
-## Completes with exit code -1 and no git call when the URL is not accepted (see is_valid_remote_url()).
+## Completes with exit code -1 and no git call when the URL is not accepted (see GitRemote.URL_PATTERN).
 ## @param url: trimmed remote URL. Travels in the context so the result can name it.
 func add_remote(url: String) -> void:
 	var context: Dictionary = { "url": url }
-	if not is_valid_remote_url(url):
+	if not GitRemote.is_valid_url(url):
 		var failure: Array[String] = [
 			"'%s' is not a valid remote URL. Use https://host/owner/repo.git, ssh://git@host/owner/repo.git or git@host:owner/repo.git (no user:token@ in https URLs)." % url,
 		]
@@ -375,7 +262,7 @@ func add_remote(url: String) -> void:
 
 ## Requests the files changed by the most recent HEAD move (`switch`/`create_branch`/pull: reflog diff).
 ## Used to call EditorFileSystem.update_file() precisely instead of a full scan().
-## Async: result arrives via command_completed(CHANGED_FILES, ...), decode it with to_file_list().
+## Async: result arrives via command_completed(CHANGED_FILES, ...), decode it with GitPath.to_file_list().
 ## reliable=false means HEAD@{1} doesn't exist yet (first switch) or git failed - NOT "nothing changed".
 func request_changed_files_since_switch() -> void:
 	run_fast(Command.CHANGED_FILES, ["diff", "--name-only", "HEAD@{1}", "HEAD"])
@@ -385,7 +272,7 @@ func request_changed_files_since_switch() -> void:
 ## Lists local and remote branches. Fast/local op.
 ## Result output[0] is fed to GitBranchParser.parse().
 func list_branches() -> void:
-	run_fast(Command.BRANCHES, ["branch", "-a", BRANCH_LIST_FORMAT])
+	run_fast(Command.BRANCHES, ["branch", "-a", GitBranchParser.FORMAT])
 
 
 ## Switches to an existing local branch. Uncommitted changes that don't conflict with the
@@ -430,16 +317,9 @@ func delete_branch(branch_name: String, on_remote: bool = false) -> void:
 	)
 
 
-## True if name is a branch name this plugin will send to origin (see SAFE_BRANCH_PATTERN).
-static func is_safe_branch_name(branch_name: String) -> bool:
-	if _safe_branch_regex == null:
-		_safe_branch_regex = RegEx.create_from_string(SAFE_BRANCH_PATTERN)
-	return _safe_branch_regex.search(branch_name) != null
-
-
 ## Deletes a branch on origin: `git push origin --delete refs/heads/<name>`. Network op, caller
 ## must confirm first. Only the named ref is touched (never a force push); "refs/heads/" keeps a
-## same-named tag from being hit; the name must pass is_safe_branch_name() because it ends up in a
+## same-named tag from being hit; the name must pass GitRef.is_safe_branch_name() because it ends up in a
 ## shell string. The server may still refuse (default/protected branch): its message is shown.
 ## To undo: `git push origin <old tip sha>:refs/heads/<name>` (the caller logs the sha).
 ## Completes with exit code -1 and no git call when the name is unsafe.
@@ -447,7 +327,7 @@ static func is_safe_branch_name(branch_name: String) -> bool:
 ## @param on_done: optional on_done(exit_code, output), also called for the unsafe-name refusal.
 func delete_remote_branch(branch_name: String, on_done: Callable = Callable()) -> void:
 	var context: Dictionary = { "branch": branch_name }
-	if not is_safe_branch_name(branch_name):
+	if not GitRef.is_safe_branch_name(branch_name):
 		var failure: Array[String] = [
 			"Branch name '%s' has unsupported characters: delete it from a terminal or on GitHub." % branch_name,
 		]
@@ -479,7 +359,7 @@ func check_tag_collision(tag_name: String, create_error: String = "") -> void:
 ## Lists all stash entries (no cap: terminal-made ones must stay droppable).
 ## Read-only -> not in WRITE_COMMANDS. Result output[0] is fed to GitStashParser.parse().
 func list_stashes() -> void:
-	run_fast(Command.STASH_LIST, ["stash", "list", STASH_LIST_FORMAT])
+	run_fast(Command.STASH_LIST, ["stash", "list", GitStashParser.FORMAT])
 
 
 ## Stashes staged + unstaged + untracked changes, resetting the working tree to HEAD.
@@ -513,7 +393,7 @@ func stash_pop(index: int = 0) -> void:
 ## Second half of stash_pop(): the pop carries the listed files as its context ({"reliable", "files"}).
 ## If another write took the lock meanwhile, the runner drops the pop and logs it (user retries).
 func _pop_after_listing(exit_code: int, output: Array[String], ref: String) -> void:
-	run_fast(Command.STASH_POP, ["stash", "pop", ref], to_file_list(exit_code, output))
+	run_fast(Command.STASH_POP, ["stash", "pop", ref], GitPath.to_file_list(exit_code, output))
 
 
 ## Permanently removes stash entry `index`. Destructive: the caller must confirm first.
@@ -551,7 +431,7 @@ func diff_full(path: String, on_done: Callable = Callable()) -> void:
 
 
 ## Lists files changed by one commit ("<letter>\t<path>" per line). Async.
-## --format= drops the commit header; --no-renames matches STATUS_ARGS (renames = D + A).
+## --format= drops the commit header; --no-renames matches GitStatusParser.ARGS (renames = D + A).
 ## @param commit_hash: commit hash (abbreviated is fine).
 ## @param on_done: per-call result callback, see run_fast().
 func get_commit_files(commit_hash: String, on_done: Callable = Callable()) -> void:
@@ -574,6 +454,23 @@ func get_commit_file_diff(commit_hash: String, path: String, on_done: Callable =
 		{ },
 		on_done,
 	)
+
+
+## Stages repo-relative paths. "--" ends option parsing (safe for odd names) and enables chunking in GitRunner.
+## @param paths: non-empty; the caller applies its own filters (e.g. the Size Guard) first.
+func stage(paths: Array[String]) -> void:
+	run_fast(Command.STAGE, ["add", "--"] + paths, { "count": paths.size() }) # count: for the router's log line.
+
+
+## Unstages repo-relative paths (see stage()).
+## `reset -q` instead of `restore --staged`: the latter needs a HEAD commit and fails before the first one.
+func unstage(paths: Array[String]) -> void:
+	run_fast(Command.UNSTAGE, ["reset", "-q", "--"] + paths, { "count": paths.size() })
+
+
+## Unstages everything. No "count" in the context: the router logs "all files".
+func unstage_all() -> void:
+	run_fast(Command.UNSTAGE, ["reset", "-q"])
 
 
 ## Restores one file's working-tree content to its state at commit_hash.
@@ -621,15 +518,30 @@ func teardown() -> void:
 	_runner.teardown()
 
 
-## Runner callback -> public signal, then the caller's own on_done. bind() appends `command`, `context`
-## and `on_done` after (exit_code, output).
+## Numbers a new request of a LATEST_WINS command (1, 2, ...) and remembers it as the newest.
+## @return: 0 for any other command: never superseded, always broadcast.
+func _stamp(command: Command) -> int:
+	if command not in LATEST_WINS_COMMANDS:
+		return 0
+	var request: int = _latest_request.get(command, 0) + 1
+	_latest_request[command] = request
+	return request
+
+
+## Runner callback -> public signal, then the caller's own on_done. bind() appends `command`, `context`,
+## `on_done` and `request` after (exit_code, output).
+## @param request: number from _stamp(). A result that is no longer the newest of its command is not
+## broadcast (the newer one is still in flight and will repaint); on_done is called either way.
 func _relay(
 	exit_code: int,
 	output: Array[String],
 	command: Command,
 	context: Dictionary,
 	on_done: Callable = Callable(),
+	request: int = 0,
 ) -> void:
-	command_completed.emit(command, exit_code, output, context)
+	var superseded: bool = request != 0 and request != _latest_request.get(command, 0)
+	if not superseded:
+		command_completed.emit(command, exit_code, output, context)
 	if on_done.is_valid(): # False for the default Callable() and for a freed target.
 		on_done.call(exit_code, output)

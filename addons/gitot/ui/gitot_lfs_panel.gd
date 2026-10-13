@@ -86,7 +86,7 @@ func _ready() -> void:
 	)
 	# Notes: shown by default, hideable; the choice persists. Set BEFORE connecting (no save on init).
 	_note_button.icon = GitotUi.get_icon("Info")
-	_note_button.button_pressed = GitotSettings.get_value("lfs_note_visible")
+	_note_button.button_pressed = GitotSettings.get_value(GitotSettings.KEY_LFS_NOTE_VISIBLE)
 	_hint_label.visible = _note_button.button_pressed
 	_note_button.toggled.connect(_on_note_toggled)
 	visibility_changed.connect(_on_visibility_changed)
@@ -138,7 +138,7 @@ func _on_install_pressed() -> void:
 
 func _on_note_toggled(shown: bool) -> void:
 	_hint_label.visible = shown
-	GitotSettings.set_value("lfs_note_visible", shown)
+	GitotSettings.set_value(GitotSettings.KEY_LFS_NOTE_VISIBLE, shown)
 
 
 func _on_files_list_failed() -> void:

@@ -19,22 +19,9 @@ enum LineType {
 	HEADER,
 }
 
-## Lazy-compiled: a static initializer is not reliably re-run on editor hot-reload
-## (the var then stays null).
-static var _new_hunk_regex: RegEx
-static var _old_hunk_regex: RegEx
-
-
-static func _new_regex() -> RegEx:
-	if _new_hunk_regex == null:
-		_new_hunk_regex = RegEx.create_from_string("\\+(\\d+)(?:,(\\d+))?")
-	return _new_hunk_regex
-
-
-static func _old_regex() -> RegEx:
-	if _old_hunk_regex == null:
-		_old_hunk_regex = RegEx.create_from_string("-(\\d+)(?:,(\\d+))?")
-	return _old_hunk_regex
+## "+start[,count]" and "-start[,count]" of a hunk header; group 1 = start, group 2 = count (absent = 1).
+const NEW_HUNK_PATTERN: String = "\\+(\\d+)(?:,(\\d+))?"
+const OLD_HUNK_PATTERN: String = "-(\\d+)(?:,(\\d+))?"
 
 
 ## Parses `git diff -U0` hunk headers.
@@ -47,7 +34,7 @@ static func parse(raw_diff: String) -> Dictionary:
 		if not line.begins_with("@@"):
 			continue
 
-		var match_result: RegExMatch = _new_regex().search(line)
+		var match_result: RegExMatch = GitotRegex.compiled(NEW_HUNK_PATTERN).search(line)
 		if not match_result:
 			continue
 
@@ -84,8 +71,8 @@ static func parse_full(raw_diff: String) -> Array[Dictionary]:
 			current_file["file"] = line.trim_prefix("+++ b/")
 		elif line.begins_with("@@"):
 			_flush_hunk(current_file, current_hunk)
-			var new_match: RegExMatch = _new_regex().search(line)
-			var old_match: RegExMatch = _old_regex().search(line)
+			var new_match: RegExMatch = GitotRegex.compiled(NEW_HUNK_PATTERN).search(line)
+			var old_match: RegExMatch = GitotRegex.compiled(OLD_HUNK_PATTERN).search(line)
 			if not new_match or not old_match:
 				current_hunk = { }
 				continue
@@ -129,7 +116,7 @@ static func _flush_hunk(file: Dictionary, hunk: Dictionary) -> void:
 
 ## Returns the old hunk's line count from a unified diff header, or -1 if the header is malformed.
 static func _old_count(header: String) -> int:
-	var match_result: RegExMatch = _old_regex().search(header)
+	var match_result: RegExMatch = GitotRegex.compiled(OLD_HUNK_PATTERN).search(header)
 	if not match_result:
 		return -1
 	return match_result.get_string(2).to_int() if match_result.get_string(2) != "" else 1

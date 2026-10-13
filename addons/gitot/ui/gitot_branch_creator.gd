@@ -1,7 +1,6 @@
 ## gitot_branch_creator.gd
 ## Inline "new branch" row of the Branches section: "+" toggle (scene toolbar row),
 ## name field + Create button, optional confirmation ("confirm_create_branch" setting).
-## RefCounted, constructor-injected - same pattern as GitotStashPanel.
 class_name GitotBranchCreator
 extends RefCounted
 
@@ -34,7 +33,7 @@ func _init(
 	_row = row
 	_name_edit = name_edit
 	_confirm_dialog = confirm_dialog
-	_state = state # Was never assigned -> nil crash on branch_label().
+	_state = state
 
 	_add_button = add_button
 	_add_button.icon = GitotUi.get_icon("Add")
@@ -68,7 +67,7 @@ func _on_create_pressed(_text: String = "") -> void:
 	if branch_name.is_empty():
 		GitotLogger.w("Branch name is empty - no branch was created.")
 		return
-	if not GitotSettings.get_value("confirm_create_branch"):
+	if not GitotSettings.get_value(GitotSettings.KEY_CONFIRM_CREATE_BRANCH):
 		_create(branch_name)
 		return
 	_pending_name = branch_name

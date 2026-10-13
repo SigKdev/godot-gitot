@@ -1,6 +1,5 @@
 ## gitot_stash_panel.gd
 ## Shelf section: stash list (name/branch/date) + Stash/Pop/Drop actions.
-## RefCounted, constructor-injected - matches GitotLogPanel/GitotBranchPanel pattern.
 class_name GitotStashPanel
 extends RefCounted
 
@@ -163,7 +162,7 @@ func _apply_count(count: int) -> void:
 
 
 func _cap() -> int:
-	return GitotSettings.get_value("max_stashes") as int
+	return GitotSettings.get_value(GitotSettings.KEY_MAX_STASHES) as int
 
 
 func _entry(item: TreeItem) -> GitStashEntry:

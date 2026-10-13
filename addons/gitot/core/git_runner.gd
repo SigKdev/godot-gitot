@@ -17,9 +17,15 @@ const MAX_ARGS_CHARS: int = 24000
 ## meaning in cmd.exe or sh, yet are legal in git ref names, so a blacklist can never be complete.
 const SHELL_SAFE_PATTERN: String = "^[A-Za-z0-9._/@+:-]+$"
 
-## Compiled once on first use (see SHELL_SAFE_PATTERN). Lazy: a static initializer is not reliably
-## re-run on editor hot-reload (the var stays null).
-static var _shell_safe_regex: RegEx
+## Chars that still act INSIDE the double quotes around the project root and the log path in
+## run_network()'s shell string: `%` expands in cmd.exe; `$`, backtick and `\` in sh; `"` ends the
+## quote in both. Everything else (spaces, `&`, `^`...) is literal there, so paths are NOT
+## whitelisted like args: a space in "C:/Users/John Doe/..." must keep working.
+const QUOTE_UNSAFE_WINDOWS: PackedStringArray = ["\"", "%"]
+const QUOTE_UNSAFE_POSIX: PackedStringArray = ["\"", "$", "`", "\\"]
+
+## Written by the shell after git's output: "EXITCODE:0" (success) or "EXITCODE:1" (failure).
+const EXIT_MARKER: String = "EXITCODE:"
 
 ## PID -> temp log path of running network operations (push, pull...), so a mid-operation kill
 ## (timeout or teardown) can also remove the orphaned log file.
@@ -36,11 +42,11 @@ static func _project_root() -> String:
 
 ## Builds the shell + args that redirect a git call's stdout/stderr to log_path and
 ## append a trailing exit-status marker. Used by run_network() only.
-## SECURITY: args are whitelisted by run_network() (is_shell_safe).
+## SECURITY: run_network() refuses unsafe args and paths first (_shell_refusal).
 static func _shell_invocation(args: PackedStringArray, log_path: String) -> Array:
 	var git_cmd: String = (
-		"git -C \"%s\" %s > \"%s\" 2>&1 && echo EXITCODE:0 >> \"%s\" || echo EXITCODE:1 >> \"%s\""
-		% [_project_root(), " ".join(args), log_path, log_path, log_path]
+		"git -C \"%s\" %s > \"%s\" 2>&1 && echo %s0 >> \"%s\" || echo %s1 >> \"%s\""
+		% [_project_root(), " ".join(args), log_path, EXIT_MARKER, log_path, EXIT_MARKER, log_path]
 	)
 	var shell: String = "cmd" if OS.get_name() == "Windows" else "sh"
 	var shell_args: PackedStringArray = (
@@ -52,19 +58,41 @@ static func _shell_invocation(args: PackedStringArray, log_path: String) -> Arra
 ## True if arg can be placed in the shell string of run_network() without being interpreted.
 ## Single source of truth for that rule; also used to validate names BEFORE they are created.
 static func is_shell_safe(arg: String) -> bool:
-	if _shell_safe_regex == null:
-		_shell_safe_regex = RegEx.create_from_string(SHELL_SAFE_PATTERN)
-	return _shell_safe_regex.search(arg) != null
+	return GitotRegex.compiled(SHELL_SAFE_PATTERN).search(arg) != null
+
+
+## True if a path can sit inside the double quotes of the shell string without being interpreted
+## (see QUOTE_UNSAFE_WINDOWS). `windows` picks the shell: cmd.exe or sh.
+static func is_quoted_path_safe(path: String, windows: bool) -> bool:
+	var unsafe: PackedStringArray = QUOTE_UNSAFE_WINDOWS if windows else QUOTE_UNSAFE_POSIX
+	for ch: String in unsafe:
+		if path.contains(ch):
+			return false
+	return true
+
+
+## "" if everything run_network() interpolates into the shell string is safe, else why the call is
+## refused. `paths` are the quoted ones (project root, log file).
+static func _shell_refusal(args: PackedStringArray, paths: PackedStringArray) -> String:
+	for arg: String in args:
+		if not is_shell_safe(arg):
+			return "Refused: '%s' has characters that are unsafe for the shell." % arg
+	for path: String in paths:
+		if not is_quoted_path_safe(path, OS.get_name() == "Windows"):
+			return "Refused: the path '%s' has characters that are unsafe for the shell." % path
+	return ""
 
 
 ## Splits a redirected git-call log into [success: bool, cleaned text: String].
+## Only a marker that ends the log counts: git's own output may contain the same words, and a
+## killed shell leaves no marker at all (= failure, text kept whole).
 static func _parse_log(log_content: String) -> Array:
-	var success: bool = log_content.contains("EXITCODE:0")
-	var clean: String = log_content \
-			.replace("EXITCODE:0", "") \
-			.replace("EXITCODE:1", "") \
-			.strip_edges()
-	return [success, clean]
+	var text: String = log_content.strip_edges()
+	var at: int = text.rfind(EXIT_MARKER)
+	var code: String = text.substr(at + EXIT_MARKER.length()) if at != -1 else ""
+	if code != "0" and code != "1":
+		return [false, text]
+	return [code == "0", text.left(at).strip_edges()]
 
 
 ## Windows: OS.execute() decodes the pipe with the ANSI code page, so UTF-8 text comes back garbled
@@ -162,13 +190,13 @@ func run_network(label: String, args: PackedStringArray, is_write: bool, on_done
 		"user://gitot_%s_%d.log" % [label, Time.get_ticks_usec()]
 	)
 
-	# SECURITY: args are joined into a shell string. Refuse anything outside the whitelist
-	# (see SHELL_SAFE_PATTERN) instead of trying to escape it for two different shells.
-	for arg: String in args:
-		if not is_shell_safe(arg):
-			var refused: Array[String] = ["Refused: '%s' has characters that are unsafe for the shell." % arg]
-			on_done.call_deferred(-1, refused) # Before the lock: nothing to release.
-			return
+	# SECURITY: args and both paths are joined into a shell string. Refuse anything unsafe
+	# (see SHELL_SAFE_PATTERN, QUOTE_UNSAFE_*) instead of trying to escape it for two different shells.
+	var refusal: String = _shell_refusal(args, PackedStringArray([_project_root(), log_path]))
+	if not refusal.is_empty():
+		var refused: Array[String] = [refusal]
+		on_done.call_deferred(-1, refused) # Before the lock: nothing to release.
+		return
 
 	if is_write and not _try_lock_write():
 		_drop_write(label, on_done)
@@ -205,7 +233,7 @@ func _poll_process(pid: int, log_path: String, start_time_ms: int, is_write: boo
 	if OS.is_process_running(pid):
 		var elapsed_sec: float = (Time.get_ticks_msec() - start_time_ms) / 1000.0
 		# Read per poll (cached Dictionary lookup) so a settings change applies to in-flight ops.
-		var timeout_sec: int = GitotSettings.get_value("network_timeout_sec")
+		var timeout_sec: int = GitotSettings.get_value(GitotSettings.KEY_NETWORK_TIMEOUT_SEC)
 		if elapsed_sec > timeout_sec:
 			OS.kill(pid)
 			_active_pids.erase(pid)

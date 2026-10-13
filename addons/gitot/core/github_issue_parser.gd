@@ -1,6 +1,6 @@
 ## github_issue_parser.gd
 ## Normalizes raw GitHub issue JSON into flat entries for the UI.
-## Static and stateless (same pattern as GitLogParser).
+## Static and stateless.
 class_name GithubIssueParser
 extends RefCounted
 
@@ -20,9 +20,8 @@ const PRIORITY_FIELD_NAME: String = "Priority"
 ## Max slug length; keeps generated names readable.
 const BRANCH_SLUG_MAX_CHARS: int = 40
 
-## Compiled once on first use: _branch_name() runs per issue. Lazy: a static initializer is not
-## reliably re-run on editor hot-reload (the var stays null).
-static var _slug_regex: RegEx
+## Runs of characters a branch name cannot hold; each becomes one "-".
+const SLUG_INVALID_PATTERN: String = "[^a-z0-9]+"
 
 ## [seconds, unit] largest -> smallest, for relative dates.
 const RELATIVE_UNITS: Array = [
@@ -98,9 +97,7 @@ static func _priority(issue: Dictionary) -> String:
 ## "<prefix><number>-<title-slug>" (e.g. "feature/12-fix-login-crash").
 ## Non-ASCII letters are dropped (kept simple; the user can edit the name).
 static func _branch_name(number: int, title: String, type: String) -> String:
-	if _slug_regex == null:
-		_slug_regex = RegEx.create_from_string("[^a-z0-9]+")
-	var slug: String = _slug_regex.sub(title.to_lower(), "-", true).lstrip("-")
+	var slug: String = GitotRegex.compiled(SLUG_INVALID_PATTERN).sub(title.to_lower(), "-", true).lstrip("-")
 	slug = slug.left(BRANCH_SLUG_MAX_CHARS).rstrip("-") # Cut first, then re-trim.
 	var prefix: String = TYPE_BRANCH_PREFIX.get(type, "")
 	return "%s%d-%s" % [prefix, number, slug] if not slug.is_empty() else "%s%d" % [prefix, number]

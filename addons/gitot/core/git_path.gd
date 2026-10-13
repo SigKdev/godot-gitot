@@ -45,3 +45,15 @@ static func unquote(path: String) -> String:
 			bytes.append(code)
 			i += 1
 	return bytes.get_string_from_utf8() # Bytes -> UTF-8 once, at the end.
+
+
+## Turns a finished name-list command (GitEngine.Command.CHANGED_FILES, the stash pre-read) into
+## {"reliable": bool, "files": PackedStringArray}. reliable=false means git failed - NOT "nothing changed".
+static func to_file_list(exit_code: int, output: Array[String]) -> Dictionary:
+	if exit_code != 0:
+		return { "reliable": false, "files": PackedStringArray() }
+	var stdout: String = output[0].strip_edges() if not output.is_empty() else ""
+	var files: PackedStringArray = PackedStringArray()
+	for line: String in stdout.split("\n", false): # Empty stdout -> no lines.
+		files.append(GitPath.unquote(line))
+	return { "reliable": true, "files": files }

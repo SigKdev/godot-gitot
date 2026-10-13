@@ -2,7 +2,7 @@
 ## Delete buttons of the Branches section (scene toolbar row), acting on the selected row:
 ##  - local: `git branch -d` (git refuses unmerged branches);
 ##  - origin: `git push origin --delete` (the GitHub copy: removed for everyone, so extra warning).
-## Both are always confirmed and share one dialog. RefCounted, constructor-injected.
+## Both are always confirmed and share one dialog.
 class_name GitotBranchDeleter
 extends RefCounted
 

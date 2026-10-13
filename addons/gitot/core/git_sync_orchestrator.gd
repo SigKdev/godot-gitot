@@ -116,9 +116,7 @@ func _handle_tag_collision_result(
 		return
 	var tag_name: String = _pending_tag.get("tag_name", "")
 	var shas: PackedStringArray = (
-		String(output[0]).strip_edges().split("\n", false)
-		if exit_code == 0 and not output.is_empty()
-		else []
+		output[0].strip_edges().split("\n", false) if not output.is_empty() else PackedStringArray()
 	)
 	if shas.size() == 2 and shas[0] == shas[1]:
 		GitotLogger.w(

@@ -88,13 +88,10 @@ func _enter_tree() -> void:
 
 	# Create the dock and register it in DOCK_SLOT_RIGHT_UL.
 	_dock = preload("res://addons/gitot/ui/gitot_dock.tscn").instantiate()
-	_dock.set_git_engine(_git_engine)
-	_dock.set_diff_gutter(_diff_gutter)
-	_dock.set_sync_orchestrator(_sync_orchestrator)
-	_dock.set_lfs(_lfs)
+	_dock.setup(_git_engine, _lfs, _sync_orchestrator, _diff_gutter) # Before the tree: _ready() needs them.
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, _dock)
 
-	if GitotSettings.get_value("github_issues_enabled"):
+	if GitotSettings.get_value(GitotSettings.KEY_GITHUB_ISSUES_ENABLED):
 		_github_panel = GithubPanelScene.instantiate()
 		_github_panel.set_git_engine(_git_engine)
 		_dock.status_parsed.connect(_github_panel.on_status_parsed) # Dirty count for "create branch from issue".
@@ -102,18 +99,14 @@ func _enter_tree() -> void:
 		EditorInterface.get_editor_main_screen().add_child(_github_panel)
 		_github_panel.hide() # Shown by _make_visible() when the tab is selected.
 
-	var lfs_version: String = GitEngine.get_lfs_version()
 	GitotLogger.s("'git' binary found. Plugin ready.")
-	GitotLogger.i(
-		"git v%s | LFS v%s"
-		% [git_version, "not installed" if lfs_version.is_empty() else lfs_version],
-	)
 
 	_lfs_panel = GitotLfsPanelScene.instantiate()
 	_lfs_panel.set_lfs(_lfs) # Before entering the tree: _ready() needs it.
 	add_control_to_bottom_panel(_lfs_panel, "Gitot LFS")
 	# The Size Guard exemption and the Track-with-LFS button need the LFS state: detect at startup
 	# (async, two quick git calls). The panel's own refresh is lazy.
+	_lfs.state_detected.connect(_log_versions.bind(git_version), CONNECT_ONE_SHOT) # Startup line: needs the async LFS version.
 	_lfs.detect_state()
 
 	_diff_panel = GitotDiffPanelScene.instantiate()
@@ -146,7 +139,9 @@ func _exit_tree() -> void:
 		_dock.queue_free()
 		_dock = null
 
-	_diff_gutter = null # Holds no connection: nothing to tear down.
+	if _diff_gutter:
+		_diff_gutter.teardown()
+		_diff_gutter = null
 
 	if _sync_orchestrator:
 		_sync_orchestrator.teardown()
@@ -190,7 +185,7 @@ func _exit_tree() -> void:
 #region Gitot Issues Panel
 ## Required for the panel to appear as a selectable main-screen tab (2D/3D/Script/AssetLib row).
 func _has_main_screen() -> bool:
-	return GitotSettings.get_value("github_issues_enabled")
+	return GitotSettings.get_value(GitotSettings.KEY_GITHUB_ISSUES_ENABLED)
 
 
 func _get_plugin_name() -> String:
@@ -205,27 +200,18 @@ func _get_plugin_icon() -> Texture2D:
 func _make_visible(visible: bool) -> void:
 	if _github_panel:
 		_github_panel.visible = visible
-		if visible and not _github_panel.has_fetched:
-			_github_panel.has_fetched = true
-			_github_panel.fetch_current_repo_issues()
+		if visible:
+			_github_panel.fetch_issues_once()
 #endregion
 
 
-## Reports a failed stage/unstage and refreshes the UI after commands that change repo state.
+## Refreshes the UI after commands that change repo state (result texts: GitotResultRouter).
 func _on_git_command_completed(
 	command: GitEngine.Command,
-	exit_code: int,
-	output: Array[String],
+	_exit_code: int,
+	_output: Array[String],
 	_context: Dictionary,
 ) -> void:
-	# A failed stage/unstage aborts the WHOLE batch (git add is all-or-nothing): never fail silently.
-	if exit_code != 0 and command in [GitEngine.Command.STAGE, GitEngine.Command.UNSTAGE]:
-		var is_stage: bool = command == GitEngine.Command.STAGE
-		GitotLogger.fail(
-			"Staging failed - no file was staged." if is_stage else "Unstaging failed - no file was unstaged.",
-			output[0] if not output.is_empty() else "",
-			"Common fail causes: a listed file changed or vanished since the list was drawn, or another Git tool holds .git/index.lock.",
-		)
 	if command in STATUS_TRIGGERING_COMMANDS:
 		if command in FILES_ONLY_COMMANDS:
 			_dock.refresh_files()
@@ -233,6 +219,14 @@ func _on_git_command_completed(
 			_dock.refresh_status() # status + ahead/behind + history + shelf
 		if _lfs_panel:
 			_lfs_panel.refresh_files() # LFS file list follows stage/commit/switch/pull
+
+
+## Startup version line, logged once the first async LFS detection reports (no blocking `git lfs version`).
+## `git_version` is bound at connect time; the signal's own arguments come first.
+func _log_versions(_state: GitLfs.State, _repo_uses_lfs: bool, git_version: String) -> void:
+	GitotLogger.i(
+		"git v%s | LFS v%s" % [git_version, "not installed" if _lfs.version.is_empty() else _lfs.version],
+	)
 
 
 ## The Size Guard exemption depends on LFS being READY: re-evaluate the trees when that flips.

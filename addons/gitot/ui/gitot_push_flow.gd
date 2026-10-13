@@ -68,7 +68,7 @@ func start() -> void:
 		_confirm_dialog.popup_centered()
 		return
 	_confirm_dialog.dialog_text = "Push branch '%s' to '%s'?" % [_state.branch_label(), _state.repo_label()]
-	if GitotSettings.get_value("confirm_push"):
+	if GitotSettings.get_value(GitotSettings.KEY_CONFIRM_PUSH):
 		_confirm_dialog.popup_centered()
 	else:
 		_do_push()
@@ -77,7 +77,7 @@ func start() -> void:
 ## Continues the push once the async commit-message fetch completes (on_done of request_last_commit_message).
 func _on_last_commit_message(exit_code: int, output: Array[String]) -> void:
 	var message: String = (
-		String(output[0]).strip_edges()
+		output[0].strip_edges()
 		if (exit_code == 0 and not output.is_empty())
 		else ""
 	)
@@ -100,7 +100,7 @@ func _start_with_tag_input(last_commit_message: String) -> void:
 		if tag_input["tag_name"].is_empty():
 			GitotLogger.w("Tag name is empty - nothing was pushed.")
 			return
-		if not GitEngine.is_valid_tag_name(tag_input["tag_name"]):
+		if not GitRef.is_valid_tag_name(tag_input["tag_name"]):
 			GitotLogger.w(
 				"'%s' is not a valid git tag name (no spaces, ~ ^ : ? * [ \\ ..). nothing was pushed."
 				% tag_input["tag_name"]

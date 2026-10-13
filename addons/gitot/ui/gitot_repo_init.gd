@@ -1,6 +1,6 @@
 ## gitot_repo_init.gd
 ## "Initialize repository" use case of a project folder without git: `git init -b main`, then a Godot
-## .gitignore if the folder has none. RefCounted, constructor-injected - same pattern as GitotBranchCreator.
+## .gitignore if the folder has none.
 class_name GitotRepoInit
 extends RefCounted
 

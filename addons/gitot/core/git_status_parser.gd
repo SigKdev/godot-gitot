@@ -13,6 +13,18 @@ enum FileStatus {
 	UNTRACKED,
 }
 
+## Args of the status read. --untracked-files=all forces recursion into untracked directories instead of
+## collapsing them to one folder entry. --no-renames: a rename is a D plus an A.
+## --no-optional-locks: status only reads, so it must never take index.lock to refresh the index
+## (that would race a concurrent stage/commit, and reads run during writes).
+const ARGS: PackedStringArray = [
+	"--no-optional-locks",
+	"status",
+	"--porcelain=v2",
+	"--untracked-files=all",
+	"--no-renames",
+]
+
 
 ## Parses porcelain v2 raw output into staged/unstaged entries.
 ## @param raw_output: stdout from `git status --porcelain=v2 --untracked-files=all`.

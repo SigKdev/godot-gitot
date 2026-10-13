@@ -169,7 +169,7 @@ func _apply_status_visuals(item: TreeItem, path: String, status: GitStatusParser
 	item.set_metadata(COL_PATH, path)
 	item.set_custom_color(COL_PATH, color) # One color per cell: letter and path share it.
 	item.set_tooltip_text(COL_PATH, visual["tip"])
-	if GitotSettings.get_value("status_letters"):
+	if GitotSettings.get_value(GitotSettings.KEY_STATUS_LETTERS):
 		item.set_text(COL_PATH, "%s  %s" % [visual["letter"], path])
 	else:
 		item.set_text(COL_PATH, path)
@@ -203,17 +203,10 @@ func _on_unstaged_item_activated() -> void:
 
 
 ## Enter/double-click on staged rows unstages every selected row.
-## "--" ends option parsing (safe for odd names) and enables chunking in GitRunner.
-## `reset -q` instead of `restore --staged`: the latter needs a HEAD commit and fails before the first one.
 func _on_staged_item_activated() -> void:
 	var paths: Array[String] = _get_selected_paths(_staged_tree)
-	if paths.is_empty():
-		return
-	_git_engine.run_fast(
-		GitEngine.Command.UNSTAGE,
-		["reset", "-q", "--"] + paths,
-		{ "count": paths.size() }, # Only for the "Unstaged N file(s)" log line.
-	)
+	if not paths.is_empty():
+		_git_engine.unstage(paths)
 
 
 ## Swaps to a pointing-hand cursor only while hovering a row's button (e.g. "open file").
@@ -272,17 +265,13 @@ func _stage_paths(paths: Array[String]) -> void:
 		GitotLogger.i(
 			"Staged %d/%d files; the rest exceed the Size Guard." % [to_stage.size(), paths.size()]
 		)
-	_git_engine.run_fast(
-		GitEngine.Command.STAGE,
-		["add", "--"] + to_stage,
-		{ "count": to_stage.size() }, # Only for the "Staged N file(s)" log line.
-	)
+	_git_engine.stage(to_stage)
 
 
 func _on_unstage_all_pressed() -> void:
 	if _is_empty(_staged_tree):
 		return
-	_git_engine.run_fast(GitEngine.Command.UNSTAGE, ["reset", "-q"])
+	_git_engine.unstage_all()
 
 
 ## True if the tree has no file rows (root always exists after populate, so check its first child).
@@ -309,7 +298,7 @@ func _get_selected_paths(tree: Tree) -> Array[String]:
 
 
 func _max_file_size_bytes() -> int:
-	return int(GitotSettings.get_value("large_file_mb")) * 1024 * 1024
+	return int(GitotSettings.get_value(GitotSettings.KEY_LARGE_FILE_MB)) * 1024 * 1024
 
 
 ## @return: true if the file exists and is at or above max_bytes (max_bytes 0 = guard disabled: always false).

@@ -1,5 +1,5 @@
 ## git_stash_parser.gd
-## Parses `git stash list` output formatted with GitEngine.STASH_LIST_FORMAT.
+## Parses `git stash list` output produced with FORMAT.
 class_name GitStashParser
 extends RefCounted
 
@@ -7,8 +7,12 @@ extends RefCounted
 ## Branch names can't contain ":" (git ref rules), so the first ": " splits reliably.
 const SUBJECT_PATTERN: String = "^(?:WIP on|On) ([^:]+): (.*)$"
 
-## Lazy-compiled: _static_init() is unreliable on hot-reload.
-static var _subject_re: RegEx = null
+## `git stash list` format: selector, full hash (stable preview key), relative date, absolute date
+## (tooltip), subject. Field order = what parse() reads.
+const FORMAT: String = (
+	"--format=%gd" + GitFormat.UNIT_SEP + "%H" + GitFormat.UNIT_SEP + "%cr" + GitFormat.UNIT_SEP
+	+ "%ci" + GitFormat.UNIT_SEP + "%s"
+)
 
 
 ## @return: Array[GitStashEntry]. Empty on blank input (no stashes).
@@ -19,7 +23,7 @@ static func parse(raw: String) -> Array[GitStashEntry]:
 		return entries
 
 	for line: String in text.split("\n", false):
-		var fields: PackedStringArray = line.strip_edges().split(GitEngine.UNIT_SEP)
+		var fields: PackedStringArray = line.strip_edges().split(GitFormat.UNIT_SEP)
 		if fields.size() != 5:
 			continue # Malformed line: skip it.
 		var parts: PackedStringArray = _split_subject(fields[4])
@@ -37,9 +41,7 @@ static func parse(raw: String) -> Array[GitStashEntry]:
 
 ## @return: [branch, name]. No match -> ["", raw subject], so nothing is ever lost.
 static func _split_subject(subject: String) -> PackedStringArray:
-	if _subject_re == null:
-		_subject_re = RegEx.create_from_string(SUBJECT_PATTERN)
-	var m: RegExMatch = _subject_re.search(subject)
+	var m: RegExMatch = GitotRegex.compiled(SUBJECT_PATTERN).search(subject)
 	if m == null:
 		return PackedStringArray(["", subject])
 	return PackedStringArray([m.get_string(1), m.get_string(2)])

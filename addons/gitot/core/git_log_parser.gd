@@ -1,7 +1,14 @@
 ## git_log_parser.gd
-## Parses `git log` output formatted with GitEngine.LOG_FORMAT into entries.
+## Parses `git log` output produced with FORMAT into entries.
 class_name GitLogParser
 extends RefCounted
+
+## `git log` format: hash, author, relative date, absolute date, subject, joined by GitFormat.UNIT_SEP
+## since a commit subject can contain any printable char. Field order = what parse() reads.
+const FORMAT: String = (
+	"--pretty=format:%h" + GitFormat.UNIT_SEP + "%an" + GitFormat.UNIT_SEP + "%ar" + GitFormat.UNIT_SEP
+	+ "%ad" + GitFormat.UNIT_SEP + "%s"
+)
 
 
 ## Parses raw `git log` stdout into commit entries.
@@ -13,7 +20,7 @@ static func parse(raw: String) -> Array[GitCommitEntry]:
 		return entries
 
 	for line: String in raw.strip_edges().split("\n", false):
-		var fields: PackedStringArray = line.split(GitEngine.UNIT_SEP)
+		var fields: PackedStringArray = line.split(GitFormat.UNIT_SEP)
 		if fields.size() != 5:
 			continue # Malformed line: skip it.
 		var entry: GitCommitEntry = GitCommitEntry.new()

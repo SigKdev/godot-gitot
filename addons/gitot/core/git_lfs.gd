@@ -47,6 +47,8 @@ const KEEP_IN_GIT: PackedStringArray = [
 ]
 
 var _engine: GitEngine
+## git-lfs version from the last detect_state() ("" = not installed or not detected yet).
+var version: String = ""
 ## Last detected state == READY. False until the first detect_state() completes.
 var _is_ready: bool = false
 
@@ -84,12 +86,21 @@ func list_files() -> void:
 ## @return: false if the pattern was rejected (nothing ran).
 func track(pattern: String) -> bool:
 	var clean: String = pattern.strip_edges()
+	if _matches_everything(clean):
+		GitotLogger.w("'%s' would track every file in LFS. Use an extension pattern such as *.png." % clean)
+		return false
 	if clean.get_extension().to_lower() in KEEP_IN_GIT:
 		GitotLogger.w(
 			"'%s' is a Godot text format: keep it in regular Git so it diffs and merges." % clean
 		)
 		return false
 	return _run_pattern(GitEngine.Command.LFS_TRACK, "track", clean)
+
+
+## True for a pattern made only of wildcards and separators ("*", "**", "*.*", "/"): it names no file type.
+static func _matches_everything(pattern: String) -> bool:
+	var rest: String = pattern.replace("*", "").replace("?", "").replace(".", "").replace("/", "")
+	return not pattern.is_empty() and rest.is_empty()
 
 
 ## @return: false if the pattern was rejected (nothing ran).
@@ -162,6 +173,7 @@ func _on_command_completed(
 	var raw: String = output[0] if not output.is_empty() else ""
 	match command:
 		GitEngine.Command.LFS_VERSION:
+			version = GitLfsParser.parse_version(raw) if exit_code == 0 else ""
 			if exit_code != 0:
 				_emit_state(State.NO_BINARY)
 			else:

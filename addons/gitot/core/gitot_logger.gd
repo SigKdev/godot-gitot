@@ -16,6 +16,17 @@ enum Level {
 
 const MAX_HISTORY: int = 200
 
+## Per level: prefix label and color (the message takes the same color).
+const STYLES: Dictionary[Level, Array] = {
+	Level.INFO: ["Gitot", "gray"],
+	Level.SUCCESS: ["Gitot Success", "forest_green"],
+	Level.WARNING: ["Gitot Warning", "orange"],
+	Level.ERROR: ["Gitot Error", "firebrick"],
+	Level.EXTREME: ["Gitot Fatal", "red"],
+	Level.GIT: ["git raw", "dark_gray"],
+	Level.HINT: ["Gitot Hint", "dark_gray"],
+}
+
 static var _history: Array[String] = []
 
 ## Optional dock listener, set via set_listener(). Kept decoupled: logger
@@ -65,9 +76,9 @@ static func x(message: String) -> void:
 	_print(message, Level.EXTREME)
 
 
-## Raw git output: "[" is escaped so text like "[main abc1234] msg" can never be read as a BBCode tag.
+## Raw git output (like every message, "[" is escaped in _print).
 static func g(message: String) -> void:
-	_print(message.replace("[", "[lb]"), Level.GIT)
+	_print(message, Level.GIT)
 
 
 ## One shape for every failure: what failed (names the subject), git's raw message, then an
@@ -81,34 +92,12 @@ static func fail(title: String, raw: String, hint: String = "") -> void:
 		h(hint)
 
 
+## "[" is escaped so text like "[main abc1234] msg" or "Level[1].tscn" is never read as a BBCode tag.
 static func _print(message: String, level: Level) -> void:
-	var prefix := "[color=deep_sky_blue][Gitot][/color]"
-	var color := "white"
-
-	match level:
-		Level.SUCCESS:
-			color = "forest_green"
-			prefix = "[color=forest_green][Gitot Success][/color]"
-		Level.WARNING:
-			color = "orange"
-			prefix = "[color=orange][Gitot Warning][/color]"
-		Level.ERROR:
-			color = "firebrick"
-			prefix = "[color=firebrick][Gitot Error][/color]"
-		Level.EXTREME:
-			color = "red"
-			prefix = "[color=red][Gitot Fatal][/color]"
-		Level.GIT:
-			color = "dark_gray"
-			prefix = "[color=dark_gray][git raw][/color]"
-		Level.HINT:
-			color = "dark_gray"
-			prefix = "[color=dark_gray][Gitot Hint][/color]"
-		Level.INFO:
-			color = "gray"
-			prefix = "[color=gray][Gitot][/color]"
-
-	var formatted := "%s [color=%s]%s[/color]" % [prefix, color, message]
+	var style: Array = STYLES[level]
+	var color: String = style[1]
+	var text: String = message.replace("[", "[lb]")
+	var formatted: String = "[color=%s][%s][/color] [color=%s]%s[/color]" % [color, style[0], color, text]
 	_history.append(formatted)
 	if _history.size() > MAX_HISTORY:
 		_history.pop_front()
@@ -117,8 +106,7 @@ static func _print(message: String, level: Level) -> void:
 		_on_log.call(formatted)
 
 	# Fatal lines always reach Godot's Output: Gitot may be unable to show its own console.
+	if level == Level.EXTREME or GitotSettings.get_value(GitotSettings.KEY_ECHO_TO_OUTPUT):
+		print_rich(formatted)
 	if level == Level.EXTREME:
-		print_rich(formatted)
 		printerr("Gitot: " + message)
-	elif GitotSettings.get_value("echo_to_output"):
-		print_rich(formatted)

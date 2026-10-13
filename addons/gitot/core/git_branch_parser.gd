@@ -1,10 +1,10 @@
 ## git_branch_parser.gd
-## Parses `git branch -a` output produced with GitEngine.BRANCH_LIST_FORMAT.
-## Static and stateless (same pattern as GitStatusParser).
+## Parses `git branch -a` output produced with FORMAT.
+## Static and stateless.
 class_name GitBranchParser
 extends RefCounted
 
-## Column order of GitEngine.BRANCH_LIST_FORMAT - keep both in sync.
+## Column order of FORMAT - keep both in sync.
 enum Field {
 	REF,
 	HEAD,
@@ -18,6 +18,17 @@ enum Field {
 	SUBJECT,
 }
 
+## `git branch -a` format, columns as in Field: refname, HEAD marker, upstream, trackshort, track, commit
+## date (unix = sort key, relative = display, exact = tooltip), short hash, subject.
+## Unit Separator-delimited: "|" is a valid ref-name character.
+const FORMAT: String = (
+	"--format=%(refname)" + GitFormat.UNIT_SEP + "%(HEAD)" + GitFormat.UNIT_SEP + "%(upstream:short)"
+	+ GitFormat.UNIT_SEP + "%(upstream:trackshort)" + GitFormat.UNIT_SEP + "%(upstream:track)"
+	+ GitFormat.UNIT_SEP + "%(committerdate:unix)" + GitFormat.UNIT_SEP + "%(committerdate:relative)"
+	+ GitFormat.UNIT_SEP + "%(committerdate:format:%Y-%m-%d %H:%M)" + GitFormat.UNIT_SEP
+	+ "%(objectname:short)" + GitFormat.UNIT_SEP + "%(subject)"
+)
+
 
 ## Parses raw branch list output into branch entries (remote_ref/remote_hash stay empty here).
 ## @param raw_output: stdout from GitEngine.list_branches().
@@ -25,7 +36,7 @@ static func parse(raw_output: String) -> Array[GitBranchEntry]:
 	var branches: Array[GitBranchEntry] = []
 	for line: String in raw_output.split("\n", false):
 		# maxsplit: a stray separator stays inside the last field (subject) instead of adding fields.
-		var f: PackedStringArray = line.split(GitEngine.UNIT_SEP, true, Field.size() - 1)
+		var f: PackedStringArray = line.split(GitFormat.UNIT_SEP, true, Field.size() - 1)
 		if f.size() < Field.size():
 			continue
 		var refname: String = f[Field.REF].strip_edges()

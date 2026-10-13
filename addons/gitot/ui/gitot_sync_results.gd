@@ -19,6 +19,8 @@ const COMMANDS: Array[GitEngine.Command] = [
 
 var _git_engine: GitEngine
 var _repo_state: GitotRepoState
+## False until the first ahead/behind answer: that one is the startup read and logs nothing.
+var _startup_read_done: bool = false
 
 
 func _init(git_engine: GitEngine, repo_state: GitotRepoState) -> void:
@@ -62,6 +64,8 @@ func _handle_fetch_result(exit_code: int, output: Array[String]) -> void:
 
 ## Ahead/behind of HEAD vs its upstream: stored once in the repo state, panels redraw from it.
 func _handle_ahead_behind_result(exit_code: int, output: Array[String]) -> void:
+	var startup_read: bool = not _startup_read_done
+	_startup_read_done = true
 	if exit_code != 0 or output.is_empty():
 		_repo_state.set_sync(false, 0, 0) # No upstream (or git failed): counts are meaningless.
 		return
@@ -70,7 +74,7 @@ func _handle_ahead_behind_result(exit_code: int, output: Array[String]) -> void:
 		return
 	var behind: int = int(parts[0])
 	var ahead: int = int(parts[1])
-	if _repo_state.set_sync(true, ahead, behind) and (ahead > 0 or behind > 0):
+	if _repo_state.set_sync(true, ahead, behind) and (ahead > 0 or behind > 0) and not startup_read:
 		GitotLogger.i(
 			"Current branch '%s' is %d ahead, %d behind origin." % [_repo_state.branch_label(), ahead, behind]
 		)

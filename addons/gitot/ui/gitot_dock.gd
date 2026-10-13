@@ -1,6 +1,6 @@
 ## gitot_dock.gd
 ## Main dock: builds the panels (each owns its injected widgets) and wires them to the shared
-## GitEngine and GitotResultRouter. Also holds the toolbar, commit and amend logic.
+## GitEngine and GitotResultRouter. Also holds the toolbar.
 @tool
 class_name GitotDock
 extends Control
@@ -20,22 +20,12 @@ const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 const REPO_URL: String = "https://github.com/SigKdev/godot-gitot"
 const KOFI_URL: String = "https://ko-fi.com/sigkgames"
 
-## Caps _ready()'s self-retry when _git_engine never arrives.
-const MAX_READY_RETRIES: int = 30
-
 ## Min delay between two focus-in refreshes: a full refresh spawns 5 git processes, and returning
 ## from the game window or alt-tabbing back and forth must not repeat them.
 const FOCUS_REFRESH_COOLDOWN_MSEC: int = 3000
 
-## Commit area wording, normal vs amend mode (see _refresh_commit_ui).
-const COMMIT_PLACEHOLDER: String = "Commit Message (multiline supported)"
-const AMEND_PLACEHOLDER: String = "Leave empty to keep the previous message"
-
-var _ready_retry_count: int = 0
-
 var _git_engine: GitEngine
 var _lfs: GitLfs
-var _ready_initialized: bool = false
 var _diff_gutter: GitotDiffGutter
 var _log_console: GitotLogConsole
 var _status_tree: GitotStatusTree
@@ -50,13 +40,12 @@ var _branch_deleter: GitotBranchDeleter
 var _result_router: GitotResultRouter
 var _repo_state: GitotRepoState
 var _editor_sync: GitotEditorSync
+var _commit_flow: GitotCommitFlow
 var _push_flow: GitotPushFlow
 var _remote_prompt: GitotRemotePrompt
 var _repo_init: GitotRepoInit
 ## True once the repo probe succeeded (see _on_repo_probe). Until then no git command but the probe runs.
 var _repo_confirmed: bool = false
-## Mirrors GitEngine.write_busy_changed: a git write (commit, stage, stash...) is running.
-var _write_busy: bool = false
 ## Tick of the last full refresh (see refresh_status). Starts one cooldown back: the first focus-in is due.
 var _last_refresh_msec: int = -FOCUS_REFRESH_COOLDOWN_MSEC
 
@@ -67,24 +56,16 @@ static func _focus_refresh_due(now_msec: int, last_msec: int) -> bool:
 
 
 func _ready() -> void:
+	# gitot.gd calls setup() before the dock enters the tree. Without it this is a copy the editor
+	# made itself (e.g. gitot_dock.tscn open in the scene editor, the script being @tool): nothing to wire.
 	if not _git_engine:
-		# GitEngine not injected yet. Either normal @tool dock timing (resolves within a frame or two)
-		# or an instance the editor spawned outside gitot.gd (never resolves): give up past the cap.
-		_ready_retry_count += 1
-		if _ready_retry_count > MAX_READY_RETRIES:
-			GitotLogger.x("Dock disabled: GitEngine was never injected (the plugin failed to start).")
-			return
-		_ready.call_deferred()
 		return
-	if _ready_initialized:
-		return
-	_ready_initialized = true
 
 	_repo_state = GitotRepoState.new()
 	_editor_sync = GitotEditorSync.new()
-	if _lfs:
-		_lfs.pull_finished.connect(_editor_sync.on_lfs_pull_finished)
+	_lfs.pull_finished.connect(_editor_sync.on_lfs_pull_finished)
 	_setup_toolbar()
+	_setup_commit_flow()
 	_build_panels()
 	_build_branch_controls()
 	_build_router()
@@ -97,7 +78,7 @@ func _ready() -> void:
 
 
 #region _ready() steps
-## Version label, toolbar buttons and the commit/amend area.
+## Version label and toolbar buttons.
 func _setup_toolbar() -> void:
 	%GitotVersion.text = (
 		"[b][font_size=14]Gitot[/font_size][/b] [font_size=9]v%s[/font_size]" % _read_plugin_version()
@@ -106,15 +87,6 @@ func _setup_toolbar() -> void:
 	%RefreshStatButton.icon = GitotUi.get_icon("Loop")
 	%RefreshDiffButton.pressed.connect(_on_refresh_diff_pressed)
 	%RefreshDiffButton.icon = GitotUi.get_icon("Paint")
-	%CommitButton.pressed.connect(_on_commit_pressed)
-	%AmendCheckButton.toggled.connect(func(_on: bool) -> void: _refresh_commit_ui())
-	%AmendConfirmDialog.confirmed.connect(_do_amend)
-	%AmendConfirmDialog.canceled.connect(
-		func() -> void:
-			GitotLogger.w("Amend cancelled."),
-	)
-	_git_engine.write_busy_changed.connect(_on_write_busy_changed)
-	_refresh_commit_ui()
 	%PushButton.icon = GitotUi.get_icon("MoveUp")
 	%PushButton.mouse_entered.connect(_refresh_push_tooltip) # Tooltip depends on the live counts.
 	%PullButton.pressed.connect(_on_pull_pressed)
@@ -123,6 +95,18 @@ func _setup_toolbar() -> void:
 	_setup_link_button(%FeedbackButton, REPO_URL + "/discussions")
 	%KofiButton.icon = GitotUi.get_icon("Heart")
 	%KofiButton.pressed.connect(_on_kofibutton_pressed)
+
+
+## Commit / amend button, amend toggle and confirmation: the flow owns their wording and busy state.
+func _setup_commit_flow() -> void:
+	_commit_flow = GitotCommitFlow.new(
+		_git_engine,
+		_repo_state,
+		%CommitMessageInput,
+		%CommitButton,
+		%AmendCheckButton,
+		%AmendConfirmDialog,
+	)
 
 
 ## Status, history, shelf, console and tag panels: each owns its injected widgets.
@@ -135,6 +119,7 @@ func _build_panels() -> void:
 		%StagedFold,
 		_lfs,
 	)
+	_git_engine.write_busy_changed.connect(_status_tree.set_busy) # Greys the bulk buttons during a write.
 	_status_panel = GitotStatusPanel.new(%GitStatusLabel, _repo_state)
 	_log_panel = GitotLogPanel.new(_git_engine, %GitlogFold, %GitlogTree)
 	_log_panel.commit_selected.connect(commit_selected.emit)
@@ -208,8 +193,7 @@ func _build_router() -> void:
 func _setup_push_flow() -> void:
 	_push_flow = GitotPushFlow.new(_git_engine, _orchestrator, _repo_state, _tag_panel, %PushConfirmDialog)
 	%PushButton.pressed.connect(_push_flow.start)
-	if _orchestrator:
-		%RetryTagPushButton.pressed.connect(_orchestrator.retry_tag_push)
+	%RetryTagPushButton.pressed.connect(_orchestrator.retry_tag_push)
 	# No origin: Push asks for the URL first, and resumes once the router confirmed `remote add`.
 	_remote_prompt = GitotRemotePrompt.new(_git_engine, %RemoteUrlDialog, %RemoteUrlEdit)
 	_push_flow.remote_missing.connect(_remote_prompt.prompt)
@@ -237,34 +221,26 @@ func _setup_settings() -> void:
 ## gated by the "auto_refresh_on_focus" setting and the cooldown. The Refresh button never waits.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
-		if GitotSettings.get_value("auto_refresh_on_focus") and _focus_refresh_due(Time.get_ticks_msec(), _last_refresh_msec):
+		if GitotSettings.get_value(GitotSettings.KEY_AUTO_REFRESH_ON_FOCUS) and _focus_refresh_due(Time.get_ticks_msec(), _last_refresh_msec):
 			refresh_status()
 
 
-#region set instances
-## Assigns the shared GitEngine instance.
-func set_git_engine(engine: GitEngine) -> void:
+## Injects the shared instances. Called once by gitot.gd BEFORE the dock enters the tree, so
+## _ready() can rely on all four (one call = no half-initialized dock).
+func setup(
+	engine: GitEngine,
+	lfs: GitLfs,
+	orchestrator: GitSyncOrchestrator,
+	gutter: GitotDiffGutter,
+) -> void:
 	_git_engine = engine
-	_git_engine.command_completed.connect(_on_command_completed)
-
-
-## Assigns the shared GitLfs instance (Size Guard exemption).
-func set_lfs(lfs: GitLfs) -> void:
 	_lfs = lfs
-
-
-## Assigns the push/tag sync orchestrator.
-func set_sync_orchestrator(orchestrator: GitSyncOrchestrator) -> void:
 	_orchestrator = orchestrator
-	orchestrator.push_state_changed.connect(_on_push_state_changed)
-	orchestrator.tag_retry_needed.connect(_on_tag_retry_needed)
-	orchestrator.tag_conflict.connect(_on_tag_conflict)
-
-
-## Assigns the shared GitotDiffGutter instance.
-func set_diff_gutter(gutter: GitotDiffGutter) -> void:
 	_diff_gutter = gutter
-#endregion
+	_git_engine.command_completed.connect(_on_command_completed)
+	_orchestrator.push_state_changed.connect(_on_push_state_changed)
+	_orchestrator.tag_retry_needed.connect(_on_tag_retry_needed)
+	_orchestrator.tag_conflict.connect(_on_tag_conflict)
 
 
 ## Full refresh: file lists, ahead/behind, branches, history and shelf. Does nothing until the
@@ -288,15 +264,17 @@ func refresh_status() -> void:
 ## cannot change branches, history or shelf, so the full refresh_status() would be wasted work.
 func refresh_files() -> void:
 	if _git_engine and _repo_confirmed:
-		_git_engine.run_fast(GitEngine.Command.STATUS, GitEngine.STATUS_ARGS)
+		_git_engine.status()
 
 
 ## Disconnects this dock from the shared GitEngine. Called by gitot.gd on exit.
 func teardown() -> void:
 	if _git_engine and _git_engine.command_completed.is_connected(_on_command_completed):
 		_git_engine.command_completed.disconnect(_on_command_completed)
-	if _git_engine and _git_engine.write_busy_changed.is_connected(_on_write_busy_changed):
-		_git_engine.write_busy_changed.disconnect(_on_write_busy_changed)
+	if _git_engine and _status_tree and _git_engine.write_busy_changed.is_connected(_status_tree.set_busy):
+		_git_engine.write_busy_changed.disconnect(_status_tree.set_busy)
+	if _commit_flow:
+		_commit_flow.teardown()
 	if _log_console:
 		_log_console.teardown()
 
@@ -346,76 +324,6 @@ func _on_repo_probe(exit_code: int, _output: Array[String]) -> void:
 	_repo_confirmed = true
 	refresh_status() # Populate trees immediately instead of waiting for a manual refresh.
 	_git_engine.request_remote_url() # Async: the router fills the "owner/repo" header.
-
-
-## Commits currently staged files with the message from the input field.
-func _on_commit_pressed() -> void:
-	var message: String = %CommitMessageInput.text.strip_edges()
-	if %AmendCheckButton.button_pressed:
-		_on_amend_pressed()
-		return
-	if message.is_empty():
-		GitotLogger.w("Commit message is empty - nothing was committed.")
-		return
-	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message], { }, _on_commit_done)
-
-
-## Confirms before amending. A commit already on origin (ahead == 0 with an upstream set means HEAD is
-## on the upstream) always asks; a local-only commit asks when "confirm_amend" is on.
-func _on_amend_pressed() -> void:
-	var pushed: bool = _repo_state.has_upstream and _repo_state.ahead == 0
-	if pushed or GitotSettings.get_value("confirm_amend"):
-		%AmendConfirmDialog.dialog_text = GitotUi.amend_confirm_text(
-			_repo_state.branch_label(),
-			%CommitMessageInput.text.strip_edges(),
-			pushed,
-		)
-		%AmendConfirmDialog.popup_centered()
-		return
-	_do_amend()
-
-
-## Runs the amend, called directly or after the dialog is confirmed.
-## Empty message keeps the existing one (--no-edit).
-func _do_amend() -> void:
-	var message: String = %CommitMessageInput.text.strip_edges()
-	var args: PackedStringArray = (
-		["commit", "--amend", "--no-edit"]
-		if message.is_empty()
-		else ["commit", "--amend", "-m", message]
-	)
-	_git_engine.run_fast(GitEngine.Command.AMEND, args, { }, _on_commit_done)
-
-
-## Commit / amend answered. The input is kept on failure so the user can fix the cause and retry
-## without retyping.
-func _on_commit_done(exit_code: int, _output: Array[String]) -> void:
-	if exit_code == 0:
-		%CommitMessageInput.text = ""
-		%AmendCheckButton.button_pressed = false
-
-
-## Busy state from the runner's write lock: covers commit, amend, stage, stash... in one place.
-func _on_write_busy_changed(busy: bool) -> void:
-	_write_busy = busy
-	_refresh_commit_ui()
-	if _status_tree:
-		_status_tree.set_busy(busy)
-
-
-## Single place that decides the commit area's wording from two states: busy and amend mode.
-## Amend is blocked while busy (a toggle mid-write would race the running command).
-func _refresh_commit_ui() -> void:
-	var amend: bool = %AmendCheckButton.button_pressed
-	%CommitButton.disabled = _write_busy
-	%AmendCheckButton.disabled = _write_busy
-	%CommitButton.icon = GitotUi.get_icon("Time") if _write_busy else null
-	if _write_busy:
-		%CommitButton.text = "Working..."
-	else:
-		%CommitButton.text = "Amend!" if amend else "Commit"
-		%CommitButton.tooltip_text = "Amend last commit" if amend else "Commit staged changes"
-	%CommitMessageInput.placeholder_text = AMEND_PLACEHOLDER if amend else COMMIT_PLACEHOLDER
 
 
 func _on_push_state_changed(pushing: bool) -> void:

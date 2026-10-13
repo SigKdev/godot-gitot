@@ -6,7 +6,7 @@ extends RefCounted
 
 ## Shared by every HEAD move and stash pop: refreshes EditorFileSystem and open tabs per file,
 ## or warns once if git couldn't list the files.
-## @param result: {"reliable": bool, "files": PackedStringArray} (GitEngine.to_file_list).
+## @param result: {"reliable": bool, "files": PackedStringArray} (GitPath.to_file_list).
 func on_files_changed(result: Dictionary) -> void:
 	if not result["reliable"]:
 		EditorInterface.get_editor_toaster().push_toast(

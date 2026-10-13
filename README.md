@@ -11,7 +11,7 @@ href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.32+-F03
 alt="Git"></a> <a href="https://git-lfs.com"><img
 src="https://img.shields.io/badge/GIT_LFS-3.4+-F64935?logo=gitlfs&logoColor=F64935" alt="Git LFS"></a> <a
 href="https://store.godotengine.org/asset/sigk/gitot/"><img
-src="https://img.shields.io/badge/Gitot-0.17.1-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
+src="https://img.shields.io/badge/Gitot-0.17.2-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
 src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -39,7 +39,7 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
 
 > [!IMPORTANT]
 > 
-> Gitot is under active, daily-use development by a solo developer. It is built and tested on Godot 4.7.2.
+> Gitot is under active, daily-use development by a [solo developer](https://ko-fi.com/sigkgames). It is built and tested on Godot 4.7.2.
 > Core workflows (stage/commit/push/pull, branching, diff gutter & viewer) are used daily in real projects and
 > have been through several correctness/lifecycle hardening passes (see [Changelog](#-changelog)).
 > - This is **not yet a widely-tested release**. It has been validated on Windows with one developer's
@@ -188,9 +188,8 @@ Only needed to use the **GitHub Issues Tracker Board** feature.
 > with access to your local user account can read this file.**
 > On Linux/macOS the file is restricted to your user (0600) after each save; on Windows no
 > permission change is made. A token GitHub rejects (revoked or expired, HTTP 401) is deleted automatically.
-> And the Godot hot-reload and `_exit_tree()`
-> make it not possible to auto clear the PAT when uninstalling/disabling Gitot. **You must clear your token
-> before uninstalling/disabling**
+> The Godot hot-reload and `_exit_tree()` make it not possible to auto clear the PAT when uninstalling/disabling Gitot.
+> **You must clear your token before uninstalling/disabling**
 
 > [!TIP]
 > 
@@ -227,7 +226,7 @@ project.
 
 ## 🧪 Testing
 
-Last run (v0.17.1): **25 suites, 212 tests, 0 failures** (Godot 4.7.2, Windows).
+Last run (v0.17.2): **31 suites, 250 tests, 0 failures** (Godot 4.7.2, Windows).
 
 - **Automated:** [GdUnit4](https://github.com/MikeSchulze/gdUnit4) cover the pure logic: parsers
   (status, diff, log, stash, branch, LFS, paths), the runner (shell contract, encoding, shell-safety whitelist, write lock, chunk merge), the result handlers (router, branch, sync),
@@ -244,7 +243,7 @@ Details: [Testing](../../wiki/Testing) in the wiki.
 
 ## 🗃 Changelog
 
-See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.17.1**.
+See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.17.2**.
 
 
 ## © License

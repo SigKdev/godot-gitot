@@ -6,6 +6,12 @@ class_name GitLfsParser
 extends RefCounted
 
 
+## "3.5.1" from "git-lfs/3.5.1 (GitHub; windows amd64; go 1.21.0)" (`git lfs version`); "" for anything else.
+static func parse_version(raw: String) -> String:
+	var token: String = raw.strip_edges().get_slice(" ", 0)
+	return token.trim_prefix("git-lfs/") if token.begins_with("git-lfs/") else ""
+
+
 ## @return: Array[GitLfsFile] (path, size, present, oid). Empty on blank/invalid input.
 static func parse_files(raw: String) -> Array[GitLfsFile]:
 	var files: Array[GitLfsFile] = []
