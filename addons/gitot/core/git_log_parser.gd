@@ -4,12 +4,11 @@ class_name GitLogParser
 extends RefCounted
 
 
-## Parses raw `git log` stdout into an array of commit dictionaries.
+## Parses raw `git log` stdout into commit entries.
 ## @param raw: stdout from GitEngine.get_log().
-## @return: Array[Dictionary] with keys "hash", "author", "date_relative", "date_short", "message".
-## Empty on blank input (e.g. repo with zero commits).
-static func parse(raw: String) -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
+## @return: Array[GitCommitEntry]. Empty on blank input (e.g. repo with zero commits).
+static func parse(raw: String) -> Array[GitCommitEntry]:
+	var entries: Array[GitCommitEntry] = []
 	if raw.strip_edges().is_empty():
 		return entries
 
@@ -17,14 +16,12 @@ static func parse(raw: String) -> Array[Dictionary]:
 		var fields: PackedStringArray = line.split(GitEngine.UNIT_SEP)
 		if fields.size() != 5:
 			continue # Malformed line: skip it.
-		entries.append(
-			{
-				"hash": fields[0],
-				"author": fields[1],
-				"date_relative": fields[2],
-				"date_short": fields[3],
-				"message": fields[4],
-			}
-		)
+		var entry: GitCommitEntry = GitCommitEntry.new()
+		entry.commit_hash = fields[0]
+		entry.author = fields[1]
+		entry.date_relative = fields[2]
+		entry.date_short = fields[3]
+		entry.message = fields[4]
+		entries.append(entry)
 
 	return entries

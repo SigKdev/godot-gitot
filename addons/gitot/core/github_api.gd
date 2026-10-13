@@ -11,7 +11,7 @@ signal request_succeeded(data: Variant)
 ## Emitted on 401: the token is invalid, expired or revoked.
 signal auth_failed
 
-## Emitted on any other failure (network, non-200/401 status).
+## Emitted on any other failure (network, request not started, non-200/401 status). 0 = no HTTP answer.
 signal request_failed(status_code: int)
 
 const API_BASE: String = "https://api.github.com"
@@ -45,7 +45,10 @@ func get_endpoint(endpoint: String) -> void:
 		"User-Agent: %s" % USER_AGENT,
 		"Accept: application/vnd.github+json",
 	]
-	_http.request(API_BASE + endpoint, headers)
+	var err: Error = _http.request(API_BASE + endpoint, headers)
+	if err != OK:
+		# request_completed never fires after an immediate error: report it or the caller waits forever.
+		request_failed.emit(0)
 
 
 ## Fetches one page of open issues for [param owner]/[param repo].

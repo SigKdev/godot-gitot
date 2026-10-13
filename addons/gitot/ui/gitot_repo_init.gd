@@ -23,11 +23,11 @@ func _init(git_engine: GitEngine, button: Button) -> void:
 
 func _on_pressed() -> void:
 	GitotUi.set_busy(_button, true, BUTTON_ICON) # Blocks a second click while git runs.
-	_git_engine.init_repo()
+	_git_engine.init_repo(_on_init_done)
 
 
-## Finished Command.INIT (forwarded by the dock): logs it, adds the .gitignore, announces success.
-func on_init_finished(exit_code: int, output: Array[String]) -> void:
+## Finished `git init`: logs it, adds the .gitignore, announces success.
+func _on_init_done(exit_code: int, output: Array[String]) -> void:
 	GitotUi.set_busy(_button, false, BUTTON_ICON)
 	var raw: String = output[0].strip_edges() if not output.is_empty() else ""
 	if exit_code != 0:

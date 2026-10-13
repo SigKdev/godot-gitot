@@ -14,12 +14,10 @@ const COLOR_MODIFIED: Color = "dark_orange"
 const GUTTER_NAME: String = "gitot_diff_gutter"
 
 var _git_engine: GitEngine
-var _pending_diff_path: String = ""
 
 
 func _init(engine: GitEngine) -> void:
 	_git_engine = engine
-	_git_engine.command_completed.connect(_on_diff_result)
 
 
 ## Runs diff for the currently active script and refreshes its gutter.
@@ -28,18 +26,13 @@ func refresh_current_script() -> void:
 	var script: Script = script_editor.get_current_script()
 	if not script:
 		return
-	_pending_diff_path = script.resource_path
 	var path: String = ProjectSettings.globalize_path(script.resource_path)
 	_git_engine.run_fast(
 		GitEngine.Command.DIFF,
 		["diff", "-U0", "--no-ext-diff", "HEAD", "--", path],
+		{ },
+		_on_diff_result.bind(script.resource_path), # The result knows which script it was for.
 	)
-
-
-## Disconnects gutter from the shared GitEngine. Called by gitot.gd on exit.
-func teardown() -> void:
-	if _git_engine and _git_engine.command_completed.is_connected(_on_diff_result):
-		_git_engine.command_completed.disconnect(_on_diff_result)
 
 
 ## Ensures the given CodeEdit has the gutter registered exactly once,
@@ -67,18 +60,13 @@ func _ensure_gutter(code_edit: CodeEdit) -> int:
 	return gutter_idx
 
 
-## Applies parsed diff line states to the active CodeEdit's gutter.
-func _on_diff_result(
-	command: GitEngine.Command,
-	exit_code: int,
-	output: Array[String],
-	_context: Dictionary,
-) -> void:
-	if command != GitEngine.Command.DIFF or exit_code != 0 or output.is_empty():
+## Applies parsed diff line states to the gutter of the requested script, if it is still the active tab.
+func _on_diff_result(exit_code: int, output: Array[String], script_path: String) -> void:
+	if exit_code != 0 or output.is_empty():
 		return
 
 	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
-	if not current_script or current_script.resource_path != _pending_diff_path:
+	if not current_script or current_script.resource_path != script_path:
 		return
 
 	var current_editor: ScriptEditorBase = EditorInterface.get_script_editor().get_current_editor()

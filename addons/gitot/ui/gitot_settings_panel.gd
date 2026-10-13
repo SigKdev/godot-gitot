@@ -21,6 +21,7 @@ func _ready() -> void:
 	%ConfirmAmendCheck.button_pressed = GitotSettings.get_value("confirm_amend")
 	%AutoRefreshCheck.button_pressed = GitotSettings.get_value("auto_refresh_on_focus")
 	%StatusLettersCheck.button_pressed = GitotSettings.get_value("status_letters")
+	%EchoOutputCheck.button_pressed = GitotSettings.get_value("echo_to_output")
 	%GithubEnabledCheck.button_pressed = GitotSettings.get_value("github_issues_enabled")
 
 	# Every change is saved immediately (no Apply button).
@@ -57,6 +58,10 @@ func _ready() -> void:
 		func(v: bool) -> void:
 			GitotSettings.set_value("status_letters", v)
 			status_display_changed.emit(),
+	)
+	%EchoOutputCheck.toggled.connect(
+		func(v: bool) -> void:
+			GitotSettings.set_value("echo_to_output", v),
 	)
 	%GithubEnabledCheck.toggled.connect(
 		func(v: bool) -> void:

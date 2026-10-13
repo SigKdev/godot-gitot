@@ -47,7 +47,7 @@ var _git_engine: GitEngine
 var _dock: GitotDock
 var _diff_gutter: GitotDiffGutter
 var _sync_orchestrator: GitSyncOrchestrator
-var _github_panel: Control
+var _github_panel: GithubPanel
 var _diff_panel: GitotDiffPanel
 var _files_refresh_queued: bool = false
 var _commit_log_diff: GitotCommitLogDiff
@@ -97,6 +97,8 @@ func _enter_tree() -> void:
 	if GitotSettings.get_value("github_issues_enabled"):
 		_github_panel = GithubPanelScene.instantiate()
 		_github_panel.set_git_engine(_git_engine)
+		_dock.status_parsed.connect(_github_panel.on_status_parsed) # Dirty count for "create branch from issue".
+		_dock.branches_parsed.connect(_github_panel.on_branches_parsed) # Base-branch list for it.
 		EditorInterface.get_editor_main_screen().add_child(_github_panel)
 		_github_panel.hide() # Shown by _make_visible() when the tab is selected.
 
@@ -144,9 +146,7 @@ func _exit_tree() -> void:
 		_dock.queue_free()
 		_dock = null
 
-	if _diff_gutter:
-		_diff_gutter.teardown()
-		_diff_gutter = null
+	_diff_gutter = null # Holds no connection: nothing to tear down.
 
 	if _sync_orchestrator:
 		_sync_orchestrator.teardown()
@@ -277,6 +277,6 @@ func _on_hunk_clicked(file_path: String, line: int) -> void:
 
 
 ## History row clicked: load that commit into the bottom panel and bring it to front.
-func _on_commit_selected(entry: Dictionary) -> void:
+func _on_commit_selected(entry: GitCommitEntry) -> void:
 	_commit_log_diff.show_commit(entry)
 	make_bottom_panel_item_visible(_diff_panel)

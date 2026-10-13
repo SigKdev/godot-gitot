@@ -246,7 +246,6 @@ text = "Status letters"
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Confirmation dialogue before pushing"
-button_pressed = true
 text = "Confirm Push"
 
 [node name="ConfirmAmendCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1711000020]
@@ -262,6 +261,13 @@ layout_mode = 2
 tooltip_text = "Confirmation dialogue before creating a branch"
 button_pressed = true
 text = "Confirm Create Branch"
+
+[node name="EchoOutputCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1711000030]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Also print Gitot's log lines in Godot's Output panel.
+Off: they only appear in the Gitot console. Fatal errors always print."
+text = "Echo log to Output"
 
 [node name="AutoRefreshCheck" type="CheckButton" parent="MainVBox/MainTopPanel/VBox/SettingsPanel/VBox" unique_id=1869038813]
 unique_name_in_owner = true

@@ -6,10 +6,13 @@ class_name GitotDock
 extends Control
 
 ## Forwarded from the history list (signal up; gitot.gd owns the diff panel).
-signal commit_selected(entry: Dictionary)
+signal commit_selected(entry: GitCommitEntry)
 
 ## Forwarded from the result router (signal up; gitot.gd owns the editor-level tooltip).
 signal status_parsed(parsed: Dictionary)
+
+## Forwarded from the branch results (signal up; gitot.gd feeds the GitHub panel's base-branch list).
+signal branches_parsed(branches: Array[GitBranchEntry])
 
 const PLUGIN_CONFIG_PATH: String = "res://addons/gitot/plugin.cfg"
 
@@ -19,6 +22,10 @@ const KOFI_URL: String = "https://ko-fi.com/sigkgames"
 
 ## Caps _ready()'s self-retry when _git_engine never arrives.
 const MAX_READY_RETRIES: int = 30
+
+## Min delay between two focus-in refreshes: a full refresh spawns 5 git processes, and returning
+## from the game window or alt-tabbing back and forth must not repeat them.
+const FOCUS_REFRESH_COOLDOWN_MSEC: int = 3000
 
 ## Commit area wording, normal vs amend mode (see _refresh_commit_ui).
 const COMMIT_PLACEHOLDER: String = "Commit Message (multiline supported)"
@@ -50,6 +57,13 @@ var _repo_init: GitotRepoInit
 var _repo_confirmed: bool = false
 ## Mirrors GitEngine.write_busy_changed: a git write (commit, stage, stash...) is running.
 var _write_busy: bool = false
+## Tick of the last full refresh (see refresh_status). Starts one cooldown back: the first focus-in is due.
+var _last_refresh_msec: int = -FOCUS_REFRESH_COOLDOWN_MSEC
+
+
+## True once the cooldown since the last full refresh has passed.
+static func _focus_refresh_due(now_msec: int, last_msec: int) -> bool:
+	return now_msec - last_msec >= FOCUS_REFRESH_COOLDOWN_MSEC
 
 
 func _ready() -> void:
@@ -79,7 +93,7 @@ func _ready() -> void:
 	_setup_settings()
 	# Async probe: its answer decides what is shown and loaded (see _on_repo_probe).
 	# The router also warns from it if the project is not the repo root.
-	_git_engine.request_repo_prefix()
+	_probe_repo()
 
 
 #region _ready() steps
@@ -166,16 +180,26 @@ func _build_branch_controls() -> void:
 
 ## Result dispatch; file-changing results are forwarded to the editor sync.
 func _build_router() -> void:
-	_result_router = GitotResultRouter.new(
+	var branch_results: GitotBranchResults = GitotBranchResults.new(
 		_git_engine,
 		_repo_state,
 		_status_panel,
-		_status_tree,
 		_branch_panel,
+	)
+	var sync_results: GitotSyncResults = GitotSyncResults.new(_git_engine, _repo_state)
+	_result_router = GitotResultRouter.new(
+		_repo_state,
+		_status_panel,
+		_status_tree,
+		branch_results,
+		sync_results,
 		_log_panel,
 		_stash_panel,
 	)
-	_result_router.head_moved.connect(_git_engine.request_changed_files_since_switch)
+	# Switch/create (branch results) and pull (sync results) both move HEAD.
+	branch_results.head_moved.connect(_git_engine.request_changed_files_since_switch)
+	sync_results.head_moved.connect(_git_engine.request_changed_files_since_switch)
+	branch_results.branches_parsed.connect(branches_parsed.emit)
 	_result_router.files_changed.connect(_editor_sync.on_files_changed)
 	_result_router.file_restored.connect(_editor_sync.on_file_restored)
 	_result_router.status_parsed.connect(status_parsed.emit)
@@ -195,7 +219,7 @@ func _setup_push_flow() -> void:
 ## "No repository" view: its button initializes git, then the folder is probed again like at startup.
 func _setup_repo_init() -> void:
 	_repo_init = GitotRepoInit.new(_git_engine, %InitRepoButton)
-	_repo_init.initialized.connect(_git_engine.request_repo_prefix)
+	_repo_init.initialized.connect(_probe_repo)
 
 
 func _setup_settings() -> void:
@@ -210,10 +234,10 @@ func _setup_settings() -> void:
 
 
 ## Auto-refreshes status when the editor window regains focus,
-## gated by the "auto_refresh_on_focus" setting.
+## gated by the "auto_refresh_on_focus" setting and the cooldown. The Refresh button never waits.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
-		if GitotSettings.get_value("auto_refresh_on_focus"):
+		if GitotSettings.get_value("auto_refresh_on_focus") and _focus_refresh_due(Time.get_ticks_msec(), _last_refresh_msec):
 			refresh_status()
 
 
@@ -221,7 +245,7 @@ func _notification(what: int) -> void:
 ## Assigns the shared GitEngine instance.
 func set_git_engine(engine: GitEngine) -> void:
 	_git_engine = engine
-	_git_engine.command_completed.connect(_on_status_result)
+	_git_engine.command_completed.connect(_on_command_completed)
 
 
 ## Assigns the shared GitLfs instance (Size Guard exemption).
@@ -250,8 +274,9 @@ func refresh_status() -> void:
 	if not _git_engine:
 		return
 	if not _repo_confirmed:
-		_git_engine.request_repo_prefix()
+		_probe_repo()
 		return
+	_last_refresh_msec = Time.get_ticks_msec()
 	refresh_files()
 	_git_engine.get_ahead_behind()
 	_git_engine.list_branches()
@@ -268,8 +293,8 @@ func refresh_files() -> void:
 
 ## Disconnects this dock from the shared GitEngine. Called by gitot.gd on exit.
 func teardown() -> void:
-	if _git_engine and _git_engine.command_completed.is_connected(_on_status_result):
-		_git_engine.command_completed.disconnect(_on_status_result)
+	if _git_engine and _git_engine.command_completed.is_connected(_on_command_completed):
+		_git_engine.command_completed.disconnect(_on_command_completed)
 	if _git_engine and _git_engine.write_busy_changed.is_connected(_on_write_busy_changed):
 		_git_engine.write_busy_changed.disconnect(_on_write_busy_changed)
 	if _log_console:
@@ -289,41 +314,28 @@ func _on_refresh_diff_pressed() -> void:
 	_diff_gutter.refresh_current_script()
 
 
-## Handles the dock-owned reactions to a finished command (busy buttons, commit field reset),
-## then hands the result to the router.
-func _on_status_result(
+## Every finished command goes to the router (the only dispatch point). Reactions of widgets the dock
+## owns (Pull, Commit, repo probe) are per-call on_done callbacks of the call that started them.
+func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
 	output: Array[String],
 	context: Dictionary,
 ) -> void:
-	if command == GitEngine.Command.LAST_COMMIT_MSG:
-		_push_flow.on_last_commit_message(exit_code, output)
-		return
-	match command:
-		GitEngine.Command.FETCH:
-			_branch_panel.on_fetch_finished()
-		GitEngine.Command.PULL:
-			GitotUi.set_busy(%PullButton, false, "MoveDown")
-		GitEngine.Command.DELETE_REMOTE_BRANCH:
-			_branch_deleter.on_remote_delete_finished()
-		GitEngine.Command.COMMIT, GitEngine.Command.AMEND:
-			# Input is kept on failure so the user can fix the cause and retry without retyping.
-			if exit_code == 0:
-				%CommitMessageInput.text = ""
-				%AmendCheckButton.button_pressed = false
-		GitEngine.Command.SHOW_PREFIX:
-			_on_repo_probe(exit_code)
-		GitEngine.Command.INIT:
-			_repo_init.on_init_finished(exit_code, output)
 	_result_router.route(command, exit_code, output, context)
+
+
+## Asks whether the project folder is inside a repository; _on_repo_probe answers.
+## The router also warns from the same result if the project is not the repo root.
+func _probe_repo() -> void:
+	_git_engine.request_repo_prefix(_on_repo_probe)
 
 
 ## Result of the repo probe (`rev-parse --show-prefix`): exit 0 = inside a repository, so the panels load.
 ## Otherwise, with no ".git" entry, the folder has no repository yet: the "no repository" view replaces
 ## the panels. A ".git" entry that git still refuses (broken repo, "dubious ownership") is not offered an
 ## init: the panels load and their commands report git's own error.
-func _on_repo_probe(exit_code: int) -> void:
+func _on_repo_probe(exit_code: int, _output: Array[String]) -> void:
 	if _repo_confirmed:
 		return # A second probe was already in flight.
 	var no_repo: bool = exit_code != 0 and not GitEngine.has_git_entry()
@@ -345,7 +357,7 @@ func _on_commit_pressed() -> void:
 	if message.is_empty():
 		GitotLogger.w("Commit message is empty - nothing was committed.")
 		return
-	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message])
+	_git_engine.run_fast(GitEngine.Command.COMMIT, ["commit", "-m", message], { }, _on_commit_done)
 
 
 ## Confirms before amending. A commit already on origin (ahead == 0 with an upstream set means HEAD is
@@ -372,7 +384,15 @@ func _do_amend() -> void:
 		if message.is_empty()
 		else ["commit", "--amend", "-m", message]
 	)
-	_git_engine.run_fast(GitEngine.Command.AMEND, args)
+	_git_engine.run_fast(GitEngine.Command.AMEND, args, { }, _on_commit_done)
+
+
+## Commit / amend answered. The input is kept on failure so the user can fix the cause and retry
+## without retyping.
+func _on_commit_done(exit_code: int, _output: Array[String]) -> void:
+	if exit_code == 0:
+		%CommitMessageInput.text = ""
+		%AmendCheckButton.button_pressed = false
 
 
 ## Busy state from the runner's write lock: covers commit, amend, stage, stash... in one place.
@@ -436,7 +456,12 @@ func _refresh_push_tooltip() -> void:
 ## Pulls latest changes from the remote tracking branch.
 func _on_pull_pressed() -> void:
 	GitotUi.set_busy(%PullButton, true, "MoveDown")
-	_git_engine.pull()
+	_git_engine.pull(_on_pull_done)
+
+
+## Pull answered (success or failure): the button is free again. The log is the sync results' job.
+func _on_pull_done(_exit_code: int, _output: Array[String]) -> void:
+	GitotUi.set_busy(%PullButton, false, "MoveDown")
 
 
 func _on_kofibutton_pressed() -> void:

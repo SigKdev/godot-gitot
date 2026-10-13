@@ -244,16 +244,16 @@ func _on_untrack_pressed() -> void:
 ## One row per LFS file. Status uses the same words as the branch list (GitotUi.scope_label):
 ## Local = full file on this computer, Remote = same content in origin's tree (as of the last fetch).
 ## @param files: GitLfsParser.merge_scopes() rows.
-func _populate_files(files: Array[Dictionary]) -> void:
+func _populate_files(files: Array[GitLfsFile]) -> void:
 	_files_tree.clear()
 	var root: TreeItem = _files_tree.create_item()
-	for file: Dictionary in files:
-		var local: bool = file["local"]
-		var remote: bool = file["remote"]
+	for file: GitLfsFile in files:
+		var local: bool = file.local
+		var remote: bool = file.remote
 		var item: TreeItem = _files_tree.create_item(root)
-		item.set_text(0, file["path"])
-		item.set_tooltip_text(0, file["path"]) # Full path on hover if truncated.
-		item.set_text(1, String.humanize_size(file["size"]))
+		item.set_text(0, file.path)
+		item.set_tooltip_text(0, file.path) # Full path on hover if truncated.
+		item.set_text(1, String.humanize_size(file.size))
 		item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
 		item.set_text(2, GitotUi.scope_label(local, remote) if local or remote else "Missing")
 		item.set_icon(2, GitotUi.get_icon(_status_icon(local, remote)))

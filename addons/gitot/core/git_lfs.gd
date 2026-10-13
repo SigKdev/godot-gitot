@@ -7,7 +7,7 @@ extends RefCounted
 ## Emitted when detect_state() finishes. repo_uses_lfs is independent of the state:
 ## a freshly cloned LFS project is NO_BINARY + true.
 signal state_detected(state: State, repo_uses_lfs: bool)
-signal files_listed(files: Array[Dictionary])
+signal files_listed(files: Array[GitLfsFile])
 
 ## Emitted when the local listing failed. The previous list stays; the panel uses this to drop its
 ## "Loading" text.
@@ -74,7 +74,8 @@ func list_files() -> void:
 	_engine.run_fast(
 		GitEngine.Command.LFS_LS_FILES,
 		["lfs", "ls-files", "--json", "@{u}"],
-		{ "stage": "remote" },
+		{ },
+		_on_upstream_listed,
 	)
 
 
@@ -150,8 +151,8 @@ func _run_pattern(command: GitEngine.Command, verb: String, pattern: String) -> 
 	return true
 
 
-## Result routing. LFS_VERSION -> LFS_STATE is the state chain, LS_FILES and TRACK/UNTRACK emit
-## signals, the other commands only log. A failed listing keeps the previous data, like the stash list.
+## Result routing. LFS_VERSION -> LFS_STATE is the state chain, TRACK/UNTRACK emit signals, the other
+## commands only log. The file listing answers through its own on_done chain (see list_files()).
 func _on_command_completed(
 	command: GitEngine.Command,
 	exit_code: int,
@@ -189,30 +190,29 @@ func _on_command_completed(
 			pull_finished.emit(exit_code == 0)
 		GitEngine.Command.LFS_PRUNE:
 			_log_outcome(exit_code, raw, "LFS prune finished.", "LFS prune failed.")
-		GitEngine.Command.LFS_LS_FILES:
-			_handle_files_result(exit_code, raw, context)
 		GitEngine.Command.LFS_TRACK, GitEngine.Command.LFS_UNTRACK:
 			_handle_rule_result(command, exit_code, raw, context)
 
 
-## Stage "remote": keep the upstream list (empty on failure = no upstream), then read this checkout.
-## Stage "local": merge both and publish. On failure the previous list is kept.
-func _handle_files_result(exit_code: int, raw: String, context: Dictionary) -> void:
-	if context.get("stage", "") == "remote":
-		var remote_files: Array[Dictionary] = (
-			GitLfsParser.parse_files(raw) if exit_code == 0 else ([] as Array[Dictionary])
-		)
-		_engine.run_fast(
-			GitEngine.Command.LFS_LS_FILES,
-			["lfs", "ls-files", "--json"],
-			{ "stage": "local", "remote": remote_files },
-		)
-		return
-	if exit_code != 0:
+## First read done: keep the upstream list (empty on failure = no upstream), then read this checkout.
+func _on_upstream_listed(exit_code: int, output: Array[String]) -> void:
+	var remote_files: Array[GitLfsFile] = (
+		GitLfsParser.parse_files(output[0]) if exit_code == 0 and not output.is_empty() else ([] as Array[GitLfsFile])
+	)
+	_engine.run_fast(
+		GitEngine.Command.LFS_LS_FILES,
+		["lfs", "ls-files", "--json"],
+		{ },
+		_on_local_listed.bind(remote_files),
+	)
+
+
+## Second read done: merge both lists and publish. On failure the previous list is kept.
+func _on_local_listed(exit_code: int, output: Array[String], remote_files: Array[GitLfsFile]) -> void:
+	if exit_code != 0 or output.is_empty():
 		files_list_failed.emit()
 		return
-	var remote_list: Array[Dictionary] = context.get("remote", [] as Array[Dictionary])
-	files_listed.emit(GitLfsParser.merge_scopes(GitLfsParser.parse_files(raw), remote_list))
+	files_listed.emit(GitLfsParser.merge_scopes(GitLfsParser.parse_files(output[0]), remote_files))
 
 
 ## track / untrack share one handler: both only rewrite .gitattributes.

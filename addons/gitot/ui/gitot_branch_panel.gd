@@ -189,11 +189,6 @@ static func _status_text(branch: GitBranchEntry, ahead: int, behind: int) -> Str
 	return text
 
 
-## Called by the dock when the fetch result arrives (success or failure).
-func on_fetch_finished() -> void:
-	GitotUi.set_busy(_fetch_button, false, FETCH_ICON)
-
-
 func _setup_tree() -> void:
 	_tree.hide_root = true
 	_tree.columns = 3
@@ -235,7 +230,12 @@ func _add_row(root: TreeItem, branch: GitBranchEntry, scope: String) -> void:
 
 func _on_fetch_pressed() -> void:
 	GitotUi.set_busy(_fetch_button, true, FETCH_ICON)
-	_git_engine.fetch()
+	_git_engine.fetch(_on_fetch_done)
+
+
+## Fetch answered (success or failure): the button is free again. The log is the sync results' job.
+func _on_fetch_done(_exit_code: int, _output: Array[String]) -> void:
+	GitotUi.set_busy(_fetch_button, false, FETCH_ICON)
 
 
 ## Double-click (or Enter/Space): switch to a local branch, or create a tracking

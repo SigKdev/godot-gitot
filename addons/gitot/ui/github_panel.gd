@@ -16,8 +16,9 @@ const AuthDialogScene: PackedScene = preload("res://addons/gitot/ui/github_auth_
 ## Sized for solo/small-team repos.
 const MAX_ISSUE_PAGES: int = 8
 
-## Context tag marking the REMOTE_URL request made by this panel (the dock makes its own).
-const REMOTE_URL_ISSUES: String = "issues"
+## Browser address prefix of github.com (see GitEngine.web_url()): the host is matched whole, so
+## "github.com.evil.io" does not pass. Any other host would be queried on github.com under its owner/repo.
+const GITHUB_WEB_PREFIX: String = "https://github.com/"
 
 ## True once gitot.gd requested the issues this session (first tab show); reset when the token is cleared.
 var has_fetched: bool = false
@@ -54,6 +55,11 @@ static func _header_text(
 	]
 
 
+## True if remote_url (https, ssh:// or scp-like) points at github.com.
+static func _is_github_remote(remote_url: String) -> bool:
+	return GitEngine.web_url(remote_url).begins_with(GITHUB_WEB_PREFIX)
+
+
 func _ready() -> void:
 	_issue_list = GithubIssueList.new(
 		%IssueTree,
@@ -64,7 +70,6 @@ func _ready() -> void:
 
 	if not _git_engine:
 		return # editor-instantiated scene: no engine injected, nothing to wire
-	_git_engine.command_completed.connect(_on_command_completed)
 	%CreateBranchConfirmDialog.confirmed.connect(_on_create_branch_confirmed)
 	_detail.create_branch_requested.connect(_on_create_branch_requested)
 
@@ -85,7 +90,11 @@ func set_git_engine(engine: GitEngine) -> void:
 func fetch_current_repo_issues() -> void:
 	_set_refresh_state(RefreshButtonState.LOADING)
 	%StatusLabel.visible = false
-	_git_engine.request_remote_url({ "for": REMOTE_URL_ISSUES })
+	_git_engine.request_remote_url(_on_remote_url_done) # Own callback: the dock's request is not ours.
+
+
+func _on_remote_url_done(exit_code: int, output: Array[String]) -> void:
+	_start_issue_fetch(GitEngine.remote_url_of(exit_code, output))
 
 
 ## Parses owner/repo from the origin URL and starts the first page.
@@ -93,6 +102,11 @@ func _start_issue_fetch(remote_url: String) -> void:
 	var owner_repo: Dictionary = GitEngine.parse_owner_repo(remote_url)
 	if owner_repo.is_empty():
 		GitotLogger.w("Could not parse owner/repo from remote '%s'." % remote_url)
+		_set_refresh_state(RefreshButtonState.IDLE)
+		return
+	# A GitLab/Gitea "alice/game" would show another repo's issues from github.com. No URL in the message: it may hold credentials.
+	if not _is_github_remote(remote_url):
+		GitotLogger.w("Issues are only available for repositories hosted on github.com.")
 		_set_refresh_state(RefreshButtonState.IDLE)
 		return
 
@@ -104,23 +118,16 @@ func _start_issue_fetch(remote_url: String) -> void:
 	_api.fetch_issues(_issues_owner, _issues_repo, _issues_page)
 
 
-## Handles engine results: REMOTE_URL (our own request) starts the issue fetch, BRANCHES refreshes
-## the base-branch dropdown, STATUS updates the uncommitted-change count. BRANCHES and STATUS are
-## already requested elsewhere (see gitot_result_router.gd).
-func _on_command_completed(
-	command: GitEngine.Command,
-	exit_code: int,
-	output: Array[String],
-	context: Dictionary,
-) -> void:
-	if command == GitEngine.Command.REMOTE_URL:
-		if context.get("for", "") == REMOTE_URL_ISSUES: # The dock's own request is not ours.
-			_start_issue_fetch(GitEngine.remote_url_of(exit_code, output))
-	elif command == GitEngine.Command.BRANCHES and exit_code == 0 and not output.is_empty():
-		_detail.set_base_branches(GitBranchParser.parse(output[0]))
-	elif command == GitEngine.Command.STATUS and exit_code == 0 and not output.is_empty():
-		var parsed: Dictionary = GitStatusParser.parse(output[0])
-		_dirty_count = parsed["staged"].size() + parsed["unstaged"].size()
+## Uncommitted-change count from the status the router already parsed (gitot.gd wires the dock's
+## status_parsed here), so the raw STATUS output is not parsed a second time.
+func on_status_parsed(parsed: Dictionary) -> void:
+	_dirty_count = parsed["staged"].size() + parsed["unstaged"].size()
+
+
+## Refreshes the base-branch dropdown from the branch list the dock already parsed (gitot.gd wires
+## the dock's branches_parsed here).
+func on_branches_parsed(branches: Array[GitBranchEntry]) -> void:
+	_detail.set_base_branches(branches)
 
 
 ## The result (log, head_moved, branch/status refresh) is handled by the shared router.
@@ -193,6 +200,7 @@ func _on_clear_token_pressed() -> void:
 
 
 func _on_auth_failed() -> void:
+	GithubAuth.clear_token() # A revoked token must not stay on disk, be resent or pre-fill the dialog.
 	_set_refresh_state(RefreshButtonState.NEEDS_AUTH)
 	%StatusLabel.visible = false
 	GitotLogger.w("GitHub token is invalid or expired - sign in again.")

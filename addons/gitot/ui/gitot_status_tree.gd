@@ -26,7 +26,20 @@ const BUTTON_TRACK_LFS: int = 1
 ## Single column: hover and selection cover the whole row.
 const COL_PATH: int = 0
 
+## TreeItem button id for the "show every row" action (overflow row only).
+const BUTTON_SHOW_ALL: int = 2
+
+## Rows drawn per tree until "Show all" is clicked. A missing ignore rule can list thousands of files, each one
+## a TreeItem (plus a file open for the Size Guard on the unstaged side). The title count and Stage All still
+## cover every file.
+const MAX_ROWS: int = 500
+
 var _git_engine: GitEngine
+
+## The last populate() input, shown or not: Stage All must not stop at MAX_ROWS, and "Show all" redraws from it.
+var _parsed: Dictionary = { "staged": [], "unstaged": [] }
+## Trees whose cap was lifted with "Show all". Dropped again once the list fits MAX_ROWS.
+var _show_all: Dictionary[Tree, bool] = { }
 
 var _unstaged_tree: Tree
 var _staged_tree: Tree
@@ -64,6 +77,7 @@ func _init(
 ## Clears and refills both trees from a parsed git-status result {"staged", "unstaged"}.
 func populate(parsed: Dictionary) -> void:
 	var was_empty: bool = _is_empty(_staged_tree) # Captured before clear() to detect the transition.
+	_parsed = parsed
 	_populate_tree(_staged_tree, parsed["staged"], _staged_fold, "Staged")
 	_populate_tree(_unstaged_tree, parsed["unstaged"], _unstaged_fold, "Unstaged", true)
 	if parsed["staged"].is_empty():
@@ -72,48 +86,79 @@ func populate(parsed: Dictionary) -> void:
 		_staged_fold.folded = false # Reopen only when files arrive, so manual folds survive refreshes.
 
 
-## Clears and refills a Tree from parsed status entries {"path", "status"}.
+## Clears and refills a Tree from parsed status entries: the first MAX_ROWS rows
+## (all of them after "Show all"), then a "N more" row. Rows selected before the rebuild stay selected.
 func _populate_tree(
 	tree: Tree,
-	entries: Array,
+	entries: Array[GitStatusEntry],
 	fold_container: FoldableContainer,
 	title: String,
 	check_size: bool = false,
 ) -> void:
+	var selected: Array[String] = _get_selected_paths(tree) # Before clear(): it drops the selection.
 	tree.clear()
 	var root: TreeItem = tree.create_item() # Required even with hide_root: acts as the invisible parent.
 	fold_container.title = "%s (%d)" % [title, entries.size()]
 	var max_bytes: int = _max_file_size_bytes() if check_size else 0
-	for entry: Dictionary in entries:
-		var item: TreeItem = tree.create_item(root)
-		var status: GitStatusParser.FileStatus = entry["status"]
-		_apply_status_visuals(item, entry["path"], status) # Size Guard below may override the icon/tooltip.
-		if (
-			check_size and status != GitStatusParser.FileStatus.CONFLICT
-			and _violates_guard(entry["path"], max_bytes)
-		):
-			item.set_icon(COL_PATH, GitotUi.get_icon("StatusWarning"))
-			item.set_icon_modulate(COL_PATH, Color.ORANGE)
-			item.set_tooltip_text(COL_PATH, "⚠ Exceeds your Size Guard - excluded from Staging ⚠")
-			if _lfs != null and _lfs.is_ready():
-				var pattern: String = _lfs_pattern(entry["path"])
-				item.add_button(
-					COL_PATH,
-					GitotUi.get_icon("Pin"),
-					BUTTON_TRACK_LFS,
-					false,
-					"Track '%s' with Git LFS and allow staging.\nApplies to ALL matching files."
-					% pattern,
-				)
-		if entry["path"].get_extension().to_lower() in OPENABLE_EXTENSIONS:
-			item.add_button(
-				COL_PATH,
-				GitotUi.get_icon("ShaderDock"),
-				BUTTON_OPEN_FILE,
-				false,
-				"Open file in editor",
-			)
-			item.set_button_color(COL_PATH, item.get_button_by_id(COL_PATH, BUTTON_OPEN_FILE), Color.DARK_GRAY)
+	if entries.size() <= MAX_ROWS:
+		_show_all.erase(tree) # Fits again: the next big list starts capped.
+	var shown: int = entries.size() if _show_all.has(tree) else MAX_ROWS
+	shown = mini(shown, entries.size())
+	for i: int in shown:
+		var item: TreeItem = _add_row(tree, root, entries[i], check_size, max_bytes)
+		if _path_of(item) in selected:
+			item.select(COL_PATH)
+	if entries.size() > shown:
+		_add_overflow_row(tree, root, entries.size() - shown)
+
+
+## One file row: status look, Size Guard mark (unstaged side) and the "open in editor" button.
+func _add_row(tree: Tree, root: TreeItem, entry: GitStatusEntry, check_size: bool, max_bytes: int) -> TreeItem:
+	var item: TreeItem = tree.create_item(root)
+	var path: String = entry.path
+	var status: GitStatusParser.FileStatus = entry.status
+	_apply_status_visuals(item, path, status) # Size Guard below may override the icon/tooltip.
+	# A conflict must be resolved first; a deleted file has nothing to measure (no file open for it).
+	var measurable: bool = status != GitStatusParser.FileStatus.CONFLICT and status != GitStatusParser.FileStatus.DELETED
+	if check_size and measurable and _violates_guard(path, max_bytes):
+		_mark_size_guard(item, path)
+	if path.get_extension().to_lower() in OPENABLE_EXTENSIONS:
+		item.add_button(
+			COL_PATH,
+			GitotUi.get_icon("ShaderDock"),
+			BUTTON_OPEN_FILE,
+			false,
+			"Open file in editor",
+		)
+		item.set_button_color(COL_PATH, item.get_button_by_id(COL_PATH, BUTTON_OPEN_FILE), Color.DARK_GRAY)
+	return item
+
+
+## Warning look for a Size Guard violator, plus the "Track with LFS" button when LFS is ready.
+func _mark_size_guard(item: TreeItem, path: String) -> void:
+	item.set_icon(COL_PATH, GitotUi.get_icon("StatusWarning"))
+	item.set_icon_modulate(COL_PATH, Color.ORANGE)
+	item.set_tooltip_text(COL_PATH, "⚠ Exceeds your Size Guard - excluded from Staging ⚠")
+	if _lfs != null and _lfs.is_ready():
+		var pattern: String = _lfs_pattern(path)
+		item.add_button(
+			COL_PATH,
+			GitotUi.get_icon("Pin"),
+			BUTTON_TRACK_LFS,
+			false,
+			"Track '%s' with Git LFS and allow staging.\nApplies to ALL matching files." % pattern,
+		)
+
+
+## Last row of a capped list, with the "Show all" button. Not selectable, so no selection loop ever
+## reads a path from it.
+func _add_overflow_row(tree: Tree, root: TreeItem, hidden: int) -> void:
+	var item: TreeItem = tree.create_item(root)
+	item.set_text(COL_PATH, "... %d more files not shown" % hidden)
+	item.set_selectable(COL_PATH, false)
+	item.set_custom_color(COL_PATH, Color.GRAY)
+	item.set_tooltip_text(COL_PATH, "Only the first %d files are listed. That many usually means a missing .gitignore rule." % MAX_ROWS)
+	item.add_button(COL_PATH, GitotUi.get_icon("ArrowDown"), BUTTON_SHOW_ALL, false, "Show all files (slower on very big lists)")
 
 
 ## Text, color and tooltip from STATUS_VISUALS. The path lives in metadata (see _path_of),
@@ -181,14 +226,18 @@ func _on_tree_gui_input(event: InputEvent, tree: Tree) -> void:
 	)
 
 
-## Handles the row buttons: "Track with LFS" (Size Guard rows) or "Open file in editor"
-## (script editor for scripts, inspector/2D/3D for other resources).
+## Handles the row buttons: "Show all" (overflow row), "Track with LFS" (Size Guard rows) or
+## "Open file in editor" (script editor for scripts, inspector/2D/3D for other resources).
 func _on_tree_button_clicked(
 	item: TreeItem,
 	_column: int,
 	id: int,
 	_mouse_button_index: int,
 ) -> void:
+	if id == BUTTON_SHOW_ALL:
+		_show_all[item.get_tree()] = true
+		populate.call_deferred(_parsed) # Deferred: the clicked row is freed by the rebuild.
+		return
 	if id == BUTTON_TRACK_LFS:
 		_lfs.track(_lfs_pattern(_path_of(item))) # Result: GitLfs logs, status refresh re-evaluates the row.
 		return
@@ -201,8 +250,9 @@ func _on_tree_button_clicked(
 	EditorInterface.edit_resource(load(res_path))
 
 
+## Stages every unstaged file, also the ones past MAX_ROWS (Size Guard applies).
 func _on_stage_all_pressed() -> void:
-	_stage_paths(_get_tree_paths(_unstaged_tree))
+	_stage_paths(_all_unstaged_paths())
 
 
 ## Stages repo-relative paths, skipping (and logging) Size Guard violators.
@@ -240,13 +290,11 @@ func _is_empty(tree: Tree) -> bool:
 	return tree.get_root() == null or tree.get_root().get_first_child() == null
 
 
-## Collects every file path currently listed under a tree's root (excludes the root itself).
-func _get_tree_paths(tree: Tree) -> Array[String]:
+## Repo-relative paths of every unstaged entry (see _parsed).
+func _all_unstaged_paths() -> Array[String]:
 	var paths: Array[String] = []
-	var item: TreeItem = tree.get_root().get_first_child() if tree.get_root() else null
-	while item:
-		paths.append(_path_of(item))
-		item = item.get_next()
+	for entry: GitStatusEntry in _parsed["unstaged"]:
+		paths.append(entry.path)
 	return paths
 
 

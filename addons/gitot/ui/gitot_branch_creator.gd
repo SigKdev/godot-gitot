@@ -34,6 +34,7 @@ func _init(
 	_row = row
 	_name_edit = name_edit
 	_confirm_dialog = confirm_dialog
+	_state = state # Was never assigned -> nil crash on branch_label().
 
 	_add_button = add_button
 	_add_button.icon = GitotUi.get_icon("Add")

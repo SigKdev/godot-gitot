@@ -5,8 +5,8 @@ class_name GitotLogPanel
 extends RefCounted
 
 ## Emitted when a history row is selected (click or arrow keys).
-## @param entry: the row's GitLogParser entry (hash/author/date_*/message).
-signal commit_selected(entry: Dictionary)
+## @param entry: the row's commit.
+signal commit_selected(entry: GitCommitEntry)
 
 const COUNT_OPTIONS: PackedInt32Array = [10, 20, 30]
 
@@ -34,18 +34,18 @@ func refresh() -> void:
 
 
 ## Populates the Tree from parsed GitLogParser entries.
-## @param entries: GitLogParser.parse() result ("hash", "author", "date_relative", "date_short", "message").
-func populate(entries: Array[Dictionary]) -> void:
+## @param entries: GitLogParser.parse() result.
+func populate(entries: Array[GitCommitEntry]) -> void:
 	_tree.clear()
 	var root: TreeItem = _tree.create_item()
 
-	for entry: Dictionary in entries:
+	for entry: GitCommitEntry in entries:
 		var item: TreeItem = _tree.create_item(root)
-		item.set_text(0, entry["message"])
-		item.set_text(1, entry["author"])
-		item.set_text(2, entry["date_relative"])
-		item.set_tooltip_text(2, entry["date_short"])
-		item.set_tooltip_text(0, entry["message"]) # Full message on hover if truncated.
+		item.set_text(0, entry.message)
+		item.set_text(1, entry.author)
+		item.set_text(2, entry.date_relative)
+		item.set_tooltip_text(2, entry.date_short)
+		item.set_tooltip_text(0, entry.message) # Full message on hover if truncated.
 		item.set_metadata(0, entry) # Row -> full entry: hash for git, the rest for the panel header.
 
 
@@ -79,4 +79,4 @@ func _on_count_selected(_index: int) -> void:
 func _on_item_selected() -> void:
 	var item: TreeItem = _tree.get_selected()
 	if item:
-		commit_selected.emit(item.get_metadata(0) as Dictionary)
+		commit_selected.emit(item.get_metadata(0) as GitCommitEntry)

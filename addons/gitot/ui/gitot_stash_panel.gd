@@ -72,17 +72,17 @@ func refresh_limits() -> void:
 
 
 ## Populates the Tree from GitStashParser entries.
-func populate(entries: Array[Dictionary]) -> void:
+func populate(entries: Array[GitStashEntry]) -> void:
 	var selected_sha: String = _selected_sha()
 	_tree.clear()
 	var root: TreeItem = _tree.create_item()
-	for entry: Dictionary in entries:
+	for entry: GitStashEntry in entries:
 		var item: TreeItem = _tree.create_item(root)
-		item.set_text(0, entry["name"])
-		item.set_tooltip_text(0, entry["name"]) # Full name on hover if truncated.
-		item.set_text(1, entry["branch"])
-		item.set_text(2, entry["date_relative"])
-		item.set_tooltip_text(2, entry["date_full"])
+		item.set_text(0, entry.name)
+		item.set_tooltip_text(0, entry.name) # Full name on hover if truncated.
+		item.set_text(1, entry.branch)
+		item.set_text(2, entry.date_relative)
+		item.set_tooltip_text(2, entry.date_full)
 		item.set_metadata(0, entry) # Row -> index (pop/drop) and hash (identity).
 
 	# Keep the user's selection across refreshes (focus-in refresh); else the top entry,
@@ -128,16 +128,16 @@ func _on_stash_pressed() -> void:
 func _on_pop_pressed() -> void:
 	var item: TreeItem = _tree.get_selected()
 	if item:
-		_git_engine.stash_pop(_entry(item)["index"])
+		_git_engine.stash_pop(_entry(item).index)
 
 
 func _on_drop_pressed() -> void:
 	var item: TreeItem = _tree.get_selected()
 	if item == null:
 		return
-	var entry: Dictionary = _entry(item)
-	_pending_drop_sha = entry["hash"]
-	_drop_dialog.dialog_text = "Drop stash '%s'?\nThis permanently removes it." % entry["name"]
+	var entry: GitStashEntry = _entry(item)
+	_pending_drop_sha = entry.commit_hash
+	_drop_dialog.dialog_text = "Drop stash '%s'?\nThis permanently removes it." % entry.name
 	_drop_dialog.popup_centered()
 
 
@@ -148,7 +148,7 @@ func _do_drop() -> void:
 	if item == null:
 		GitotLogger.w("Stash no longer on the shelf - drop aborted.")
 		return
-	_git_engine.stash_drop(_entry(item)["index"])
+	_git_engine.stash_drop(_entry(item).index)
 #endregion
 
 
@@ -166,13 +166,13 @@ func _cap() -> int:
 	return GitotSettings.get_value("max_stashes") as int
 
 
-func _entry(item: TreeItem) -> Dictionary:
-	return item.get_metadata(0) as Dictionary
+func _entry(item: TreeItem) -> GitStashEntry:
+	return item.get_metadata(0) as GitStashEntry
 
 
 func _selected_sha() -> String:
 	var item: TreeItem = _tree.get_selected()
-	return _entry(item)["hash"] if item else ""
+	return _entry(item).commit_hash if item else ""
 
 
 ## Row with the given stash SHA, or null (also null for "" and an empty tree).
@@ -181,7 +181,7 @@ func _find_item(sha: String) -> TreeItem:
 	if root == null:
 		return null
 	for item: TreeItem in root.get_children():
-		if _entry(item)["hash"] == sha:
+		if _entry(item).commit_hash == sha:
 			return item
 	return null
 #endregion

@@ -15,9 +15,9 @@ var _status_by_path: Dictionary = { }
 func update(parsed: Dictionary) -> void:
 	_status_by_path.clear()
 	for side: String in SIDES:
-		for entry: Dictionary in parsed[side]:
-			var sides: Dictionary = _status_by_path.get_or_add(entry["path"], { })
-			sides[side] = entry["status"]
+		for entry: GitStatusEntry in parsed[side]:
+			var sides: Dictionary = _status_by_path.get_or_add(entry.path, { })
+			sides[side] = entry.status
 
 
 ## Any file type can have a git status.

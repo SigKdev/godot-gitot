@@ -102,23 +102,48 @@ static func _chunk_args(args: PackedStringArray) -> Array[PackedStringArray]:
 	return chunks
 
 
+## OS.execute() appends one entry per call, so a chunked command yields one entry per chunk.
+## Merges them into a single entry: consumers read output[0] and must also see the failing chunk.
+## No output at all stays empty.
+static func _merge_outputs(output: Array[String]) -> Array[String]:
+	var merged: Array[String] = []
+	if not output.is_empty():
+		merged.append("".join(PackedStringArray(output)))
+	return merged
+
+
 ## True while a write op holds the lock (see _write_busy).
 func is_write_busy() -> bool:
 	return _write_busy
 
 
+## Takes the write lock. False = another write holds it: the caller must drop its call (_drop_write).
+func _try_lock_write() -> bool:
+	if _write_busy:
+		return false
+	_write_busy = true
+	write_busy_changed.emit(true)
+	return true
+
+
+## Logs a write that could not take the lock and still completes it (exit -1), or the caller's busy
+## UI (init, LFS install, pop, push button) never resets.
+func _drop_write(label: String, on_done: Callable) -> void:
+	GitotLogger.i("%s skipped: Git is still finishing the previous change. Try again." % label.capitalize())
+	var skipped: Array[String] = ["Skipped: another git write is running."]
+	on_done.call_deferred(-1, skipped)
+
+
 ## Runs a local git command off the main thread. NOT for push/pull (see run_network).
 ## @param label: command name, used in logs.
 ## @param is_write: mutates index/tree/refs. Takes the write lock; a write is dropped (logged,
-## on_done never called) while another is held. Reads always run.
+## on_done gets -1) while another is held. Reads always run.
 ## @param on_done: Callable(exit_code: int, output: Array[String]), called on the main thread.
+## Always called, also for a dropped write (exit_code -1).
 func run_fast(label: String, args: PackedStringArray, is_write: bool, on_done: Callable) -> void:
-	if is_write:
-		if _write_busy:
-			GitotLogger.i("%s skipped: Git is still finishing the previous change. Try again." % label.capitalize())
-			return
-		_write_busy = true
-		write_busy_changed.emit(true)
+	if is_write and not _try_lock_write():
+		_drop_write(label, on_done)
+		return
 	WorkerThreadPool.add_task(_execute_and_report.bind(args, is_write, on_done))
 
 
@@ -126,8 +151,11 @@ func run_fast(label: String, args: PackedStringArray, is_write: bool, on_done: C
 ## Output is captured via shell redirection to a temp file, since
 ## OS.create_process() alone does not expose stdout/stderr.
 ## @param label: command name, used in the log file name.
+## @param is_write: the command moves HEAD, the tree or the pushed commit (pull, push): same write lock
+## and drop rule as run_fast(). The lock is released right before on_done, so a follow-up write
+## issued from it (push -> tag) can take it.
 ## @param on_done: Callable(exit_code: int, output: Array[String]).
-func run_network(label: String, args: PackedStringArray, on_done: Callable) -> void:
+func run_network(label: String, args: PackedStringArray, is_write: bool, on_done: Callable) -> void:
 	# Time.get_ticks_usec() disambiguates concurrent same-named ops (e.g. two fetches);
 	# the real PID isn't known until after OS.create_process() returns, too late for this path.
 	var log_path: String = ProjectSettings.globalize_path(
@@ -139,18 +167,22 @@ func run_network(label: String, args: PackedStringArray, on_done: Callable) -> v
 	for arg: String in args:
 		if not is_shell_safe(arg):
 			var refused: Array[String] = ["Refused: '%s' has characters that are unsafe for the shell." % arg]
-			on_done.call_deferred(-1, refused)
+			on_done.call_deferred(-1, refused) # Before the lock: nothing to release.
 			return
+
+	if is_write and not _try_lock_write():
+		_drop_write(label, on_done)
+		return
 
 	var shell_invocation: Array = _shell_invocation(args, log_path)
 	var pid: int = OS.create_process(shell_invocation[0], shell_invocation[1])
 	if pid == -1:
 		var failure: Array[String] = ["Failed to start process."]
-		on_done.call_deferred(-1, failure)
+		_finish.call_deferred(-1, failure, is_write, on_done)
 		return
 
 	_active_pids[pid] = log_path
-	_poll_process.call_deferred(pid, log_path, Time.get_ticks_msec(), on_done)
+	_poll_process.call_deferred(pid, log_path, Time.get_ticks_msec(), is_write, on_done)
 
 
 ## Kills any push/pull processes still running and removes their logs. Call on plugin exit.
@@ -166,7 +198,7 @@ func teardown() -> void:
 
 ## Polls a network process until it ends or exceeds "network_timeout_sec",
 ## then reports through on_done. Reads the redirected log once the process ends.
-func _poll_process(pid: int, log_path: String, start_time_ms: int, on_done: Callable) -> void:
+func _poll_process(pid: int, log_path: String, start_time_ms: int, is_write: bool, on_done: Callable) -> void:
 	# teardown() cleared the pid (process killed, log removed): stop polling, never report.
 	if not _active_pids.has(pid):
 		return
@@ -180,11 +212,11 @@ func _poll_process(pid: int, log_path: String, start_time_ms: int, on_done: Call
 			if FileAccess.file_exists(log_path):
 				DirAccess.remove_absolute(log_path) # Orphaned log from the killed process.
 			var timeout_output: Array[String] = ["Timed out after %ds." % timeout_sec]
-			on_done.call(-1, timeout_output)
+			_finish(-1, timeout_output, is_write, on_done)
 			return
 		# Not done yet - poll again after a 0.5s delay.
 		await Engine.get_main_loop().create_timer(0.5).timeout
-		_poll_process(pid, log_path, start_time_ms, on_done)
+		_poll_process(pid, log_path, start_time_ms, is_write, on_done)
 		return
 
 	_active_pids.erase(pid)
@@ -197,7 +229,7 @@ func _poll_process(pid: int, log_path: String, start_time_ms: int, on_done: Call
 	# The marker is the real exit status of the git command (see _shell_invocation).
 	var parsed: Array = _parse_log(log_content)
 	var output: Array[String] = [parsed[1]]
-	on_done.call(0 if parsed[0] else 1, output)
+	_finish(0 if parsed[0] else 1, output, is_write, on_done)
 
 
 ## Runs on a WorkerThreadPool thread.
@@ -211,11 +243,11 @@ func _execute_and_report(args: PackedStringArray, is_write: bool, on_done: Calla
 			break # Report the first failure; don't pile more calls onto it.
 	for i: int in output.size():
 		output[i] = _fix_encoding(output[i])
-	call_deferred("_finish_fast", exit_code, output, is_write, on_done)
+	call_deferred("_finish", exit_code, _merge_outputs(output), is_write, on_done)
 
 
 ## Main thread: releases the write lock (if held) before reporting.
-func _finish_fast(exit_code: int, output: Array[String], is_write: bool, on_done: Callable) -> void:
+func _finish(exit_code: int, output: Array[String], is_write: bool, on_done: Callable) -> void:
 	if is_write:
 		_write_busy = false
 		write_busy_changed.emit(false)

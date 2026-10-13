@@ -6,58 +6,51 @@ class_name GitLfsParser
 extends RefCounted
 
 
-## @return: Array[Dictionary] with "path", "size" (bytes), "present"
-## (true = full object in the working tree, false = pointer only), "oid" (content hash, "" if absent).
-## Empty on blank/invalid input.
-static func parse_files(raw: String) -> Array[Dictionary]:
-	var files: Array[Dictionary] = []
+## @return: Array[GitLfsFile] (path, size, present, oid). Empty on blank/invalid input.
+static func parse_files(raw: String) -> Array[GitLfsFile]:
+	var files: Array[GitLfsFile] = []
 	for item: Variant in _json_list(raw, "files"):
 		if item is Dictionary:
 			var entry: Dictionary = item
 			files.append(
-				{
-					"path": GitPath.unquote(str(entry.get("name", ""))),
-					"size": int(entry.get("size", 0)),
-					"present": bool(entry.get("checkout", false)),
-					"oid": str(entry.get("oid", "")),
-				}
+				GitLfsFile.new(
+					GitPath.unquote(str(entry.get("name", ""))),
+					int(entry.get("size", 0)),
+					bool(entry.get("checkout", false)),
+					str(entry.get("oid", "")),
+				)
 			)
 	return files
 
 
 ## Merges this checkout's LFS files with the upstream tree's (`ls-files @{u}`).
-## Every row gets "local" (full object in the working tree) and "remote" (the same content, compared
+## Every row gets local (full object in the working tree) and remote (the same content, compared
 ## by oid, is in the upstream tree: pushed as of the last fetch). Upstream files missing from this
 ## checkout are appended as remote-only rows. No upstream: pass [] and nothing is "remote".
-static func merge_scopes(local_files: Array[Dictionary], remote_files: Array[Dictionary]) -> Array[Dictionary]:
+static func merge_scopes(local_files: Array[GitLfsFile], remote_files: Array[GitLfsFile]) -> Array[GitLfsFile]:
 	var remote_by_path: Dictionary[String, String] = { }
-	for file: Dictionary in remote_files:
-		remote_by_path[file["path"]] = file["oid"]
-	var merged: Array[Dictionary] = []
+	for file: GitLfsFile in remote_files:
+		remote_by_path[file.path] = file.oid
+	var merged: Array[GitLfsFile] = []
 	var local_paths: Dictionary[String, bool] = { }
-	for file: Dictionary in local_files:
-		local_paths[file["path"]] = true
-		var row: Dictionary = file.duplicate()
-		row["local"] = file["present"]
+	for file: GitLfsFile in local_files:
+		local_paths[file.path] = true
 		# An unknown oid (older git-lfs) falls back to "same path = same file".
-		var remote_oid: String = remote_by_path.get(file["path"], "")
-		row["remote"] = remote_by_path.has(file["path"]) and (
-			remote_oid == file["oid"] or remote_oid.is_empty() or file["oid"].is_empty()
+		var remote_oid: String = remote_by_path.get(file.path, "")
+		var is_remote: bool = remote_by_path.has(file.path) and (
+			remote_oid == file.oid or remote_oid.is_empty() or file.oid.is_empty()
 		)
-		merged.append(row)
-	for file: Dictionary in remote_files:
-		if not local_paths.has(file["path"]):
-			var row: Dictionary = file.duplicate()
-			row["local"] = false
-			row["remote"] = true
-			merged.append(row)
+		merged.append(file.with_scope(file.present, is_remote))
+	for file: GitLfsFile in remote_files:
+		if not local_paths.has(file.path):
+			merged.append(file.with_scope(false, true))
 	return merged
 
 
 ## Totals for the LFS dashboard, from merge_scopes() rows. Sizes are in bytes.
 ## "remote_size" = what origin's tree holds as of the last fetch: an ESTIMATE of GitHub storage
 ## (current files only; GitHub also counts old versions). The real quota is not queried.
-static func summarize(files: Array[Dictionary]) -> Dictionary:
+static func summarize(files: Array[GitLfsFile]) -> Dictionary:
 	var stats: Dictionary = {
 		"count": files.size(), "total": 0,
 		"local": 0, "local_size": 0, "remote": 0, "remote_size": 0,
@@ -66,10 +59,10 @@ static func summarize(files: Array[Dictionary]) -> Dictionary:
 		"missing": 0, # Neither: pointer here, not found on origin.
 		"largest_path": "", "largest_size": 0,
 	}
-	for file: Dictionary in files:
-		var size: int = file["size"]
-		var local: bool = file["local"]
-		var remote: bool = file["remote"]
+	for file: GitLfsFile in files:
+		var size: int = file.size
+		var local: bool = file.local
+		var remote: bool = file.remote
 		stats["total"] += size
 		if local:
 			stats["local"] += 1
@@ -87,7 +80,7 @@ static func summarize(files: Array[Dictionary]) -> Dictionary:
 			stats["missing"] += 1
 		if size > stats["largest_size"]:
 			stats["largest_size"] = size
-			stats["largest_path"] = file["path"]
+			stats["largest_path"] = file.path
 	return stats
 
 

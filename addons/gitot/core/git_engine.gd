@@ -1,6 +1,7 @@
 ## git_engine.gd
-## Git command API: one method per operation, results through command_completed.
-## Process execution is delegated to GitRunner.
+## Git command API: one method per operation, results through command_completed (broadcast).
+## A caller that wants only its own result passes an `on_done` Callable(exit_code, output) instead of
+## filtering the broadcast. Process execution is delegated to GitRunner.
 class_name GitEngine
 extends RefCounted
 
@@ -128,7 +129,10 @@ const INVALID_TAG_PATTERN: String = r"[\x00-\x20\x7f~^:?*\[\\]|\.\.|@\{|^@$|^[-/
 
 ## Commands that mutate the index, working tree or refs. Only these need mutual exclusion
 ## (write lock in GitRunner); read-only commands (STATUS, LOG, DIFF, BRANCHES, ...) may run
-## concurrently on WorkerThreadPool.
+## concurrently on WorkerThreadPool. PUSH and PULL are network commands but sit here too: a pull
+## merges into the checked-out branch, and a push is followed by a tag on whatever HEAD is by then.
+## Not listed on purpose: FETCH, PUSH_TAG, DELETE_REMOTE_BRANCH (they touch neither HEAD, tree nor
+## index) and LFS_PULL (can run for minutes on big assets; it only fills the files already tracked).
 const WRITE_COMMANDS: Array[Command] = [
 	Command.COMMIT,
 	Command.AMEND,
@@ -148,6 +152,8 @@ const WRITE_COMMANDS: Array[Command] = [
 	Command.LFS_PRUNE,
 	Command.INIT,
 	Command.REMOTE_ADD,
+	Command.PUSH,
+	Command.PULL,
 ]
 
 ## Compiled once on first use. Lazy because a static initializer is not reliably re-run on editor
@@ -263,12 +269,20 @@ static func _first_line(args: PackedStringArray) -> String:
 ## Runs a fast, local git command (read or write) off the main thread.
 ## Use for: status, diff, add, restore, commit. [b]NOT for push/pull[/b] [i](see run_network)[/i].
 ## @param context: optional per-call data, returned unchanged in command_completed.
-func run_fast(command: Command, args: PackedStringArray, context: Dictionary = { }) -> void:
+## @param on_done: optional Callable(exit_code: int, output: Array[String]) for this call's own result.
+## Called after command_completed; bound arguments (bind()) are appended, so the request it answers
+## travels with it. Skipped if its object was freed meanwhile.
+func run_fast(
+	command: Command,
+	args: PackedStringArray,
+	context: Dictionary = { },
+	on_done: Callable = Callable(),
+) -> void:
 	_runner.run_fast(
 		Command.keys()[command],
 		args,
 		command in WRITE_COMMANDS,
-		_relay.bind(command, context),
+		_relay.bind(command, context, on_done),
 	)
 
 
@@ -278,21 +292,33 @@ func run_fast(command: Command, args: PackedStringArray, context: Dictionary = {
 ## @param args: git subcommand arguments (e.g. ["push", "origin", "main"]). Every argument must pass
 ## GitRunner.is_shell_safe(), otherwise nothing runs and the command completes with exit code -1.
 ## @param context: optional per-call data, returned unchanged in command_completed.
-func run_network(command: Command, args: PackedStringArray, context: Dictionary = { }) -> void:
-	_runner.run_network(Command.keys()[command], args, _relay.bind(command, context))
+## @param on_done: optional per-call result callback, see run_fast().
+func run_network(
+	command: Command,
+	args: PackedStringArray,
+	context: Dictionary = { },
+	on_done: Callable = Callable(),
+) -> void:
+	_runner.run_network(
+		Command.keys()[command],
+		args,
+		command in WRITE_COMMANDS,
+		_relay.bind(command, context, on_done),
+	)
 
 
 ## Requests the "origin" remote URL. Async: result arrives via command_completed(REMOTE_URL, ...),
 ## decode it with remote_url_of().
-## @param context: optional, returned unchanged so a caller can recognise its own request.
-func request_remote_url(context: Dictionary = { }) -> void:
-	run_fast(Command.REMOTE_URL, ["remote", "get-url", "origin"], context)
+## @param on_done: optional per-call result callback, see run_fast(): a caller that only wants its own
+## answer (not the dock's) passes one.
+func request_remote_url(on_done: Callable = Callable()) -> void:
+	run_fast(Command.REMOTE_URL, ["remote", "get-url", "origin"], { }, on_done)
 
 
 ## Requests HEAD's full commit message (subject + body), for tag-message prefill.
-## Async: result arrives via command_completed(Command.LAST_COMMIT_MSG, ...).
-func request_last_commit_message() -> void:
-	run_fast(Command.LAST_COMMIT_MSG, ["log", "-1", "--pretty=%B"])
+## Async: the caller's on_done(exit_code, output) answers (and command_completed broadcasts).
+func request_last_commit_message(on_done: Callable = Callable()) -> void:
+	run_fast(Command.LAST_COMMIT_MSG, ["log", "-1", "--pretty=%B"], { }, on_done)
 
 
 ## Lists the last `count` commits on the current branch. Fast/local op.
@@ -315,9 +341,9 @@ func get_reflog() -> void:
 
 
 ## Requests the project folder's path inside its repository ("" = the project IS the repo root).
-## Async: result arrives via command_completed(SHOW_PREFIX, ...).
-func request_repo_prefix() -> void:
-	run_fast(Command.SHOW_PREFIX, ["rev-parse", "--show-prefix"])
+## Async: the caller's on_done(exit_code, output) answers (and command_completed broadcasts).
+func request_repo_prefix(on_done: Callable = Callable()) -> void:
+	run_fast(Command.SHOW_PREFIX, ["rev-parse", "--show-prefix"], { }, on_done)
 
 
 ## Requests the checked-out branch's name (`branch --show-current`, Git >= 2.22). Unlike `branch -a`
@@ -329,8 +355,8 @@ func request_current_branch() -> void:
 
 ## Creates a repository in the project folder with DEFAULT_BRANCH as its first branch (`git init -b`,
 ## Git >= 2.28). Local write op. Only meant for a folder without ".git" (the dock checks first).
-func init_repo() -> void:
-	run_fast(Command.INIT, ["init", "-b", DEFAULT_BRANCH])
+func init_repo(on_done: Callable = Callable()) -> void:
+	run_fast(Command.INIT, ["init", "-b", DEFAULT_BRANCH], { }, on_done)
 
 
 ## Adds url as the remote "origin" (`git remote add origin <url>`). Local write op: nothing is contacted.
@@ -418,18 +444,20 @@ static func is_safe_branch_name(branch_name: String) -> bool:
 ## To undo: `git push origin <old tip sha>:refs/heads/<name>` (the caller logs the sha).
 ## Completes with exit code -1 and no git call when the name is unsafe.
 ## @param branch_name: name WITHOUT the "origin/" prefix.
-func delete_remote_branch(branch_name: String) -> void:
+## @param on_done: optional on_done(exit_code, output), also called for the unsafe-name refusal.
+func delete_remote_branch(branch_name: String, on_done: Callable = Callable()) -> void:
 	var context: Dictionary = { "branch": branch_name }
 	if not is_safe_branch_name(branch_name):
 		var failure: Array[String] = [
 			"Branch name '%s' has unsupported characters: delete it from a terminal or on GitHub." % branch_name,
 		]
-		_relay.call_deferred(-1, failure, Command.DELETE_REMOTE_BRANCH, context)
+		_relay.call_deferred(-1, failure, Command.DELETE_REMOTE_BRANCH, context, on_done)
 		return
 	run_network(
 		Command.DELETE_REMOTE_BRANCH,
 		["push", "origin", "--delete", "refs/heads/" + branch_name],
 		context,
+		on_done,
 	)
 
 #endregion
@@ -497,13 +525,13 @@ func stash_drop(index: int) -> void:
 
 
 ## Fetches updates from origin without touching the working tree. Network op.
-func fetch() -> void:
-	run_network(Command.FETCH, ["fetch", "origin"])
+func fetch(on_done: Callable = Callable()) -> void:
+	run_network(Command.FETCH, ["fetch", "origin"], { }, on_done)
 
 
 ## Pulls changes from the remote tracking branch into the current branch. Network op.
-func pull() -> void:
-	run_network(Command.PULL, ["pull"])
+func pull(on_done: Callable = Callable()) -> void:
+	run_network(Command.PULL, ["pull"], { }, on_done)
 
 
 ## Compares local HEAD against its upstream. Fast/local op (reads refs only, no network), safe
@@ -517,27 +545,34 @@ func get_ahead_behind() -> void:
 ## Runs a full-context diff (-U3) for the bottom-panel diff viewer.
 ## Separate from the gutter's -U0 Command.DIFF: different consumer, different parser.
 ## @param path: absolute (globalized) file path, like the gutter's DIFF.
-func diff_full(path: String) -> void:
-	run_fast(Command.DIFF_FULL, ["diff", "-U3", "--no-ext-diff", "HEAD", "--", path])
+## @param on_done: per-call result callback, see run_fast().
+func diff_full(path: String, on_done: Callable = Callable()) -> void:
+	run_fast(Command.DIFF_FULL, ["diff", "-U3", "--no-ext-diff", "HEAD", "--", path], { }, on_done)
 
 
 ## Lists files changed by one commit ("<letter>\t<path>" per line). Async.
 ## --format= drops the commit header; --no-renames matches STATUS_ARGS (renames = D + A).
-## @param hash: commit hash (abbreviated is fine).
-func get_commit_files(commit_hash: String) -> void:
+## @param commit_hash: commit hash (abbreviated is fine).
+## @param on_done: per-call result callback, see run_fast().
+func get_commit_files(commit_hash: String, on_done: Callable = Callable()) -> void:
 	run_fast(
 		Command.COMMIT_FILES,
 		["show", "--name-status", "--format=", "--no-renames", commit_hash],
+		{ },
+		on_done,
 	)
 
 
 ## Runs a full-context diff (-U3) of ONE file inside a commit, like `git show`.
 ## Output is fed to GitDiffParser.parse_full() (same consumer as DIFF_FULL).
 ## @param path: repo-relative path, as returned by get_commit_files().
-func get_commit_file_diff(commit_hash: String, path: String) -> void:
+## @param on_done: per-call result callback, see run_fast().
+func get_commit_file_diff(commit_hash: String, path: String, on_done: Callable = Callable()) -> void:
 	run_fast(
 		Command.DIFF_COMMIT,
 		["show", "-U3", "--no-ext-diff", "--no-renames", "--format=", commit_hash, "--", path],
+		{ },
+		on_done,
 	)
 
 
@@ -586,6 +621,15 @@ func teardown() -> void:
 	_runner.teardown()
 
 
-## Runner callback -> public signal. bind() appends `command` and `context` after (exit_code, output).
-func _relay(exit_code: int, output: Array[String], command: Command, context: Dictionary) -> void:
+## Runner callback -> public signal, then the caller's own on_done. bind() appends `command`, `context`
+## and `on_done` after (exit_code, output).
+func _relay(
+	exit_code: int,
+	output: Array[String],
+	command: Command,
+	context: Dictionary,
+	on_done: Callable = Callable(),
+) -> void:
 	command_completed.emit(command, exit_code, output, context)
+	if on_done.is_valid(): # False for the default Callable() and for a freed target.
+		on_done.call(exit_code, output)

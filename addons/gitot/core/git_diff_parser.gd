@@ -10,6 +10,15 @@ enum LineState {
 	MODIFIED,
 }
 
+## Kind of one line in the diff viewer. parse_full() yields CONTEXT, ADD and DEL; HEADER is the "@@"
+## line the viewer builds itself for each hunk.
+enum LineType {
+	CONTEXT,
+	ADD,
+	DEL,
+	HEADER,
+}
+
 ## Lazy-compiled: a static initializer is not reliably re-run on editor hot-reload
 ## (the var then stays null).
 static var _new_hunk_regex: RegEx
@@ -58,7 +67,7 @@ static func parse(raw_diff: String) -> Dictionary:
 ## One entry per `diff --git` block; used by the working-tree diff and the commit diff.
 ## Line numbers are 1-based, as in git.
 ## @return: [{file: String, hunks: [{old_start: int, new_start: int, lines: [{type, text}]}]}]
-##   type is "add" / "del" / "context". Input without a `diff --git` block yields an empty Array.
+##   type is a LineType (ADD / DEL / CONTEXT). Input without a `diff --git` block yields an empty Array.
 static func parse_full(raw_diff: String) -> Array[Dictionary]:
 	var files: Array[Dictionary] = []
 	var current_file: Dictionary = { }
@@ -89,11 +98,11 @@ static func parse_full(raw_diff: String) -> Array[Dictionary]:
 			if line.begins_with("\\"):
 				continue # "\ No newline at end of file": git metadata, not a content line.
 			if line.begins_with("+"):
-				current_hunk["lines"].append({ "type": "add", "text": line.substr(1) })
+				current_hunk["lines"].append({ "type": LineType.ADD, "text": line.substr(1) })
 			elif line.begins_with("-"):
-				current_hunk["lines"].append({ "type": "del", "text": line.substr(1) })
+				current_hunk["lines"].append({ "type": LineType.DEL, "text": line.substr(1) })
 			else:
-				current_hunk["lines"].append({ "type": "context", "text": line.substr(1) })
+				current_hunk["lines"].append({ "type": LineType.CONTEXT, "text": line.substr(1) })
 
 	_flush_hunk(current_file, current_hunk)
 	if not current_file.is_empty():

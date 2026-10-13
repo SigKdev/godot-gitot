@@ -2,6 +2,48 @@
 
 All notable changes to Gitot. Latest first.
 
+## v0.17.1
+
+fix: stuck buttons, failed status, push/pull lock, Issues host check, token hygiene - refactor: typed entries, result handlers split from the router
+
+Tested with GdUnit4 (25 suites, 212 tests, 0 failures) and by hand in the editor.
+
+feat: setting "Echo log to Output" (`echo_to_output`, default on)
+
+- Off: Gitot's log lines appear only in the Gitot console, not in Godot's Output panel, so Gitot can be silenced without filtering Godot's whole output. Fatal errors (Gitot cannot work) always print.
+
+fix: git operations
+
+- A write dropped because another write was running now completes (exit -1, "Skipped: another git write is running."). The Initialize, LFS install and stash pop buttons no longer stay busy.
+- Push and Pull take the write lock (they were outside it). While one runs, Commit shows "Working..." and the stage buttons are disabled, so a commit or switch cannot slip in between a push and its tag, or change the branch a pull merges into. Fetch, tag push, delete on origin and LFS pull stay outside: LFS pull can run for minutes, and git's own `index.lock` covers its short checkout.
+- A path list too long for one command (staging many files) is split in chunks. The chunk outputs are now merged into one, so a failure in a later chunk shows git's error.
+- A failed `git status` (stale lock, "dubious ownership") no longer repaints as a clean tree: it logs the failure and keeps the lists. A failed `git log` keeps the previous history, silently (it always fails before the first commit).
+
+fix: GitHub
+
+- Issues: only `github.com` remotes. Before, a GitLab or Gitea remote `alice/game` fetched `github.com/alice/game` with your token and showed another repository's issues. Now it logs "Issues are only available for repositories hosted on github.com." and fetches nothing.
+- A request that fails to start no longer leaves the panel on "Loading...".
+- A token GitHub rejects (HTTP 401) is deleted: before, a revoked token stayed on disk and was sent again. On Linux/macOS the token file is restricted to your user (0600) after each save. It is still stored in plaintext, not encrypted: see the README.
+
+perf: low-end PCs
+
+- The editor-focus refresh is skipped when the last full refresh is under 3 seconds old. The Refresh button and the refresh after a command never wait.
+- The Staged / Unstaged lists draw their first 500 rows, then "N more files not shown" with a **Show all** button. **Stage All** stages every file, shown or not. The row selection survives a refresh. The Size Guard skips deleted rows.
+- The Issues tab and the Branches list no longer re-parse the status and branch results the router already parsed.
+
+refactor:
+
+- Typed entries replace dictionaries: `GitStatusEntry`, `GitCommitEntry`, `GitStashEntry`, `GitLfsFile` (same pattern as `GitBranchEntry`). `GitDiffParser.LineType` replaces the `"add"` / `"del"` / `"context"` strings.
+- `GitEngine` commands take an optional `on_done(exit_code, output)`. The code that started a command gets its own result (diff views, LFS list, remote URL, Fetch, Pull, delete on origin, Commit / Amend, init, repo probe, last commit message). `command_completed` still broadcasts. This removed the hand-rolled latest-wins gates; the commit diff keeps one request in flight and refetches the newest state.
+- `GitotResultRouter` went from 587 to about 320 lines. Branch and sync results moved to `GitotBranchResults` and `GitotSyncResults` (`RefCounted`, a `COMMANDS` list and `handle()`), shared texts to `GitotMessages`. The dock no longer pre-handles commands: it passes every result to `route()`.
+
+docs:
+
+- README: Git 2.32+ stated (badge and requirements), the Output panel note corrected (the console also echoes to it), `github.com`-only Issues, plaintext token note.
+- `plugin.cfg`: unbalanced parenthesis in the description.
+- Wiki: Architecture (parsers, router, handlers, `on_done`), Credentials, Issues Tracker, Commit and Sync, Settings, Troubleshooting, Implementation Details, Testing.
+<hr>
+
 ## v0.17.0
 
 feat: Initialize repository, github issue header - fix: crash outside a repository, unstage before first commit, amend confirmation

@@ -15,7 +15,7 @@ const KEY_TOKEN: String = "pat"
 static func save_token(token: String) -> bool:
 	var config: ConfigFile = ConfigFile.new()
 	config.set_value(SECTION, KEY_TOKEN, token)
-	var err: Error = config.save(CONFIG_PATH)
+	var err: Error = _save(config)
 	if err != OK:
 		GitotLogger.e("Could not save the GitHub token: %s." % error_string(err))
 		return false
@@ -35,4 +35,16 @@ static func load_token() -> String:
 static func clear_token() -> void:
 	var config: ConfigFile = ConfigFile.new()
 	config.set_value(SECTION, KEY_TOKEN, "")
-	config.save(CONFIG_PATH)
+	_save(config)
+
+
+## Saves the config, then restricts the file to its owner (0600) where Unix permissions exist (Windows
+## has none). Re-applied on every save: saving can recreate the file with default permissions.
+static func _save(config: ConfigFile) -> Error:
+	var err: Error = config.save(CONFIG_PATH)
+	if err == OK and OS.get_name() != "Windows":
+		FileAccess.set_unix_permissions(
+			ProjectSettings.globalize_path(CONFIG_PATH),
+			FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_WRITE_OWNER,
+		)
+	return err

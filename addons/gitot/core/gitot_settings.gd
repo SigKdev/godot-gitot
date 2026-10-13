@@ -21,6 +21,7 @@ const DEFAULTS: Dictionary = {
 	"github_issues_enabled": true,
 	"lfs_note_visible": true,
 	"status_letters": false,
+	"echo_to_output": true,
 }
 
 ## In-memory cache, populated on first read - avoids a ConfigFile disk load per get_value() call.

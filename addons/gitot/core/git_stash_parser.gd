@@ -11,10 +11,9 @@ const SUBJECT_PATTERN: String = "^(?:WIP on|On) ([^:]+): (.*)$"
 static var _subject_re: RegEx = null
 
 
-## @return: Array[Dictionary] with keys "index", "hash", "date_relative",
-## "date_full", "branch", "name". Empty on blank input (no stashes).
-static func parse(raw: String) -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
+## @return: Array[GitStashEntry]. Empty on blank input (no stashes).
+static func parse(raw: String) -> Array[GitStashEntry]:
+	var entries: Array[GitStashEntry] = []
 	var text: String = raw.strip_edges()
 	if text.is_empty():
 		return entries
@@ -24,15 +23,15 @@ static func parse(raw: String) -> Array[Dictionary]:
 		if fields.size() != 5:
 			continue # Malformed line: skip it.
 		var parts: PackedStringArray = _split_subject(fields[4])
-		entries.append({
-			# "stash@{n}" -> n. Parsed, not counted, so a skipped line can't shift indices.
-			"index": fields[0].trim_prefix("stash@{").trim_suffix("}").to_int(),
-			"hash": fields[1],
-			"date_relative": fields[2],
-			"date_full": fields[3],
-			"branch": parts[0],
-			"name": parts[1],
-		})
+		var entry: GitStashEntry = GitStashEntry.new()
+		# "stash@{n}" -> n. Parsed, not counted, so a skipped line can't shift indices.
+		entry.index = fields[0].trim_prefix("stash@{").trim_suffix("}").to_int()
+		entry.commit_hash = fields[1]
+		entry.date_relative = fields[2]
+		entry.date_full = fields[3]
+		entry.branch = parts[0]
+		entry.name = parts[1]
+		entries.append(entry)
 	return entries
 
 

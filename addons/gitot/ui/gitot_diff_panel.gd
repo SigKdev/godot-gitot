@@ -108,7 +108,7 @@ func jump_to_source_line(source_line: int) -> void:
 		var new_file_line: int = hunk["new_start"]
 		var offset: int = 0
 		for entry: Dictionary in hunk["lines"]:
-			if entry["type"] != "del":
+			if entry["type"] != GitDiffParser.LineType.DEL:
 				if new_file_line == source_line:
 					if _collapsed_hunks.has(idx):
 						_collapsed_hunks.erase(idx)
@@ -142,16 +142,16 @@ func show_commit_files(files: Array[Dictionary]) -> void:
 
 ## Commit header: message / author / exact date / hash, same fields as the history list.
 ## BBCode is escaped: commit messages and author names are free text and may contain "[".
-func show_commit_info(entry: Dictionary) -> void:
-	var message: String = String(entry["message"]).replace("[", "[lb]")
-	var author: String = String(entry["author"]).replace("[", "[lb]")
+func show_commit_info(entry: GitCommitEntry) -> void:
+	var message: String = entry.message.replace("[", "[lb]")
+	var author: String = entry.author.replace("[", "[lb]")
 	%CommitInfoLabel.text = "[b]%s[/b]  ·  %s  ·  %s  ·  [color=gray]%s[/color]" % [
 		message,
 		author,
-		entry["date_short"],
-		entry["hash"],
+		entry.date_short,
+		entry.commit_hash,
 	]
-	_current_commit_hash = entry["hash"]
+	_current_commit_hash = entry.commit_hash
 	%CommitInfoLabel.visible = true
 
 
@@ -161,9 +161,9 @@ func _make_header_line(hunk: Dictionary) -> Dictionary:
 	var old_count: int = 0
 	var new_count: int = 0
 	for entry: Dictionary in hunk["lines"]:
-		if entry["type"] != "add":
+		if entry["type"] != GitDiffParser.LineType.ADD:
 			old_count += 1
-		if entry["type"] != "del":
+		if entry["type"] != GitDiffParser.LineType.DEL:
 			new_count += 1
 	var text: String = "@@ -%d,%d +%d,%d @@" % [
 		hunk["old_start"],
@@ -171,7 +171,7 @@ func _make_header_line(hunk: Dictionary) -> Dictionary:
 		hunk["new_start"],
 		new_count,
 	]
-	return { "type": "header", "text": text }
+	return { "type": GitDiffParser.LineType.HEADER, "text": text }
 
 
 func _make_numbered_lines(hunk: Dictionary) -> Array[Dictionary]:
@@ -181,10 +181,10 @@ func _make_numbered_lines(hunk: Dictionary) -> Array[Dictionary]:
 	for entry: Dictionary in hunk["lines"]:
 		var numbered: Dictionary = entry.duplicate()
 		match entry["type"]:
-			"del":
+			GitDiffParser.LineType.DEL:
 				numbered["line_no"] = old_line
 				old_line += 1
-			"add":
+			GitDiffParser.LineType.ADD:
 				numbered["line_no"] = new_line
 				new_line += 1
 			_: # context
@@ -244,21 +244,21 @@ func _rebuild_view() -> void:
 
 func _style_line(i: int, entry: Dictionary) -> void:
 	match entry["type"]:
-		"header":
+		GitDiffParser.LineType.HEADER:
 			_code_edit.set_line_background_color(i, COLOR_HEADER)
-		"add":
+		GitDiffParser.LineType.ADD:
 			_code_edit.set_line_background_color(i, COLOR_ADDED)
 			_code_edit.set_line_gutter_text(i, _sign_gutter_idx, "+")
 			_code_edit.set_line_gutter_item_color(i, _sign_gutter_idx, Color.LIME_GREEN)
 			_code_edit.set_line_gutter_text(i, _line_num_gutter_idx, str(entry["line_no"]))
 			_code_edit.set_line_gutter_item_color(i, _line_num_gutter_idx, Color(0.5, 0.5, 0.5))
-		"del":
+		GitDiffParser.LineType.DEL:
 			_code_edit.set_line_background_color(i, COLOR_DELETED)
 			_code_edit.set_line_gutter_text(i, _sign_gutter_idx, "-")
 			_code_edit.set_line_gutter_item_color(i, _sign_gutter_idx, Color.RED)
 			_code_edit.set_line_gutter_text(i, _line_num_gutter_idx, str(entry["line_no"]))
 			_code_edit.set_line_gutter_item_color(i, _line_num_gutter_idx, Color(0.5, 0.5, 0.5))
-		"context":
+		GitDiffParser.LineType.CONTEXT:
 			_code_edit.set_line_gutter_text(i, _line_num_gutter_idx, str(entry["line_no"]))
 			_code_edit.set_line_gutter_item_color(i, _line_num_gutter_idx, Color(0.5, 0.5, 0.5))
 

@@ -1,6 +1,6 @@
 ## gitot_logger.gd
-## Static logger: formatted (BBCode) lines to the Output panel, a capped history and an optional
-## UI listener. EXTREME also goes to printerr.
+## Static logger: formatted (BBCode) lines to the Output panel (setting echo_to_output), a capped history
+## and an optional UI listener. EXTREME always reaches the Output panel and printerr.
 class_name GitotLogger
 extends RefCounted
 
@@ -116,8 +116,9 @@ static func _print(message: String, level: Level) -> void:
 	if _on_log.is_valid():
 		_on_log.call(formatted)
 
+	# Fatal lines always reach Godot's Output: Gitot may be unable to show its own console.
 	if level == Level.EXTREME:
 		print_rich(formatted)
 		printerr("Gitot: " + message)
-	else:
+	elif GitotSettings.get_value("echo_to_output"):
 		print_rich(formatted)

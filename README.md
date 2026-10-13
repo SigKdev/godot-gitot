@@ -7,11 +7,11 @@
 src="https://img.shields.io/badge/Sponsor-30363D?logo=GitHub-Sponsors" alt="Sponsor SigKgames"></a> <a
 href="https://godotengine.org/"><img
 src="https://img.shields.io/badge/Godot-4.7+-478CBF?logo=godotengine&logoColor=478CBF" alt="Godot 4.7"></a> <a
-href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.3+-F03C2E?logo=git&logoColor=F03C2E"
+href="https://git-scm.com/"><img src="https://img.shields.io/badge/GIT-2.32+-F03C2E?logo=git&logoColor=F03C2E"
 alt="Git"></a> <a href="https://git-lfs.com"><img
 src="https://img.shields.io/badge/GIT_LFS-3.4+-F64935?logo=gitlfs&logoColor=F64935" alt="Git LFS"></a> <a
 href="https://store.godotengine.org/asset/sigk/gitot/"><img
-src="https://img.shields.io/badge/Gitot-0.17.0-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
+src="https://img.shields.io/badge/Gitot-0.17.1-B8195F" alt="Gitot"></a> <a href="LICENSE"><img
 src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -21,9 +21,9 @@ src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
   Installation</kbd></a> &nbsp;&nbsp; <a href="CHANGELOG.md"><kbd>🗃 Changelog</kbd></a> &nbsp;&nbsp; <a href="wiki"><kbd>📖 Wiki</kbd></a>
 </p>
 
-**Gitot** is a lightweight Git workflow plugin for the Godot 4 editor **intended for solo developers** who
+**Gitot** is a Git workflow plugin with LFS support **intended for solo developers** who
 want fast, reliable Git operations (stage/unstage, commit, stash/pop, fetch/push/pull), inline diff gutter,
-full diff viewer, full LFS support and issue tracker without leaving the editor.
+full diff viewer, and issue tracker without leaving the editor.
 
 **Gitot** wraps the system `git` binary directly via `OS.execute()`, in pure GDScript, with no GDExtension and
 no bundled `libgit2`. It inherits your existing SSH/credential setup and the full Git feature set without
@@ -53,7 +53,7 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
 
 ## 🧬 Features
 
-- **Initialze Git Repo:** In a project with no repository the dock offers Initialize repository button
+- **Initialize Git Repo:** In a project with no repository the dock offers an **Initialize repository** button
   (`git init -b main` and a default `.gitignore` if not present). The first **Push** asks for 
   the remote URL (https or ssh) and adds `origin`, then pushes as usual.
 
@@ -103,7 +103,7 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
   flagging oversized files with a warning icon. Files covered by an LFS rule are exempt (when LFS is ready),
   and a **Track with LFS** button on a flagged file adds the rule in one click.
 
-- **GitHub Issues Tracker Board:** Split list/detail view of the repo's open issues (requires a [PAT](#github-personal-access-token));
+- **GitHub Issues Tracker Board:** Split list/detail view of the repo's open issues (requires a [PAT](#github-personal-access-token) and a `github.com` remote);
   opt-out in settings. Header: `owner/repo · N open · N Bug · N High priority`, refresh, Clear PAT.
   Sortable column list (number, title, date, type, priority, labels),
   Type/Priority/Label filters, full issue detail (metadata, colored labels, Markdown body, Open in Browser).
@@ -118,11 +118,15 @@ Control), no VCS plugin needed, nothing to configure there. Gitot talks to your 
   setting. Hovering a changed file in the FileSystem dock adds its git status (staged / unstaged) to Godot's
   tooltip.
 
+- **Large change lists:** each Staged / Unstaged list draws its first 500 rows, then a **Show all** row.
+  **Stage All** always stages every file, shown or not. The selection survives a refresh.
+
 - **Accents & Unicode:** files with accented or non-Latin names (`Lumière.mp3`) can be staged,
   and accented text displays correctly in diffs, commit history and stash names.
 
-- **Gitot Logger:** Git and Gitot output are routed through Gitot's own dock logger to keep the Godot output
-  panel clean. The console's **Info** menu: Reflog (last 20), Repo size (`git count-objects -vH`), Copy log,
+- **Gitot Logger:** Git and Gitot output are shown in Gitot's own dock console, and echoed to Godot's Output panel unless
+  you switch **Echo log to Output** off in the settings (fatal errors always print).
+  The console's **Info** menu: Reflog (last 20), Repo size (`git count-objects -vH`), Copy log,
   Clear log. After a big commit only the summary line (`N files changed, ...`) is printed, not the file list.
 
 - **Explicit messages:** every result names what it concerns (`Commits pushed to 'owner/repo' on branch 'dev'.`,
@@ -139,7 +143,7 @@ More details per feature: [Wiki](../../wiki).
 #### Requirements
 
 - Godot 4.7+
-- `git` installed and available on your system `PATH`.
+- `git` **2.32+** installed and available on your system `PATH`.
 - `git-lfs` **(optional but Recommended, only needed for the Gitot LFS panel)**.
 - A GitHub Personal Access Token ([PAT](#github-personal-access-token)), **(optional, only needed for the Issues integration)**.
 
@@ -181,7 +185,10 @@ Only needed to use the **GitHub Issues Tracker Board** feature.
 > 
 > **This is not encrypted.** Godot/GDScript cannot access your OS-level credential store (Windows Credential
 > Manager, macOS Keychain, etc.) without a native extension, which is outside this plugin's scope. **Anyone
-> with access to your local user account can read this file.** And the Godot hot-reload and `_exit_tree()`
+> with access to your local user account can read this file.**
+> On Linux/macOS the file is restricted to your user (0600) after each save; on Windows no
+> permission change is made. A token GitHub rejects (revoked or expired, HTTP 401) is deleted automatically.
+> And the Godot hot-reload and `_exit_tree()`
 > make it not possible to auto clear the PAT when uninstalling/disabling Gitot. **You must clear your token
 > before uninstalling/disabling**
 
@@ -189,8 +196,8 @@ Only needed to use the **GitHub Issues Tracker Board** feature.
 > 
 > **PAT Recommendations:**
 > 
-> - Use a **fine-grained token** scoped to Repo Access and with Issues Access read/write only. **Never an
-> admin or org-wide token!**
+> - Use a **fine-grained token** scoped to Repo Access and with Issues Access read/write only.
+> **Never an admin or org-wide token!**
 > - Use the **Clear Token** button in the Gitot Issues Panel toolbar **before
 > uninstalling or disabling the plugin**, or when working on a shared machine!
 > - If you do not intend to use this feature, opt-out in settings to unload it completely!
@@ -220,16 +227,16 @@ project.
 
 ## 🧪 Testing
 
-Last run (v0.17.0): **22 suites, 179 tests, 0 failures** (Godot 4.7.2, Windows).
+Last run (v0.17.1): **25 suites, 212 tests, 0 failures** (Godot 4.7.2, Windows).
 
 - **Automated:** [GdUnit4](https://github.com/MikeSchulze/gdUnit4) cover the pure logic: parsers
-  (status, diff, log, stash, branch, LFS, paths), the runner (shell contract, encoding, shell-safety whitelist),
+  (status, diff, log, stash, branch, LFS, paths), the runner (shell contract, encoding, shell-safety whitelist, write lock, chunk merge), the result handlers (router, branch, sync),
   the engine (command classes, write lock, branch-name safety, file-list helpers), the repo sync state,
   settings clamping, the push planner, the log messages (failure shape, result lines), and the UI helpers (sync symbols, counts, tooltips, titles,
   LFS dashboard texts and stats, issue header).
 - **Manual:** the UI flows were tested in the editor (stage / commit / amend / push / pull, branches,
   remote delete, tags, shelf, issues, LFS panel, console menu).
-- **Not covered:** UI scenes and node wiring have no automated tests, and the LFS flows against a real full
+- **Not covered:** UI scenes and node wiring have no automated tests (`GitotStatusTree`, with its row cap, Show all and selection restore, cannot be built in GdUnit: it runs outside the editor), and the LFS flows against a real full
   LFS remote (Install LFS, push / pull / prune of real objects, the not-installed views) have not been exercised yet.
 
 Details: [Testing](../../wiki/Testing) in the wiki.
@@ -237,7 +244,7 @@ Details: [Testing](../../wiki/Testing) in the wiki.
 
 ## 🗃 Changelog
 
-See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.17.0**.
+See **[CHANGELOG](CHANGELOG.md)**. Latest: **v0.17.1**.
 
 
 ## © License

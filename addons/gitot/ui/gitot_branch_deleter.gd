@@ -62,13 +62,6 @@ func on_selection_changed(branch: GitBranchEntry) -> void:
 	_refresh_buttons()
 
 
-## Called by the dock when the origin delete finished (success or failure).
-func on_remote_delete_finished() -> void:
-	_remote_busy = false
-	GitotUi.set_busy(_delete_remote_button, false, REMOTE_ICON)
-	_refresh_buttons()
-
-
 func _refresh_buttons() -> void:
 	_delete_button.disabled = _local_name.is_empty()
 	_delete_remote_button.disabled = _remote_name.is_empty() or _remote_busy
@@ -116,4 +109,11 @@ func _on_confirmed() -> void:
 	)
 	_remote_busy = true
 	GitotUi.set_busy(_delete_remote_button, true, REMOTE_ICON)
-	_git_engine.delete_remote_branch(_pending_name)
+	_git_engine.delete_remote_branch(_pending_name, _on_remote_delete_done)
+
+
+## Origin delete answered (success or failure, also the engine's unsafe-name refusal).
+func _on_remote_delete_done(_exit_code: int, _output: Array[String]) -> void:
+	_remote_busy = false
+	GitotUi.set_busy(_delete_remote_button, false, REMOTE_ICON)
+	_refresh_buttons()

@@ -74,8 +74,8 @@ func start() -> void:
 		_do_push()
 
 
-## Continues the push once the async commit-message fetch completes (GitEngine.Command.LAST_COMMIT_MSG).
-func on_last_commit_message(exit_code: int, output: Array[String]) -> void:
+## Continues the push once the async commit-message fetch completes (on_done of request_last_commit_message).
+func _on_last_commit_message(exit_code: int, output: Array[String]) -> void:
 	var message: String = (
 		String(output[0]).strip_edges()
 		if (exit_code == 0 and not output.is_empty())
@@ -88,7 +88,7 @@ func on_last_commit_message(exit_code: int, output: Array[String]) -> void:
 ## Skips the async commit-message fetch when it isn't needed (push without tag).
 func _do_push() -> void:
 	if _tag_panel.is_enabled() and _tag_panel.uses_commit_message():
-		_git_engine.request_last_commit_message()
+		_git_engine.request_last_commit_message(_on_last_commit_message)
 	else:
 		_start_with_tag_input("")
 
